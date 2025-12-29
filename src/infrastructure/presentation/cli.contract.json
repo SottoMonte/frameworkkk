@@ -1,0 +1,24 @@
+{
+    "adapter": {
+        "code": {
+            "test": "1f75f53868c82c3d402f8a2285b8b3e912822336046bfb2e71257983c0e4f2b6",
+            "production": "49db96ca5d31d4f7916af295f7ea5128f8d2ceacf87e69d19527c823b73672c2"
+        },
+        "code_update": {
+            "test": "b7586f111302338cfe248c5acf06c65d11c3c84164bcca56a9409837027a3435",
+            "production": "673b5da2f606c7ba18c82023a4a637b94f191b553341f91a97a952f63e2f7b68"
+        },
+        "mount_view": {
+            "test": "e2c356078dd1ad93d029b31f7d76baddf040a9ecb8233d877d70f26c9bb7c96c",
+            "production": "546573e56265785b27b5393ad7bdaabd747d2c9894e249b4dcd19449df35c139"
+        },
+        "set_attribute": {
+            "test": "52c3ad5bbd9b78cb89b787d33c78ab3d97657a4a0e5c45f7435976a363c23930",
+            "production": "4f95902f073bda480870f6a886b775527486bf6e8c2ef68752da230b9d8ff777"
+        },
+        "get_attribute": {
+            "test": "6d2050c367684cebc757962542cbc8b1c44f73f01f2cafcc6b76db4a37d93bac",
+            "production": "a0121e181bcb8d7a7bf832efc4691a347037e60794495e83c3379eb72c22a020"
+        }
+    }
+}

@@ -1,0 +1,47 @@
+{
+    "identifier": {
+        "type": "string",
+        "default": "",
+        "_builder_options": {
+            "function": "generate_identifier"
+        }
+    },
+    "success": {
+        "type": "boolean",
+        "default": false
+    },
+    "action": {
+        "type": "string",
+        "default": "unknown"
+    },
+    "time": {
+        "type": "string",
+        "default": "",
+        "_builder_options": {
+            "function": "time_now_utc"
+        }
+    },
+    "worker": {
+        "type": "string",
+        "default": "unknown"
+    },
+    "parameters": {
+        "type": "dict",
+        "default": {}
+    },
+    "errors": {
+        "type": "list",
+        "default": [],
+        "_builder_options": {
+            "force_type": "dict",
+            "iterable": true
+        }
+    },
+    "data": {
+        "default": {},
+        "nullable": true,
+        "_builder_options": {
+            "description": "Any type allowed (dict, list, primitive)"
+        }
+    }
+}

@@ -1,0 +1,30 @@
+[project]
+name = "my-app"                          # Nome del progetto
+version = "0.1.0"                        # Versione dell'app
+description = "Un'app di esempio"        # Descrizione del progetto
+readme = "README.md"                     # File di documentazione
+requires-python = ">=3.9"                # Versione minima di Python richiesta
+key = "my-secret-key"                    # Chiave segreta dell'app
+mode = "development"                     # Modalita applicazione development/production
+
+[project.policy]
+presentation = "web.toml"
+persistence = "redis.toml"
+message = "log.toml"
+
+[amessage.backend]
+adapter = "redis"
+host = "redis-18721.c339.eu-west-3-1.ec2.redns.redis-cloud.com"
+port = "18721"
+database = "Projects-free-db"
+username = "default"
+password = ""
+
+# Configurazione della presentazione
+[apresentation.web]
+adapter = "starlette"
+host = "0.0.0.0"
+port = "5000"
+
+[apresentation.cli]
+adapter = "cli"

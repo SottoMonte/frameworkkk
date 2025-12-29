@@ -1,0 +1,12 @@
+{
+    "__module__": {
+        "application": {
+            "test": "582a4ee986a7b5874cb1f78fe9c5b03a1bb2e3e03bf8b2e3f6539921376c3e85",
+            "production": "f8e0cd03d1adc7e64508cb68bc9935256cbd4d9b49934a159c9ee1df9cb772db"
+        },
+        "discover_and_run_tests": {
+            "test": "976127eee273eb5b71f2455388bfa4713c4a918b54ecd2f6381448c63480a7ea",
+            "production": "f8e6b23e11c462db24992624d5a4723e770b09e6decd6dc77f425be9c7699b1b"
+        }
+    }
+}
