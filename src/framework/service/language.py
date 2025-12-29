@@ -7,7 +7,7 @@ import mistql
 
 from framework.service.flow import (
     asynchronous, synchronous, get_transaction_id, set_transaction_id, 
-    _transaction_id, convert, get, put, format, route, normalize, framework_log
+    _transaction_id, convert, get, put, format, route, normalize, framework_log, _load_resource
 )
 import framework.service.flow as flow
 
@@ -38,7 +38,8 @@ grammar = r"""
     and_expr: comparison_expr | and_expr "and" comparison_expr -> and_op
     or_expr: and_expr | or_expr "or" and_expr -> or_op
     
-    dictionary.10: "{" (pair ";")* ";"? "}" | (pair ";")*
+    dictionary.10: "{" (item ";")* ";"? "}" | (item ";")*
+    item: pair | function_call -> statement
     
     # Typed name like integer:x
     typed_name: CNAME ":" CNAME -> typed_name_node
@@ -78,7 +79,23 @@ class ConfigTransformer(Transformer):
     def pair_statement(self, args):
         k, v = args
         return (str(k.name) if isinstance(k, DSLVariable) else str(k)), v
-    def dictionary(self, items): return dict(items)
+    def statement(self, args):
+        return args[0]
+    def dictionary(self, items):
+        res = {}
+        for i in items:
+            if isinstance(i, tuple) and len(i) == 2 and not isinstance(i[0], str) and i[0][0] == 'CALL':
+                # It's a statement (function call)
+                pass # We handle it later in evaluation or we can put it in a special key
+            if isinstance(i, tuple) and len(i) == 2 and isinstance(i[0], str):
+                res[i[0]] = i[1]
+            elif isinstance(i, tuple) and i[0] == 'CALL':
+                # Use a random key or the function name as key for statements
+                res[f"__stmt_{i[1]}"] = i
+            else:
+                # Fallback
+                pass
+        return res
     def binary_op(self, args):
         l, o, r = args
         m = {'+':'ADD','-':'SUB','*':'MUL','/':'DIV','%':'MOD','==':'EQ','!=':'NEQ','>=':'GTE','<=':'LTE','>':'GT','<':'LT'}
@@ -114,6 +131,7 @@ class DSLVisitor:
             'OP_LT': operator.lt, 'OP_GTE': operator.ge, 'OP_LTE': operator.le,
             'OP_AND': lambda a, b: a and b, 'OP_OR': lambda a, b: a or b, 'OP_NOT': lambda a: not a
         }
+        self.root_path = "."
 
     async def run(self, data):
         self.root_data = data
@@ -126,7 +144,10 @@ class DSLVisitor:
         return self.functions_map.get(node.name, node.name)
 
     async def visit(self, node, ctx=None):
-        if isinstance(node, dict): return {k: await self.visit(v, ctx) for k, v in node.items()}
+        if isinstance(node, dict):
+            # Create a copy of items to avoid "dictionary changed size during iteration"
+            items = list(node.items())
+            return {k: await self.visit(v, ctx) for k, v in items}
         if isinstance(node, list): return [await self.visit(x, ctx) for x in node]
         if isinstance(node, tuple) and node:
             tag = node[0]
@@ -148,6 +169,42 @@ class DSLVisitor:
 
     async def _execute(self, name, p_args, k_args):
         func = self.functions_map.get(name)
+        if name == 'include' and p_args:
+            path = p_args[0]
+            if not path.endswith(".dsl"): path += ".dsl"
+            try:
+                content = await _load_resource(path=path)
+                from lark import Lark
+                new_data = Lark(grammar).parse(content)
+                new_dict = ConfigTransformer().transform(new_data)
+                # Merge into root_data without modifying during iteration
+                for k, v in new_dict.items():
+                    if not k.startswith('__stmt_'):
+                        self.root_data[k] = v
+                return {"included": path, "variables": list(new_dict.keys())}
+            except Exception as e:
+                framework_log("ERROR", f"Failed to include {path}: {e}", emoji="❌")
+                return {"error": str(e)}
+
+
+        # Handle qualified names (e.g., executor.all_completed)
+        if '.' in name:
+            parts = name.split('.')
+            obj = self.functions_map.get(parts[0])
+            if obj:
+                # Navigate through the parts to get the final method
+                for part in parts[1:]:
+                    if hasattr(obj, part):
+                        obj = getattr(obj, part)
+                    else:
+                        framework_log("ERROR", f"Attribute {part} not found on {parts[0]}", emoji="🤷")
+                        return None
+                # Now obj is the method we want to call
+                if callable(obj):
+                    res = obj(*p_args, **k_args)
+                    return await res if asyncio.iscoroutine(res) else res
+                return obj
+
         if func:
             res = func(*p_args, **k_args)
             return await res if asyncio.iscoroutine(res) else res
@@ -221,6 +278,101 @@ dsl_functions = {
     n: lambda *a, n=n, **kw: _dsl_load_adapter(n, *a, **kw) 
     for n in ['storekeeper','messenger','executor','presenter','defender','resource','register']
 }
+
+# Proxy class per accedere ai metodi dell'executor con sintassi executor.method()
+class ExecutorProxy:
+    """Proxy that allows calling executor methods with dot notation in DSL."""
+    
+    def __init__(self):
+        self._executor_instance = None
+    
+    async def _get_executor(self):
+        """Lazy load executor instance."""
+        if self._executor_instance is None:
+            self._executor_instance = await _dsl_load_adapter('executor')
+        return self._executor_instance
+    
+    async def all_completed(self, *args, **kwargs):
+        """Wait for all tasks to complete."""
+        executor = await self._get_executor()
+        return await executor.all_completed(*args, **kwargs)
+    
+    async def first_completed(self, *args, **kwargs):
+        """Return first task that completes successfully."""
+        executor = await self._get_executor()
+        return await executor.first_completed(*args, **kwargs)
+    
+    async def chain_completed(self, *args, **kwargs):
+        """Execute tasks sequentially."""
+        executor = await self._get_executor()
+        return await executor.chain_completed(*args, **kwargs)
+    
+    async def together_completed(self, *args, **kwargs):
+        """Fire and forget - start all tasks in background."""
+        executor = await self._get_executor()
+        return await executor.together_completed(*args, **kwargs)
+    
+    async def act(self, *args, **kwargs):
+        """Execute action(s)."""
+        executor = await self._get_executor()
+        return await executor.act(*args, **kwargs)
+
+# Create singleton instance
+_executor_proxy = ExecutorProxy()
+
+# Add executor proxy to dsl_functions
+dsl_functions['executor'] = _executor_proxy
+
+# Keep aliases for convenience
+dsl_functions['all_completed'] = _executor_proxy.all_completed
+dsl_functions['first_completed'] = _executor_proxy.first_completed
+dsl_functions['chain'] = _executor_proxy.chain_completed
+dsl_functions['sequential'] = _executor_proxy.chain_completed
+dsl_functions['fire_and_forget'] = _executor_proxy.together_completed
+
+# Helper to wrap a function as a step for use in switch/match
+def _wrap_as_step(func):
+    """Wraps a callable as a flow.step if it's not already a tuple."""
+    if callable(func) and not isinstance(func, tuple):
+        return flow.step(func)
+    return func
+
+# Custom switch that auto-wraps functions
+async def _dsl_switch(cases_or_value, value_or_context=None, context=None):
+    """Switch that auto-wraps callables as steps.
+    
+    Can be called as:
+    - match(cases_dict, context) - standard call
+    - value | match(cases_dict) - piped call where value becomes first arg
+    """
+    # Determine which argument is which
+    if isinstance(cases_or_value, dict) and all(isinstance(k, str) for k in cases_or_value.keys()):
+        # First arg is cases, second is context or value
+        cases = cases_or_value
+        if isinstance(value_or_context, dict) and '@' not in value_or_context:
+            ctx = value_or_context
+        else:
+            # value_or_context is the value to match
+            ctx = {'@': value_or_context} if value_or_context is not None else (context or {})
+    else:
+        # First arg is the value (from pipe), second is cases
+        value = cases_or_value
+        cases = value_or_context if isinstance(value_or_context, dict) else {}
+        ctx = {'@': value}
+    
+    # Wrap actions as steps
+    if isinstance(cases, dict):
+        wrapped_cases = {k: _wrap_as_step(v) for k, v in cases.items()}
+    elif isinstance(cases, (list, tuple)):
+        if cases and isinstance(cases[0], (list, tuple)) and len(cases[0]) == 2:
+            wrapped_cases = [(cond, _wrap_as_step(action)) for cond, action in cases]
+        else:
+            wrapped_cases = cases
+    else:
+        wrapped_cases = cases
+    
+    return await flow.switch(wrapped_cases, ctx)
+
 dsl_functions.update({
     'format': flow.format, 'foreach': flow.foreach, 'convert': flow.convert, 'get': flow.get,
     'keys': lambda d: list(d.keys()) if isinstance(d, dict) else [],
@@ -229,6 +381,11 @@ dsl_functions.update({
     'print': lambda d: (print(f"*** CUSTOM PRINT ***: {d}"), d)[1],
     'pick': lambda d, keys: {k: v for k, v in d.items() if k in keys} if isinstance(d, dict) and isinstance(keys, (list, tuple)) else d,
     'filter': lambda d, keys: {k: v for k, v in d.items() if k in keys} if isinstance(d, dict) and isinstance(keys, (list, tuple)) else d,
+    'switch': _dsl_switch, 'match': _dsl_switch,
+    'batch': flow.batch, 'parallel': flow.batch,
+    'race': flow.race, 'timeout': flow.timeout, 'throttle': flow.throttle,
+    'catch': flow.catch, 'branch': flow.branch, 'retry': flow.retry,
+    'fallback': flow.fallback,
     'project': lambda d, m=None: (
         (lambda data, template: (
             (lambda res_func: (

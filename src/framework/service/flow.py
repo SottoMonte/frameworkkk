@@ -631,6 +631,13 @@ async def _execute_step_internal(action_step,context=dict()) -> Any:
     senza il contesto completo del pipe.
     """
         
+    # Handle literal values (strings, numbers, etc.) - just return them
+    if not callable(action_step) and not isinstance(action_step, tuple):
+        return {"success": True, "data": action_step, "errors": []}
+    
+    if callable(action_step):
+        action_step = (action_step, (), {})
+
     fun = action_step[0]
     args = action_step[1] if len(action_step) > 1 else ()
     kwargs = action_step[2] if len(action_step) > 2 else {}
