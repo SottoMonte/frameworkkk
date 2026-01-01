@@ -30,3 +30,7 @@ class Testadapter(unittest.IsolatedAsyncioTestCase):
         await self.check_cases(language.resource, failure)'''
         print("Running test_post...")
         assert True, "Not implemented yet."
+
+    async def test_read(self):
+        print("Running test_read...")
+        assert True, "Not implemented yet."

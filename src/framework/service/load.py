@@ -503,7 +503,7 @@ def _register_dependency_in_container(module, constants):
             dependencies[dep_key] = getattr(container, dep_key)()
         
         setattr(container, service_name, providers.Factory(resource_class, **init_args, providers=dependencies))
-        framework_log("INFO", f"✅✅✅✅ Registrato Factory (MANAGER): '{service_name}' ({log_info})")
+        framework_log("INFO", f"✅✅✅✅ Registrato Factory (MANAGER): '{service_name}' ", emoji="✅")
     else:
         # --- CASO: PROVIDER/SINGLETON ---
         if not hasattr(container, service_name):
