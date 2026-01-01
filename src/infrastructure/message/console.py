@@ -2,6 +2,7 @@ import sys
 import logging
 import time
 imports = {}
+import framework.service.language as language
 from framework.service.language import get_transaction_id
 # Controllo se il codice sta girando in Pyodide
 
@@ -168,7 +169,6 @@ class adapter:
             tx = None
 
         stored_message = message  # mantiene il messaggio pulito in history
-        # se vuoi salvare anche l'ID in history, puoi farlo come metadato separato
         self.history.setdefault(domain,[0,[]])[1].append(stored_message)
 
         # Passiamo il message al backend; log_backend recupera il transaction id e lo passa come extra
@@ -178,8 +178,7 @@ class adapter:
         domain = constants.get('domain', 'info')
         identity = constants.get('identity', '')
         results = []
-        matching_domains = language.wildcard_match(self.history.keys(), domain)
-        #print(f"Matching domains2: {matching_domains}",self.history.keys(),domain,self.history)
+        matching_domains = [d for d in self.history.keys() if language.wildcard_match(d, domain)]
         for dom in matching_domains:
             last, messages = self.history.get(dom, [0, []])
             if last < len(messages):

@@ -127,20 +127,30 @@ class executor:
             for operation in finished:
                 transaction = operation.result()
                 if transaction:
-                    framework_log("DEBUG", f"Transazione completata: {type(transaction)}", emoji="💼")
+                    # framework_log("DEBUG", f"Transazione completata: {type(transaction)}", emoji="💼")
                     if 'success' in constants:
                         transaction = await constants['success'](transaction=transaction,profile=operation.get_name())
-                    await messenger.post(domain='debug',message=f"✅ Transazione completata: {str(transaction)}")
+                    
+                    # Ensure transaction is a dict to attach parameters
+                    if isinstance(transaction, list):
+                        transaction = {"success": True, "data": transaction, "errors": []}
+                    
+                    if isinstance(transaction, dict):
+                        framework_log("DEBUG", f"✅ Executor: transazione valida trovata per {operation.get_name()}")
+                        for task in unfinished:
+                            task.cancel()
+                        transaction.setdefault('parameters', getattr(operation, 'parameters', {}))
+                        return transaction
+                    
                     for task in unfinished:
                         task.cancel()
-                    transaction['parameters'] = operation.parameters
-                    return transaction
+                    return {"success": True, "data": transaction, "errors": []}
 
                 operations = unfinished
 
             error_msg = "⚠️ Nessuna transazione valida completata"
             await messenger.post(domain='debug',message=error_msg)
-            return {"success": False, "error": [error_msg]}
+            return None
 
     @flow.asynchronous(managers=('messenger',))
     async def all_completed(self, messenger, **constants) -> Dict[str, Any]:

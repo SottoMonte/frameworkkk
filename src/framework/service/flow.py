@@ -186,17 +186,17 @@ def get_requirements() -> Dict[str, Any]:
 # =====================================================================
 
 def _prepare_async_context(custom_filename, **constants):
-    """Prepara requirements, inject e schema path per il decoratore."""
+    """Prepara requirements, manager_names e schema path per il decoratore."""
     known_params = {'managers', 'outputs', 'inputs'}
     requirements = {k: v for k, v in constants.items() if k not in known_params}
     
-    inject = [getattr(container, manager)() for manager in constants.get('managers', []) if hasattr(container, manager)]
+    manager_names = list(constants.get('managers', []))
     
     output_schema_path = 'framework/scheme/transaction.json'
     if 'outputs' in constants and constants['outputs']:
          output_schema_path = constants['outputs']
          
-    return requirements, inject, output_schema_path
+    return requirements, manager_names, output_schema_path
 
 def _setup_transaction_context():
     """Gestisce l'inizializzazione del Transaction ID."""
@@ -207,8 +207,22 @@ def _setup_transaction_context():
         tx_token = set_transaction_id(current_tx_id)
     return current_tx_id, tx_token
 
-async def _execute_wrapper(function, args, kwargs, inject, current_tx_id):
+async def _execute_wrapper(function, args, kwargs, manager_names, current_tx_id):
     """Esegue la funzione wrappata e arricchisce il risultato."""
+    # Resolve managers at runtime. Wait if they are missing (optional but recommended for bootstrap)
+    inject = []
+    for m in manager_names:
+        # Polling breve per evitare race condition durante il bootstrap
+        attempts = 0
+        while not hasattr(container, m) and attempts < 10:
+            await asyncio.sleep(0.1)
+            attempts += 1
+        
+        if hasattr(container, m):
+            inject.append(getattr(container, m)())
+        else:
+            framework_log("WARNING", f"Manager '{m}' richiesto da {function.__name__} non trovato nel container.")
+            
     args_inject = list(args) + inject
     step_tuple = (function, tuple(args_inject), kwargs)
     
@@ -274,7 +288,7 @@ def _handle_wrapper_error(e, function, custom_filename, current_tx_id):
     }
 
 def asynchronous(custom_filename: str = __file__, app_context = None, **constants):
-    requirements, inject, output_schema_path = _prepare_async_context(custom_filename, **constants)
+    requirements, manager_names, output_schema_path = _prepare_async_context(custom_filename, **constants)
 
     def decorator(function):
         @functools.wraps(function)
@@ -292,7 +306,7 @@ def asynchronous(custom_filename: str = __file__, app_context = None, **constant
                 
                 with MultiSpanContext(telemetry_list, span_name):
                     # 2. Execute & Enrich
-                    transaction = await _execute_wrapper(function, args, kwargs, inject, current_tx_id)
+                    transaction = await _execute_wrapper(function, args, kwargs, manager_names, current_tx_id)
                     
                     # 3. Normalize
                     return await _normalize_wrapper(transaction, output_schema_path, wrapper, kwargs, current_tx_id)
@@ -312,7 +326,7 @@ def asynchronous(custom_filename: str = __file__, app_context = None, **constant
 
 def synchronous(custom_filename: str = __file__, app_context = None,**constants):
     
-    inject = [getattr(container, manager)() for manager in constants.get('managers', []) if hasattr(container, manager)]
+    manager_names = list(constants.get('managers', []))
     output = constants.get('outputs', [])
     input = constants.get('inputs', [])
     
@@ -321,15 +335,11 @@ def synchronous(custom_filename: str = __file__, app_context = None,**constants)
         def wrapper(*args, **kwargs):
             wrapper._is_decorated = True
             try:
+                # Resolve managers at runtime
+                inject = [getattr(container, m)() for m in manager_names if hasattr(container, m)]
                 args_inject = list(args) + inject
-                if 'inputs' in constants:
-                    outcome = function(*args_inject, **kwargs)
-                else:
-                    outcome = function(*args_inject, **kwargs)
-                if 'outputs' in constants:
-                    return outcome
-                else:
-                    return outcome
+                outcome = function(*args_inject, **kwargs)
+                return outcome
             except Exception:
                 try:
                     source_code = inspect.getsource(function)

@@ -30,9 +30,12 @@
         {"path": "framework/manager/tester.py"; "service": "tester"; "config": {"cache_enabled": True; "log_level": "INFO";}; "dependency_keys": ("messenger","persistence"); "messenger": "tester"; }
     );
     
-    registered_managers : managers | foreach(register) | print;
+    registered_managers : managers | print | foreach(register) | print;
 
-    ok: messenger().post(message:"Hello World")|print;
+    messenger.read(domain:'ciao'): messenger.post(message:"Hello World")|print;
+    *,*,*,*,*,: "ciao cronos" | print;
+    *,*,*,*,*,: messenger.post(domain:'ciao', message:'Triggering Event') | print;
     
-    services : static_services | merge(dynamic_services) | foreach(register) | print;
+    services_list : static_services | merge(dynamic_services);
+    registered_services : services_list | print | foreach(register) | print;
 }

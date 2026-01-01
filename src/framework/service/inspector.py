@@ -748,19 +748,34 @@ if sys.platform != 'emscripten':
         if path.startswith('/'):
             path = path[1:]
 
-        if path.startswith('application/') or path.startswith('framework/') or path.startswith('infrastructure/'):
-            path = 'src/'+path
-
+        # Create candidates: relative to CWD, relative to project root (derived from __file__)
+        cwd = os.getcwd()
+        candidates = [path]
+        if not path.startswith('src/'):
+            candidates.append('src/' + path)
+        
+        # Determine project root from current file (inspector.py is in src/framework/service/inspector.py)
+        # So project root is 3 levels up from inspector.py's directory
         try:
-            with open(f"{path}", "r") as f:
-                content = f.read()
-                _validate_imports(content, path)
-                return content
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File non trovato: {path}")
-        except Exception as e:
-            framework_log("ERROR", f"Errore caricamento file {path}: {e}", emoji="📁", metadata=kwargs)
-            raise e
+            inspector_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(inspector_dir)))
+            candidates.append(os.path.join(project_root, 'src', path))
+            candidates.append(os.path.join(project_root, path))
+        except Exception:
+            pass
+
+        # Prova i vari candidati
+        for p in candidates:
+            if os.path.exists(p) and os.path.isfile(p):
+                try:
+                    with open(p, "r") as f:
+                        content = f.read()
+                        _validate_imports(content, p)
+                        return content
+                except Exception:
+                    continue
+        
+        raise FileNotFoundError(f"File non trovato: {path}. Provati: {candidates}. CWD: {cwd}")
 else:
     async def _load_resource(**kwargs) -> str:
         path = kwargs.get("path", "")

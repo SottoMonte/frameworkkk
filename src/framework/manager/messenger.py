@@ -1,5 +1,6 @@
 import sys
 import asyncio
+import framework.service.language as language
 
 imports = {
     "flow": "framework/service/flow.py"
@@ -14,30 +15,7 @@ class messenger():
 
     @flow.asynchronous(inputs='messenger',managers=('executor',))
     async def post(self, executor, **constants):
-        '''operations = []
-        map_tasks = dict()
-        # email -> email | log,fs -> messaggio | app -> evento
-        #sender, receiver 
-        receiver = None
-
-        # Adds operation if profile matches
         for provider in self.providers:
-            profile = provider.config['profile'].upper()
-            domain_provider = provider.config.get('domain','*').split(',')
-            domain_message = constants.get('domain',[])
-            #print(f"Domain: {domain_message} - Provider: {domain_provider}",[match for item in domain_provider for match in language.wildcard_match(domain_message, item)])
-            if len([match for item in domain_provider for match in language.wildcard_match(domain_message, item)]) > 0:
-                #can = await provider.can(**constants)
-                #if can or profile in allowed:
-                operations.append(provider.post(location=profile, **constants))
-                map_tasks[len(operations)-1] = profile
-
-        # Commit all operations at the same time   
-        transactions = await asyncio.gather(*operations)'''
-        for provider in self.providers:
-            #profile = provider.config['profile'].upper()
-            #domain_provider = provider.config.get('domain','*').split(',')
-            #domain_message = constants.get('domain',[])
             await provider.post(**constants)
 
     @flow.asynchronous(inputs='messenger',managers=('executor',))

@@ -2,7 +2,7 @@
     "messenger": {
         "post": {
             "test": "7db7747f2c4e1b4c5b3d00f8b7e2efd4de6b38c0c7c6e103c13b59ab40ec9566",
-            "production": "ee54799dc4b94df7b2ac00e21622f26699ae51f6c9b198f10b8a70707e54b181"
+            "production": "26fd9305a53f012bdd9ee5625650031bd8c1ccb3733926feda357ddd5068afbf"
         },
         "read": {
             "test": "d8f4dccb7bfce541b30e10780bc1af20e817b9fe4bc6b8e57ebc1229c8984f66",

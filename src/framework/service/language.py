@@ -13,7 +13,9 @@ import framework.service.flow as flow
 
 # --- 1. Grammar ---
 grammar = r"""
-    start: [dictionary]
+    start: [braced_dict | top_level]
+    top_level: (item ";")* -> dictionary
+    braced_dict: "{" (item ";")* ";"? "}" -> dictionary
     POW_OP: "^"
     MUL_OP: "*" 
     DIV_OP: "/"
@@ -24,11 +26,13 @@ grammar = r"""
     PIPE: "|"
     QUALIFIED_CNAME: CNAME ("." CNAME)+
     COMMENT: /#[^\n]*/
+    ANY: "*"
 
     value: SIGNED_NUMBER -> number
-        | ESCAPED_STRING -> string
+        | (ESCAPED_STRING | SINGLE_QUOTED_STRING) -> string
         | "Vero" -> true | "Falso" -> false
         | (CNAME | QUALIFIED_CNAME) -> simple_key
+        | ANY -> any_val
     
     not_expr: atom | "not" not_expr -> not_op
     power_expr: not_expr | power_expr POW_OP not_expr -> power
@@ -38,13 +42,13 @@ grammar = r"""
     and_expr: comparison_expr | and_expr "and" comparison_expr -> and_op
     or_expr: and_expr | or_expr "or" and_expr -> or_op
     
-    dictionary.10: "{" (item ";")* ";"? "}" | (item ";")*
+    dictionary: braced_dict
     item: pair | function_call -> statement
     
     # Typed name like integer:x
     typed_name: CNAME ":" CNAME -> typed_name_node
     
-    pair_statement.10: (value | tuple_inline | typed_name) ":" (expression | tuple_inline | typed_name)
+    pair_statement.10: (value | tuple_inline | typed_name | function_call) ":" (expression | tuple_inline | typed_name)
     pair: "(" pair_statement ")" | pair_statement
     valid_tuple_item: value | dictionary | tuple | "(" or_expr ")" | typed_name
     tuple: "(" [ (expression | typed_name) ("," (expression | typed_name))*] ")" -> tuple_
@@ -52,13 +56,14 @@ grammar = r"""
     call_args: call_arg ("," call_arg)*
     call_arg: expression -> arg_pos | CNAME ":" expression -> arg_kw
     atom: value | dictionary | function_call | "(" pair_statement ")" -> pair | tuple | "(" or_expr ")" | typed_name
-    tuple_inline: [valid_tuple_item "," valid_tuple_item ("," valid_tuple_item)*] -> tuple_
+    tuple_inline: [valid_tuple_item ("," valid_tuple_item)* ","?] -> tuple_
     expression: or_expr (PIPE (or_expr | tuple_inline))* -> expression
 
     %import common.SIGNED_NUMBER
     %import common.ESCAPED_STRING
     %import common.CNAME
     %import common.WS
+    SINGLE_QUOTED_STRING: /'[^']*'/
     %ignore WS
     %ignore COMMENT
 """
@@ -78,23 +83,44 @@ class ConfigTransformer(Transformer):
         return ('CALL', str(name), tuple(a[1] for a in call_args if a[0]=='POS'), {a[1]: a[2] for a in call_args if a[0]=='KW'})
     def pair_statement(self, args):
         k, v = args
-        return (str(k.name) if isinstance(k, DSLVariable) else str(k)), v
+        return k, v
     def statement(self, args):
         return args[0]
     def dictionary(self, items):
+        # Prevent recursive parsing of already transformed dictionaries
+        if len(items) == 1 and isinstance(items[0], dict):
+            return items[0]
+            
         res = {}
+        triggers = []
         for i in items:
-            if isinstance(i, tuple) and len(i) == 2 and not isinstance(i[0], str) and i[0][0] == 'CALL':
-                # It's a statement (function call)
-                pass # We handle it later in evaluation or we can put it in a special key
-            if isinstance(i, tuple) and len(i) == 2 and isinstance(i[0], str):
-                res[i[0]] = i[1]
+            if isinstance(i, tuple) and len(i) == 2:
+                k, v = i
+                # Check for triggers: k is a function call or a tuple containing '*'
+                is_event_trigger = isinstance(k, tuple) and len(k) > 0 and k[0] == 'CALL'
+                is_cron_trigger = isinstance(k, tuple) and any(x == '*' for x in k if isinstance(x, str))
+                
+                if is_event_trigger or is_cron_trigger:
+                    triggers.append((k, v))
+                elif isinstance(k, str):
+                    res[k] = v
+                elif isinstance(k, DSLVariable):
+                    res[str(k.name)] = v
+                else:
+                    # Fallback or complex key
+                    res[str(k)] = v
             elif isinstance(i, tuple) and i[0] == 'CALL':
                 # Use a random key or the function name as key for statements
                 res[f"__stmt_{i[1]}"] = i
+            elif isinstance(i, dict):
+                # Another fail-safe for already parsed dictionaries in the list
+                res.update(i)
             else:
                 # Fallback
                 pass
+        
+        if triggers:
+            res['__triggers__'] = triggers
         return res
     def binary_op(self, args):
         l, o, r = args
@@ -109,12 +135,13 @@ class ConfigTransformer(Transformer):
         return p[0] if len(p) == 1 else ('EXPRESSION', p)
     def tuple_(self, items):
         items = [i for i in items if i is not None]
-        return items[0] if len(items) == 1 else tuple(items)
+        return tuple(items)
     def number(self, n): return float(str(n[0])) if '.' in str(n[0]) else int(str(n[0]))
-    def string(self, s): return str(s[0]).strip('"')
+    def string(self, s): return str(s[0]).strip('"\'')
     def true(self, _): return True
     def false(self, _): return False
     def simple_key(self, s): return DSLVariable(str(s[0]))
+    def any_val(self, _): return '*'
     def typed_name_node(self, args): return ('TYPED', str(args[0]), str(args[1]))
     def pair(self, args): return args[0]
     def __default__(self, data, children, meta):
@@ -135,7 +162,33 @@ class DSLVisitor:
 
     async def run(self, data):
         self.root_data = data
-        return await self.visit(data)
+        res = await self.visit(data)
+        return res
+
+    @staticmethod
+    def wildcard_match(data, pattern):
+        """
+        Matches data against a pattern with wildcards (*, ?).
+        Supports:
+        - String patterns: "user.*" matches "user.login", "user.logout"
+        - List patterns: ["*", "*", "15", "*", "*"] for cron-like matches
+        """
+        if isinstance(pattern, str):
+            # Convert glob pattern to regex
+            regex_pattern = re.escape(pattern).replace(r'\*', '.*').replace(r'\?', '.')
+            return bool(re.fullmatch(regex_pattern, str(data)))
+        
+        if isinstance(pattern, (list, tuple)) and isinstance(data, (list, tuple)):
+            if len(pattern) != len(data):
+                return False
+            for p, d in zip(pattern, data):
+                if p == '*':
+                    continue
+                if str(p) != str(d):
+                    return False
+            return True
+            
+        return str(data) == str(pattern)
 
     async def _resolve(self, node, ctx):
         if not isinstance(node, DSLVariable): return node
@@ -147,7 +200,20 @@ class DSLVisitor:
         if isinstance(node, dict):
             # Create a copy of items to avoid "dictionary changed size during iteration"
             items = list(node.items())
-            return {k: await self.visit(v, ctx) for k, v in items}
+            res = {}
+            
+            # 1. Resolve all non-triggers first (sequential)
+            # This ensures variables like registered_managers are evaluated before triggers start
+            for k, v in items:
+                if k != '__triggers__':
+                    res[k] = await self.visit(v, ctx)
+            
+            # 2. Start triggers (concurrent)
+            if '__triggers__' in node:
+                for trigger_key, action in node['__triggers__']:
+                    asyncio.create_task(self._start_trigger(trigger_key, action, ctx))
+            
+            return res
         if isinstance(node, list): return [await self.visit(x, ctx) for x in node]
         if isinstance(node, tuple) and node:
             tag = node[0]
@@ -160,6 +226,65 @@ class DSLVisitor:
                 return (await self.visit(node[0], ctx), node[1], await self.visit(node[2], ctx))
             return tuple([await self.visit(x, ctx) for x in node])
         return await self._resolve(node, ctx) if isinstance(node, DSLVariable) else node
+
+    async def _start_trigger(self, trigger_key, action, ctx):
+        """Starts a background loop for a cron or event trigger."""
+        if isinstance(trigger_key, tuple) and trigger_key[0] == 'CALL':
+            # Event trigger
+            await self._event_loop(trigger_key, action, ctx)
+        elif isinstance(trigger_key, (list, tuple)) and any(x == '*' for x in trigger_key):
+            # Cron trigger
+            await self._cron_loop(trigger_key, action, ctx)
+
+    async def _cron_loop(self, pattern, action, ctx):
+        """Loop for cron tasks."""
+        framework_log("INFO", f"⏰ Avvio task cron: {pattern}", emoji="⏳")
+        while True:
+            # Sleep until next minute starts to be more precise or just periodic check
+            import datetime
+            now = datetime.datetime.now()
+            # pattern: (min, hour, day, month, weekday)
+            current = (now.minute, now.hour, now.day, now.month, now.weekday())
+            
+            if self.wildcard_match(current, pattern):
+                framework_log("INFO", f"⚡ Esecuzione task cron: {pattern}", emoji="⚡")
+                try:
+                    await self.visit(action, ctx)
+                except Exception as e:
+                    framework_log("ERROR", f"❌ Errore task cron {pattern}: {e}", emoji="❌")
+            
+            # Sleep until next minute starts (Wait for next minute)
+            import datetime
+            now = datetime.datetime.now()
+            wait_seconds = 60 - now.second
+            if wait_seconds <= 0: wait_seconds = 60
+            await asyncio.sleep(wait_seconds)
+
+    async def _event_loop(self, call_node, action, ctx):
+        """Loop for event tasks."""
+        _, name, p_nodes, k_nodes = call_node
+        framework_log("INFO", f"🎭 Avvio listener evento: {name}", emoji="👂")
+        
+        while True:
+            try:
+                # Esegue la chiamata (es: messenger.read) e usa il risultato come trigger
+                # Se è un polling o un'attesa, la funzione stessa gestirà il tempo
+                res = await self.execute_call(call_node, ctx)
+                
+                # Check for success and presence of non-empty data
+                is_valid = res and isinstance(res, dict) and res.get('success')
+                data = res.get('data') if is_valid else None
+                
+                if is_valid and data:
+                    framework_log("INFO", f"🔔 Evento rilevato: {name}", emoji="🔔")
+                    new_ctx = (ctx or {}).copy()
+                    new_ctx['@event'] = data
+                    await self.visit(action, new_ctx)
+                else:
+                    await asyncio.sleep(1)
+            except Exception as e:
+                framework_log("ERROR", f"❌ Errore listener evento {name}: {e}", emoji="❌")
+                await asyncio.sleep(5)
 
     async def execute_call(self, call, ctx):
         _, name, p_nodes, k_nodes = call
@@ -259,89 +384,77 @@ class DSLVisitor:
         res = [ctx.get(o) for o in outs]
         return res[0] if len(res) == 1 else tuple(res)
 
-async def _dsl_load_adapter(func_name, *args, **kw):
-    import framework.service.context as context
-
-    await asyncio.sleep(5)
-    dd = context.container.module_cache()
-    #print(func_name,dd)
-    #return dd.get(f"framework/manager/{func_name}.py")
-    return getattr(context.container, func_name)()
-
 async def _dsl_load_service(func_name, *args, **kw):
-        import framework.service.load as load
-        func = getattr(load, func_name)
-        try:
-            # Se riceve un singolo dict come argomento posizionale, lo usa come kw
-            if len(args) == 1 and isinstance(args[0], dict) and not kw:
-                kw = args[0]
-                args = ()
+    import framework.service.load as load
+    func = getattr(load, func_name)
+    try:
+        # Se riceve un singolo dict come argomento posizionale, lo usa come kw
+        if len(args) == 1 and isinstance(args[0], dict) and not kw:
+            kw = args[0]
+            args = ()
+        
+        if func_name == 'resource' and args and isinstance(args[0], dict) and 'path' in args[0]: args = (args[0]['path'],) + args[1:]
+        res = await func(*args, **kw)
+        return res.get('data', res) if isinstance(res, dict) else res
+    except Exception as e:
+        framework_log("ERROR", f"Error {func_name}: {e}", emoji="❌"); return None
+
+class LazyService:
+    """Proxy that lazily loads a service from the container and allows dot-notation calls."""
+    def __init__(self, service_name):
+        self._service_name = service_name
+        self._instance = None
+
+    async def _get_instance(self):
+        if self._instance is None:
+            import framework.service.context as context
+            # Poll until the service is registered in the container (with timeout)
+            attempts = 0
+            while not hasattr(context.container, self._service_name) and attempts < 20:
+                await asyncio.sleep(0.5)
+                attempts += 1
             
-            if func_name == 'resource' and args and isinstance(args[0], dict) and 'path' in args[0]: args = (args[0]['path'],) + args[1:]
-            res = await func(*args, **kw)
-            return res.get('data', res) if isinstance(res, dict) else res
-        except Exception as e:
-            framework_log("ERROR", f"Error {func_name}: {e}", emoji="❌"); return None
-    
+            if not hasattr(context.container, self._service_name):
+                framework_log("WARNING", f"⚠️ Servizio '{self._service_name}' non trovato nel container dopo 10 secondi.", emoji="⏳")
+                return None
+            # Call the provider to get the instance
+            self._instance = getattr(context.container, self._service_name)()
+        return self._instance
+
+    def __getattr__(self, name):
+        # Return a dispatcher that waits for the instance
+        async def dispatcher(*args, **kwargs):
+            instance = await self._get_instance()
+            if instance is None:
+                framework_log("ERROR", f"❌ Impossibile chiamare '{name}' su servizio '{self._service_name}': istanza non trovata.")
+                return {"success": False, "errors": ["Service not found"]}
+            attr = getattr(instance, name)
+            if callable(attr):
+                res = attr(*args, **kwargs)
+                return await res if asyncio.iscoroutine(res) else res
+            return attr
+        return dispatcher
+
+    async def __call__(self, *args, **kwargs):
+        # Direct call returns the instance (waiting if necessary)
+        return await self._get_instance()
 
 dsl_functions = {
-    n: lambda *a, n=n, **kw: _dsl_load_adapter(n, *a, **kw) 
-    for n in ['storekeeper','messenger','executor','presenter','defender']
+    n: LazyService(n)
+    for n in ['storekeeper', 'messenger', 'executor', 'presenter', 'defender', 'tester']
 } | {
     n: lambda *a, n=n, **kw: _dsl_load_service(n, *a, **kw) 
-    for n in ['resource','register']
+    for n in ['resource', 'register']
 }
 
-# Proxy class per accedere ai metodi dell'executor con sintassi executor.method()
-class ExecutorProxy:
-    """Proxy that allows calling executor methods with dot notation in DSL."""
-    
-    def __init__(self):
-        self._executor_instance = None
-    
-    async def _get_executor(self):
-        """Lazy load executor instance."""
-        if self._executor_instance is None:
-            self._executor_instance = await _dsl_load_adapter('executor')
-        return self._executor_instance
-    
-    async def all_completed(self, *args, **kwargs):
-        """Wait for all tasks to complete."""
-        executor = await self._get_executor()
-        return await executor.all_completed(*args, **kwargs)
-    
-    async def first_completed(self, *args, **kwargs):
-        """Return first task that completes successfully."""
-        executor = await self._get_executor()
-        return await executor.first_completed(*args, **kwargs)
-    
-    async def chain_completed(self, *args, **kwargs):
-        """Execute tasks sequentially."""
-        executor = await self._get_executor()
-        return await executor.chain_completed(*args, **kwargs)
-    
-    async def together_completed(self, *args, **kwargs):
-        """Fire and forget - start all tasks in background."""
-        executor = await self._get_executor()
-        return await executor.together_completed(*args, **kwargs)
-    
-    async def act(self, *args, **kwargs):
-        """Execute action(s)."""
-        executor = await self._get_executor()
-        return await executor.act(*args, **kwargs)
-
-# Create singleton instance
-_executor_proxy = ExecutorProxy()
-
-# Add executor proxy to dsl_functions
-dsl_functions['executor'] = _executor_proxy
-
-# Keep aliases for convenience
-dsl_functions['all_completed'] = _executor_proxy.all_completed
-dsl_functions['first_completed'] = _executor_proxy.first_completed
-dsl_functions['chain'] = _executor_proxy.chain_completed
-dsl_functions['sequential'] = _executor_proxy.chain_completed
-dsl_functions['fire_and_forget'] = _executor_proxy.together_completed
+_executor_proxy = dsl_functions['executor']
+dsl_functions.update({
+    'all_completed': _executor_proxy.all_completed,
+    'first_completed': _executor_proxy.first_completed,
+    'chain': _executor_proxy.chain_completed,
+    'sequential': _executor_proxy.chain_completed,
+    'fire_and_forget': _executor_proxy.together_completed
+})
 
 # Helper to wrap a function as a step for use in switch/match
 def _wrap_as_step(func):

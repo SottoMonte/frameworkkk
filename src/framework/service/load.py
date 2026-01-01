@@ -453,8 +453,9 @@ def _check_di_config(**constants):
     path = constants.get('path')
     service = constants.get('service', constants.get('name'))
     adapter = constants.get('adapter', constants.get('service', constants.get('name')))
+    
     if not path or not service or not adapter:
-        framework_log("ERROR", f"❌ Errore: Configurazioni DI insufficienti: {constants}")
+        # framework_log("ERROR", f"❌ Errore: Configurazioni DI insufficienti: {constants}")
         raise ValueError(f"Configurazioni DI insufficienti: {constants}")
     return constants
 
@@ -502,7 +503,7 @@ def _register_dependency_in_container(module, constants):
             dependencies[dep_key] = getattr(container, dep_key)()
         
         setattr(container, service_name, providers.Factory(resource_class, **init_args, providers=dependencies))
-        framework_log("INFO", f"✅✅✅✅ Registrato Factory: '{service_name}' ({log_info})")
+        framework_log("INFO", f"✅✅✅✅ Registrato Factory (MANAGER): '{service_name}' ({log_info})")
     else:
         # --- CASO: PROVIDER/SINGLETON ---
         if not hasattr(container, service_name):
@@ -510,7 +511,7 @@ def _register_dependency_in_container(module, constants):
         
         service_list = getattr(container, service_name)()
         service_list.append(resource_class(config=init_args))
-        framework_log("INFO", f"✅✅✅✅ Aggiunto Provider a lista: '{service_name}' ({log_info})")
+        framework_log("INFO", f"✅✅✅✅ Aggiunto Provider a lista (PORT): '{service_name}' ({log_info})")
     
     return {"success": True, "results": []}
 
@@ -522,8 +523,6 @@ async def register(**constants: Any) -> None:
     try:
         return await flow.pipe(
             flow.step(_check_di_config, **constants),
-            #flow.step(_ensure_service_container, service_val),
-            flow.step(_ensure_service_container, '@.service'),
             flow.step(resource, path='@.path'),
             flow.step(_extract_and_validate_module, '@.outputs.-1', constants),
             flow.step(_register_dependency_in_container, '@.outputs.-1', constants)
