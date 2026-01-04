@@ -7,7 +7,7 @@
     mask : { 
         "path": "infrastructure/{key}/{val.backend.adapter}.py"; 
         "service": "@.key"; 
-        "adapter": "@.val.backend.adapter"; 
+        "adapter": "adapter";
         "payload": "@.val"; 
     };
     

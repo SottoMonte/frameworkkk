@@ -6,6 +6,10 @@ imports = {
     "flow": "framework/service/flow.py"
 }
 
+exports = {
+    "adapter": 'adapter'
+}
+
 class AdapterTest(IsolatedAsyncioTestCase):
     async def test_builder(self, *services, **constants):
         """
