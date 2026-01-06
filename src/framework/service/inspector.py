@@ -450,7 +450,7 @@ def framework_log(level: str, message: str, emoji: str = "", depth: int = 1, **k
     Logger standardizzato per il framework.
     Include timestamp, livello colorato, transaction ID, origine e metadata.
     """
-    from framework.service.flow import get_transaction_id
+    from framework.service.telemetry import get_transaction_id
     tx_id = get_transaction_id() or "system"
     
     # Recupera info sul chiamante con offset variabile

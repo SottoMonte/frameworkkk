@@ -296,48 +296,126 @@ def test():
     import unittest
     import asyncio
     
-    # Assumiamo che 'loader' e 'language' siano disponibili globalmente o passati
-    # Aggiungi le tue importazioni qui (os, asyncio, unittest, language, loader)
+    framework_log("INFO", "🔍 Avvio scoperta e generazione contratti test...", emoji="🔍")
     
-    # Esegui il bootstrap del framework (se necessario)
-
     # Scopri e genera i contratti, poi esegui i test
     all_contract_hashes, suite_test = asyncio.run(discover_and_run_tests())
     
+    # Verifica quanti test sono stati scoperti
+    test_count = suite_test.countTestCases()
+    framework_log("INFO", f"📊 Scoperti {test_count} test", emoji="📊")
+    
+    if test_count == 0:
+        framework_log("WARNING", "⚠️ Nessun test scoperto! Verifica i file .test.py", emoji="⚠️")
+        return
+    
     # Esegui la fase di scoperta, generazione del contratto ed esecuzione
     suite = suite_test
-    runner = unittest.TextTestRunner()
-    framework_log("INFO", "INIZIO ESECUZIONE TEST", emoji="🧪")
+    runner = unittest.TextTestRunner(verbosity=2)
+    framework_log("INFO", "🧪 INIZIO ESECUZIONE TEST", emoji="🧪")
     result = runner.run(suite)
+    
+    # Analizza i risultati
+    framework_log("INFO", f"✅ Test eseguiti: {result.testsRun}", emoji="✅")
+    framework_log("INFO", f"❌ Falliti: {len(result.failures)}", emoji="❌")
+    framework_log("INFO", f"💥 Errori: {len(result.errors)}", emoji="💥")
+    
     fail = map_failed_tests(result)
-    framework_log("ERROR", f"TEST FALLITI O ERRORE NEI TEST: {fail}", emoji="❌")
-    for f in fail:
-        try:
-            del all_contract_hashes[f[0].replace('.test.py','.py')]['__module__'if 'TestModule' in f[1] else f[1].replace('Test','')][f[2].replace('test_','')]
-        except KeyError:
-        # Ignora l'errore se la chiave non è presente
-            pass
-    framework_log("INFO", f"TEST SUPERATI. CONTRATTI AGGIORNATI: {all_contract_hashes}", emoji="✅")
+    if fail:
+        framework_log("ERROR", f"TEST FALLITI O ERRORE NEI TEST: {fail}", emoji="❌")
+        for f in fail:
+            try:
+                del all_contract_hashes[f[0].replace('.test.py','.py')]['__module__'if 'TestModule' in f[1] else f[1].replace('Test','')][f[2].replace('test_','')]
+            except KeyError:
+                pass
+    
+    framework_log("INFO", f"📝 Salvataggio contratti aggiornati...", emoji="📝")
     for file_path, groups in all_contract_hashes.items():
         with open(file_path.replace('.py','.contract.json'), "w") as f:
             converted = asyncio.run(language.convert(groups,str,'json'))
             f.write(converted)
-    framework_log("INFO", "FINE ESECUZIONE TEST", emoji="🏁")
+    
+    framework_log("INFO", "🏁 FINE ESECUZIONE TEST", emoji="🏁")
+    
+    # Return exit code based on test results
+    return 0 if result.wasSuccessful() else 1
 
 
 def application(tester=None,**constants):
-    #if '--test' in constants.get('args',[]):
-    #    test()
+    args = constants.get('args', sys.argv)
+    
+    # --- Gestione Generazione Contratto ---
+    if '--generate-contract' in args:
+        framework_log("INFO", "🛠️ Avvio rigenerazione contratti su richiesta...", emoji="🛠️")
+        event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(event_loop)
+        
+        async def regenerate_all():
+            test_dir = './src'
+            count = 0
+            for root, dirs, files in os.walk(test_dir):
+                for file in files:
+                    if file.endswith('.py') and not file.endswith('.test.py') and not file.startswith('__'):
+                        main_path = os.path.join(root, file)
+                        try:
+                            await loader.generate_checksum(main_path)
+                            count += 1
+                        except Exception:
+                            pass
+            framework_log("INFO", f"✅ Rigenerati {count} contratti.", emoji="✅")
+
+        try:
+             event_loop.run_until_complete(regenerate_all())
+             framework_log("INFO", "🏁 Generazione completata. Uscita.", emoji="🏁")
+             return
+        except Exception as e:
+             framework_log("ERROR", f"❌ Errore rigenerazione: {e}", emoji="❌")
+             return
+
+    # --- Gestione Test ---
+    if '--test' in args:
+        test()
+        return
+
+    # --- Avvio Normale Applicazione ---
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
     
     try:
-        dsl = asyncio.run(loader.resource(path='framework/service/bootstrap.dsl'))
-        languaged = asyncio.run(language.execute_dsl_file(dsl.get('data')))
+        dsl = event_loop.run_until_complete(loader.resource(path='framework/service/bootstrap.dsl'))
+        config_data = event_loop.run_until_complete(language.execute_dsl_file(dsl.get('data')))
+        
+        # Schedule Triggers (Cron & Events) from DSL configuration
+        if isinstance(config_data, dict) and '__triggers__' in config_data:
+            framework_log("INFO", f"📅 Scheduling {len(config_data['__triggers__'])} triggers from DSL", emoji="📅")
+            for trigger_key, action in config_data['__triggers__']:
+                # Cron Trigger
+                if isinstance(trigger_key, (list, tuple)) and any(x == '*' for x in trigger_key):
+                    event_loop.create_task(flow.cron(trigger_key, action, context={'system': True}))
+                
+                # Event Trigger
+                elif isinstance(trigger_key, tuple) and trigger_key[0] == 'CALL':
+                    async def event_listener(t_key, act):
+                        framework_log("INFO", f"👂 Avvio listener evento: {t_key[1]}", emoji="👂")
+                        ctx = {'system': True}
+                        while True:
+                            try:
+                                res = await language.DSLVisitor(language.dsl_functions).execute_call(t_key, ctx)
+                                is_valid = res and isinstance(res, dict) and res.get('success')
+                                data = res.get('data') if is_valid else None
+                                
+                                if is_valid and data:
+                                    framework_log("INFO", f"🔔 Evento rilevato: {t_key[1]}", emoji="🔔")
+                                    await language.DSLVisitor(language.dsl_functions).visit(act, ctx | {'@event': data})
+                                else:
+                                    await asyncio.sleep(1)
+                            except Exception as e:
+                                framework_log("ERROR", f"❌ Listener Error {t_key[1]}: {e}", emoji="❌")
+                                await asyncio.sleep(5)
+
+                    event_loop.create_task(event_listener(trigger_key, action))
+
     except Exception as e:
-        framework_log("ERROR", f"Errore durante l'esecuzione del DSL: {e}", emoji="❌")
+        framework_log("ERROR", f"❌ Errore durante l'esecuzione del DSL: {e}", emoji="❌")
     
-    '''event_loop.run_until_complete(
-        flow.work(flow.step(loader.bootstrap), context={'system': True})
-    )'''
     event_loop.run_forever()
