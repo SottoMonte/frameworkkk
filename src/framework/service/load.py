@@ -1,9 +1,25 @@
-import os, sys, asyncio, types, inspect, uuid, json
 from framework.service.context import container
 import framework.service.flow as flow
 from framework.service.scheme import convert
 from dependency_injector import providers
-from framework.service.diagnostic import framework_log, analyze_exception
+import framework.service.language as language
+import uuid
+import types
+import sys
+import json
+import os
+import inspect
+import asyncio
+
+def framework_log(level, message, **kwargs):
+    """Simple logger for framework events."""
+    print(f"[{level}] {message} {kwargs if kwargs else ''}")
+
+imports = {
+    "flow": "framework/service/flow.py",
+    "convert": "framework/service/scheme.py",
+    "language": "framework/service/language.py"
+}
 
 async def resource(path: str, **kwargs):
     """
@@ -35,9 +51,10 @@ async def resource(path: str, **kwargs):
             context=context
         )
         
-        # Salvataggio in cache se il caricamento ha avuto successo
-        if result and isinstance(result, dict) and result.get('success'):
-            cache[path] = result['data']
+        # Salvataggio in cache se il caricamento non è un fallimento esplicito
+        is_failure = isinstance(result, dict) and result.get('success') is False
+        if not is_failure:
+            cache[path] = result
         return result
         
     finally:
@@ -46,7 +63,7 @@ async def resource(path: str, **kwargs):
 
 async def bootstrap():
     """Effettua il bootstrap del framework caricando ed eseguendo bootstrap.dsl."""
-    import framework.service.language as language
+    
     bootstrap_path = "framework/service/bootstrap.dsl"
     res = await resource(bootstrap_path)
     if res.get('success'):
@@ -173,7 +190,7 @@ async def step_apply_security_filtering(ctx):
     exports = helper_resolve_exports(module, test_meta, contract)
     
     # 4. Individuazione simboli autorizzati all'esposizione
-    allowed = helper_determine_allowed(path, exports, test_meta, integrity)
+    allowed = helper_determine_allowed(path, exports, test_meta, module)
 
     # 5. Costruzione del Proxy Filtrato e Protetto
     import framework.service.language as language
@@ -188,8 +205,16 @@ async def step_apply_security_filtering(ctx):
         
         if inspect.isclass(value):
             # Classi: i metodi pubblici vengono protetti da transazioni
-            members = helper_wrap_class_methods(value, public_name, integrity)
-            setattr(proxy, public_name, type(public_name, (value,), members))
+            # Saltiamo il wrapping per classi con metaclassi complesse (es. dependency_injector)
+            # o se il modulo è context.py
+            if 'context.py' in path or 'dependency_injector' in str(type(value)):
+                setattr(proxy, public_name, value)
+            else:
+                try:
+                    members = helper_wrap_class_methods(value, public_name, integrity)
+                    setattr(proxy, public_name, type(public_name, (value,), members))
+                except Exception:
+                    setattr(proxy, public_name, value)
         else:
             # Funzioni: vengono avvolte automaticamente in transazioni
             setattr(proxy, public_name, flow.transactional(value) if callable(value) else value)
@@ -241,13 +266,15 @@ async def helper_get_test_metadata(path):
     base_path = path.replace('.py', '').replace('.dsl', '')
     test_path = base_path + '.test.dsl'
     
-    candidates = [test_path]
-    if not test_path.startswith('src/'):
-        candidates.append('src/' + test_path)
-        
+    # Risoluzione percorsi relativa alla root del progetto
+    candidates = [test_path, os.path.join('src', test_path)]
+    cwd = os.getcwd()
+    if 'src' in cwd:
+        candidates.append(os.path.join(cwd.split('src')[0], 'src', test_path))
+
     for p in candidates:
         if os.path.exists(p):
-            res = await resource(p)
+            res = await resource(p, raw=True) # Usa raw per evitare loop infiniti
             return res.get('data') if res.get('success') else {}
     return {}
 
@@ -263,11 +290,17 @@ def helper_resolve_exports(module, test_meta, contract):
                 exports[scope] = scope
     return exports
 
-def helper_determine_allowed(path, exports, test_meta, integrity):
+def helper_determine_allowed(path, exports, test_meta, module):
     """Decide quali simboli esportare in base ai risultati dei test e integrità."""
-    # In questa versione, permettiamo tutto ciò che è in exports
-    # In futuro si può restringere solo a chi ha 'integrity' valida
-    return set(exports.keys())
+    if exports:
+        return set(exports.keys())
+    
+    # Se non ci sono esportazioni dichiarate, esportiamo tutto ciò che è pubblico
+    allowed = set()
+    for name, member in inspect.getmembers(module):
+        if not name.startswith('_'):
+            allowed.add(name)
+    return allowed
 
 def helper_wrap_class_methods(cls, name, integrity):
     """Protegge i metodi di una classe in transazioni."""
