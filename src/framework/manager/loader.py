@@ -105,7 +105,14 @@ class loader:
         
         # 2. Caricamento ed esecuzione del bootstrap applicativo
         print("[INFO] Avvio Bootstrap dello strato applicativo (DSL)...")
-        
+        import framework.manager.tester as tester
+        ok = tester.tester()
+
+        gg = await ok.run()
+
+        print(gg)
+        return gg
+        '''
         res = await self.resource(path="framework/service/bootstrap.dsl")
         
         if res.get('success'):
@@ -117,7 +124,7 @@ class loader:
             else:
                 return await language.execute_dsl_file(dsl_content)
         
-        return res
+        return res'''
 
     async def register(self, **kwargs):
         """Registra un servizio o manager nel Dependency Injection container."""

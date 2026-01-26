@@ -12,7 +12,7 @@ class tester():
 
     def __init__(self,**constants):
         self.sessions = dict()
-        self.providers = constants['providers']
+        self.providers = constants.get('providers',[])
 
     async def discover_tests(self):
         # Pattern personalizzato per i test
@@ -40,11 +40,36 @@ class tester():
     
     async def run(self,**constants):
         framework_log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
-        suite = await self.discover_tests()
-        runner = unittest.TextTestRunner()
-        # Nota: unittest standard non è async, ma IsolatedAsyncioTestCase sì.
-        # Il runner di base funziona se i test stessi gestiscono il loop.
-        runner.run(suite)
+        import framework.service.load as loader
+        from framework.service.language import parse_dsl_file, run_dsl_tests, DSLVisitor, dsl_functions
+        test_dir = './src'
+        test_suite = unittest.TestSuite()
+        
+        # Scorri tutte le sottocartelle e i file
+        for root, dirs, files in os.walk(test_dir):
+            for file in files:
+                if file.endswith('.test.dsl'):
+                    # Crea il nome del modulo di test per ciascun file trovato
+                    module_path = os.path.join(root, file).replace('./','')
+                    
+                    # Importa il modulo di test dinamicamente via loader
+                    try:
+                        print(module_path)
+                        res = await loader.resource(path=module_path)
+                        if res.get('success'):
+                            parsed_data = parse_dsl_file(res.get('data'))
+        
+                            # 2. Esecuzione
+                            print("🏃 Step 2: Esecuzione e Validazione...")
+                            visitor = DSLVisitor(dsl_functions)
+                            
+                            # Eseguiamo il file per popolare il contesto
+                            context = await visitor.run(parsed_data)
+                            
+                            # Eseguiamo la validazione formale via test_suite
+                            success = await run_dsl_tests(visitor, context)
+                    except Exception as e:
+                        framework_log("ERROR", f"Errore caricamento test {module_path}: {e}", emoji="❌")
     
     async def unittest2(self, code: str, **constants):
         def get_test_methods( suite):
@@ -269,8 +294,8 @@ class tester():
             "data": results
         }
 
-    def run(self,**constants):
+    '''def run(self,**constants):
         framework_log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
         suite = self.discover_tests()
         runner = unittest.TextTestRunner()
-        runner.run(suite)
+        runner.run(suite)'''
