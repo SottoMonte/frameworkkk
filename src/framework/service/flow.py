@@ -354,8 +354,7 @@ async def guard(condition: str, context=dict()) -> Optional[Dict[str, Any]]:
         if type(context) not in [str, int, float, bool,dict,list]:
             safe_context = str(context)
             
-        wrapped_context = {'@': safe_context}
-        result = mistql.query(condition, wrapped_context)
+        result = mistql.query(condition, safe_context)
         
         if result:
             return {

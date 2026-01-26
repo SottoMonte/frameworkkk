@@ -33,7 +33,6 @@ grammar = r"""
         | ("Vero" | "True") -> true | ("Falso" | "False") -> false
         | ANY -> any_val
     
-    ?not_expr: atom | "not" not_expr -> not_op
     ?power_expr: atom | power_expr POW_OP atom -> power
     ?mult_expr: power_expr | mult_expr (MUL_OP | DIV_OP | MOD_OP) power_expr -> binary_op
     ?add_expr: mult_expr | add_expr (ADD_OP | SUB_OP) mult_expr -> binary_op
@@ -42,7 +41,8 @@ grammar = r"""
     ?pipe_expr: add_expr (PIPE (add_expr | tuple_inline))* -> pipe_node
     
     ?comparison_expr: pipe_expr | comparison_expr COMPARISON_OP pipe_expr -> binary_op
-    ?and_expr: comparison_expr | and_expr ("and" | "&") comparison_expr -> and_op
+    ?not_expr: comparison_expr | "not" not_expr -> not_op
+    ?and_expr: not_expr | and_expr ("and" | "&") not_expr -> and_op
     ?or_expr: and_expr | or_expr ("or" | "|") and_expr -> or_op
     
     ?expression: or_expr
@@ -275,17 +275,22 @@ class DSLVisitor:
         type_map = {
             'int': int, 'integer': int, 'str': str, 'string': str, 
             'dict': dict, 'list': list, 'float': float, 'bool': bool, 'boolean': bool, 
-            'any': object, 'any_val': object
+            'any': object, 'any_val': object, 'number': (int, float)
         }
         
         expected_type = type_map.get(type_name)
         if expected_type is None:
-            # If type not in map, just skip validation for now or warn
             return
             
         if expected_type is object:
             return
             
+        # Forgiving numeric validation: auto-convert float to int if whole number
+        if expected_type is int and isinstance(value, float) and value.is_integer():
+            # In-place "fix" might be better handled during visit, but for validation we can allow it
+            # Actually, let's just check if it matches the expected type or the forgiven case
+            return
+
         if not isinstance(value, expected_type):
             raise TypeError(f"Errore di tipo: la variabile '{var_name}' è dichiarata come {type_name}, ma ha valore {type(value).__name__} ('{value}')")
 
@@ -306,10 +311,12 @@ class DSLVisitor:
                     self._validate_type(val, type_name, name)
                     res[name] = val
                     working_ctx[name] = val
+                    # print(f"DEBUG: Assigned {name} (typed {type_name}) = {val}")
                 else:
                     name_str = str(k)
                     res[name_str] = val
                     working_ctx[name_str] = val
+                    # print(f"DEBUG: Assigned {name_str} = {val}")
             
             # 2. Start triggers (concurrent)
             for trigger_key, action in triggers:
@@ -405,11 +412,15 @@ class DSLVisitor:
 
     async def execute_call(self, call, ctx):
         _, name, p_nodes, k_nodes = call
+        # Ensure name is a string
+        name = str(name.name if hasattr(name, 'name') else name)
+
         p_args = [await self.visit(a, ctx) for a in p_nodes]
         k_args = {k: await self.visit(v, ctx) for k, v in k_nodes.items()}
-        return await self._execute(name, p_args, k_args)
+        return await self._execute(name, p_args, k_args, ctx=ctx)
 
-    async def _execute(self, name, p_args, k_args):
+    async def _execute(self, name, p_args, k_args, ctx=None):
+        name = str(name)
         # Resolve any remaining DSLVariables in arguments
         p_args = [(await self.visit(a)) if type(a).__name__ == 'DSLVariable' else a for a in p_args]
         k_args = {k: (await self.visit(v)) if type(v).__name__ == 'DSLVariable' else v for k, v in k_args.items()}
@@ -432,7 +443,6 @@ class DSLVisitor:
                 framework_log("ERROR", f"Failed to include {path}: {e}", emoji="❌")
                 return {"error": str(e)}
 
-
         # Handle qualified names (e.g., executor.all_completed)
         if '.' in name:
             parts = name.split('.')
@@ -454,10 +464,19 @@ class DSLVisitor:
         if func:
             res = func(*p_args, **k_args)
             return await res if asyncio.iscoroutine(res) else res
-        dsl_func = self.root_data.get(name)
+            
+        # Resolve from context or root
+        dsl_func = (ctx or {}).get(name) or self.root_data.get(name)
+        if dsl_func is None:
+            # Try typed name lookup in root
+            for k in self.root_data:
+                if isinstance(k, tuple) and len(k) == 3 and k[0] == 'TYPED' and k[2] == name:
+                    dsl_func = self.root_data[k]
+                    break
+                    
         if isinstance(dsl_func, tuple) and len(dsl_func) == 3:
-            inp = p_args[0] if len(p_args) == 1 and not k_args else (p_args if p_args else k_args)
-            return await self.execute_dsl_function(dsl_func, inp)
+            return await self.execute_dsl_function(dsl_func, p_args, k_args)
+            
         framework_log("ERROR", f"Function {name} not found", emoji="🤷")
         return None
 
@@ -551,13 +570,19 @@ class DSLVisitor:
         # 2. Execute body using the visitor's dictionary logic
         body_res = await self.visit(body, ctx)
         ctx.update(body_res)
-        # print(f"DEBUG: Body execution results: {body_res}")
-        # print(f"DEBUG: Context after body update keys: {list(ctx.keys())}")
-            
+        
         # 3. Return outputs
         outs = [get_p(p)[0] for p in out_def] if is_multi(out_def) else [get_p(out_def)[0]]
-        # print(f"DEBUG: Looking for outputs: {outs}")
-        res = [ctx.get(o) for o in outs]
+        res = []
+        for o in outs:
+            val = ctx.get(o)
+            print(f"DEBUG: Function output lookup for '{o}': {val} (found in ctx: {o in ctx})")
+            # If not found directly, try to resolve as a variable just in case
+            if val is None:
+                val = await self._resolve(o, ctx)
+                print(f"DEBUG: Resolved output '{o}' to: {val}")
+            res.append(val)
+        
         return res[0] if len(res) == 1 else tuple(res)
 
 async def _dsl_load_service(func_name, *args, **kw):
@@ -732,6 +757,7 @@ dsl_functions.update({
     'messenger': LazyService('messenger'),
     'executor': LazyService('executor'),
     **{k: v for k, v in zip(['dict','list','str','int','float','bool'], [dict,list,str,int,float,bool])},
+    'not': lambda x: not x,
     'integer':int,'string':str,'boolean':bool,'number':float,'relative':int,'natural':int,'rational':float,'complex':float
 })
 
