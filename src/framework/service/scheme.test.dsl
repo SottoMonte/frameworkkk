@@ -23,6 +23,22 @@ list:get_6 := get(data, "versioni.*.id");
 # Test per la funzione format
 str:format_1 := format("Ciao {{nome}}", nome: "Progetto A");
 
+# Convert
+int:convert_1 := convert("10", int);
+str:convert_2 := convert(10, str);
+bool:convert_3 := convert("true", bool);
+bool:convert_4 := convert("false", bool);
+str:convert_5 := convert(True, str);
+str:convert_6 := convert(False, str);
+str:convert_7 := convert(true, str);
+str:convert_8 := convert(false, str);
+
+# put 
+dict:put_1 := put(data, "nome", "Progetto B");
+#dict:put_2 := put(data, "versioni.1.status", "completo");
+dict:put_3 := put(data, "config.timeout", 60);
+#dict:put_4 := put(data, "versioni.*.status", "completo");
+#dict:put_5 := put(data, "versioni.*.dettagli.tester", "Mario");
 
 # Test suite
 tuple:test_suite := (
@@ -33,4 +49,14 @@ tuple:test_suite := (
     { target: 'get_5'; output: ["completo", "in_corso", "fallito"]; },
     { target: 'get_6'; output: [1, 2, 3]; },
     { target: 'format_1'; output: "Ciao Progetto A"; },
+    { target: 'convert_1'; output: 10; },
+    { target: 'convert_2'; output: "10"; },
+    { target: 'convert_3'; output: True; },
+    { target: 'convert_4'; output: False; },
+    { target: 'convert_5'; output: "True"; },
+    { target: 'convert_6'; output: "False"; },
+    { target: 'convert_7'; output: "true"; },
+    { target: 'convert_8'; output: "false"; },
+    { target: 'put_1'; output: merge(data,{"nome": "Progetto B"; }); },
+    { target: 'put_3'; output: merge(data,{"config.timeout": 60; }); },
 );

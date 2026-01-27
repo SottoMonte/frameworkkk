@@ -716,6 +716,7 @@ async def _dsl_switch(cases_or_value, value_or_context=None, context=None):
     return await flow.switch(wrapped_cases, ctx)
 
 dsl_functions.update({
+    'put': flow.put,
     'format': flow.format, 'foreach': flow.foreach, 'convert': flow.convert, 'get': flow.get,
     'keys': lambda d: list(d.keys()) if isinstance(d, dict) else [],
     'values': lambda d: list(d.values()) if isinstance(d, dict) else [],

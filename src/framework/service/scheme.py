@@ -21,6 +21,10 @@ mappa = {
     (dict,dict,'toml'): lambda v: v,
     (dict,str,'toml'): lambda data: tomli.dumps(data) if isinstance(data, dict) else data if isinstance(data, str) else '',
     (str,str,'toml'): lambda v: v,
+    (str,int,''): lambda v: int(v) if isinstance(v, str) else v if isinstance(v, int) else 0,
+    (int,str,''): lambda v: str(v) if isinstance(v, int) else v if isinstance(v, str) else '',
+    (str,bool,''): lambda v: True if v.lower() == 'true' else False,
+    (bool,str,''): lambda v: str(v) if isinstance(v, bool) else v if isinstance(v, str) else '',
 }
 
 async def convert(target, output,input=''):
@@ -64,7 +68,6 @@ def get(data, path, default=None):
         result = data
 
     return result
-
 
 async def format(target ,**constants):
     try:
@@ -173,7 +176,7 @@ def _get_next_schema(schema, key):
         return schema.get(key)
     return None
 
-def put(data: dict, path: str, value: any, schema: dict) -> dict:
+def put2(data: dict, path: str, value: any, schema: dict) -> dict:
     if not isinstance(data, dict): raise TypeError("Il dizionario iniziale deve essere di tipo dict.")
     if not isinstance(path, str) or not path: raise ValueError("Il dominio deve essere una stringa non vuota.")
     if not isinstance(schema, dict) or not schema: raise ValueError("Lo schema deve essere un dizionario valido.")
@@ -281,3 +284,57 @@ def route(url: dict, new_part: str) -> str:
         base_url += f"#{fragment}"
 
     return base_url
+
+def put(data: dict, path: str, value) -> dict:
+    if not isinstance(data, dict):
+        raise TypeError("data deve essere un dict")
+    if not path or not isinstance(path, str):
+        raise ValueError("path non valido")
+
+    res = copy.deepcopy(data)
+    node = res
+    parts = path.split(".")
+
+    for i, part in enumerate(parts):
+        last = i == len(parts) - 1
+        is_idx = part.lstrip("-").isdigit()
+        key = int(part) if is_idx else part
+
+        if isinstance(node, dict):
+            if is_idx:
+                raise IndexError(f"indice '{part}' su dict")
+
+            if last:
+                node[key] = value
+            else:
+                nxt = node.get(key)
+                if not isinstance(nxt, (dict, list)):
+                    nxt = {} if not is_idx else []
+                    node[key] = nxt
+                node = nxt
+
+        elif isinstance(node, list):
+            if not is_idx:
+                raise IndexError(f"chiave '{part}' su lista")
+
+            if key == -1:
+                node.append({})
+                key = len(node) - 1
+
+            if key < 0:
+                raise IndexError("indice negativo")
+
+            while len(node) <= key:
+                node.append({})
+
+            if last:
+                node[key] = value
+            else:
+                if not isinstance(node[key], (dict, list)):
+                    node[key] = {}
+                node = node[key]
+
+        else:
+            raise IndexError(f"nodo non indicizzabile: {type(node).__name__}")
+
+    return res
