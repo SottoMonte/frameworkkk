@@ -32,37 +32,39 @@ async def convert(target, output,input=''):
         raise ValueError(f"Errore conversione: {e}")
 
 def get(data, path, default=None):
-    if not path: return data
-    
-    parts = path.split('.', 1)
-    key_str = parts[0]
-    rest = parts[1] if len(parts) > 1 else None
+    result = default
 
-    # Gestione Wildcard
-    if key_str == '*':
-        if isinstance(data, (list, tuple)):
-            return [get(item, rest or '', default) for item in data]
-        return default
+    if path:
+        key, _, rest = path.partition(".")
 
-    # Accesso Sicuro
-    next_data = default
-    try:
-        if isinstance(data, (list, tuple)):
-            # Solo per le liste/tuple convertiamo in int
-            if key_str.lstrip('-').isnumeric():
-                next_data = data[int(key_str)]
-        elif isinstance(data, dict):
-            # Per i dict usiamo la chiave stringa originale
-            next_data = data.get(key_str)
+        if key == "*" and isinstance(data, (list, tuple)):
+            result = [get(x, rest, default) for x in data]
+
         else:
-             # Opzionale: Aggiungere qui getattr per oggetti se serve
-             next_data = getattr(data, key_str, default)
-    except (IndexError, TypeError):
-        return default
+            try:
+                if isinstance(data, (list, tuple)):
+                    if key.lstrip("-").isdigit():
+                        value = data[int(key)]
+                    else:
+                        value = default
+                elif isinstance(data, dict):
+                    value = data.get(key, default)
+                else:
+                    value = getattr(data, key, default)
 
-    if rest is None:
-        return next_data if next_data is not None else default
-    return get(next_data, rest, default)
+                if rest and value is not default:
+                    result = get(value, rest, default)
+                else:
+                    result = value
+
+            except (IndexError, TypeError, ValueError):
+                result = default
+
+    else:
+        result = data
+
+    return result
+
 
 async def format(target ,**constants):
     try:

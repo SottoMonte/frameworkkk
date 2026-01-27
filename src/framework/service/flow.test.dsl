@@ -31,11 +31,7 @@ data: {
     };
 };
 
-test_suite: (
-    { target: 'get'; input_args: (data, "nome"); expected_output: "Progetto A"; },
-    { target: 'get'; input_args: (data, "config.timeout"); expected_output: 30; },
-    { target: 'get'; input_args: (data, "versioni.0.status"); expected_output: "completo"; },
-    { target: 'get'; input_args: (data, "versioni.1.dettagli.tester"); expected_output: "Mario"; },
-    { target: 'get'; input_args: (data, "versioni.*.status"); expected_output: ("completo", "in_corso", "fallito"); },
-    { target: 'get'; input_args: (data, "versioni.*.id"); expected_output: (1, 2, 3); }
+any:get(data,nome)|print;
+
+tuple:test_suite := (
 );

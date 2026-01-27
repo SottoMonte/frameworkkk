@@ -59,8 +59,8 @@ grammar = r"""
     pair: "(" (declaration | mapping) ")" | (declaration | mapping)
     
     valid_tuple_item: value | dictionary | tuple | list | "(" expression ")" | typed_name | CNAME | QUALIFIED_CNAME
-    tuple: "(" [ (expression | typed_name | CNAME | QUALIFIED_CNAME) ("," (expression | typed_name | CNAME | QUALIFIED_CNAME))*] ")" -> tuple_
-    list: "[" [ (expression | typed_name | CNAME | QUALIFIED_CNAME) ("," (expression | typed_name | CNAME | QUALIFIED_CNAME))*] "]" -> list_
+    tuple: "(" [ (expression | typed_name | CNAME | QUALIFIED_CNAME) ("," (expression | typed_name | CNAME | QUALIFIED_CNAME))* ","?] ")" -> tuple_
+    list: "[" [ (expression | typed_name | CNAME | QUALIFIED_CNAME) ("," (expression | typed_name | CNAME | QUALIFIED_CNAME))* ","?] "]" -> list_
     function_call: (CNAME | QUALIFIED_CNAME | typed_name) "(" [call_args] ")"
     call_args: call_arg ("," call_arg)*
     call_arg: expression -> arg_pos | CNAME ":" expression -> arg_kw
@@ -466,7 +466,11 @@ class DSLVisitor:
 
         if func:
             res = func(*p_args, **k_args)
-            return await res if asyncio.iscoroutine(res) else res
+            result = await res if asyncio.iscoroutine(res) else res
+            # Auto-unwrap transactional results
+            if isinstance(result, dict) and result.get('success') is True and 'data' in result:
+                return result['data']
+            return result
             
         # Resolve from context or root
         dsl_func = (ctx or {}).get(name) or self.root_data.get(name)
@@ -540,6 +544,12 @@ class DSLVisitor:
             return {"success": False, "errors": [str(e)]}
 
     async def execute_dsl_function(self, func_def, p_args, k_args=None):
+        '''if func_def in dsl_functions:
+            func =  dsl_functions[func_def]
+            if asyncio.iscoroutinefunction(func):
+                return await func(*p_args, **k_args)
+            return func(*p_args, **k_args)'''
+
         in_def, body, out_def = func_def
         ctx = {}
         k_args = k_args or {}
@@ -779,11 +789,19 @@ async def run_dsl_tests(visitor, parsed_data):
     print("\n" + "="*40 + f"\nDSL Tests: {len(test_suite)}\n" + "="*40)
     for test in test_suite:
         if not isinstance(test, dict): continue
-        target, args, expected = test.get('target'), test.get('input_args'), test.get('expected_output')
+        target, args, expected = test.get('target'), (test.get('input') if test.get('input') is not None else test.get('input_args')), (test.get('output') if test.get('output') is not None else test.get('expected_output'))
         print(f"Testing '{target}'...", end=" ")
         try:
             target_def = parsed_data.get(target)
-            actual = await visitor.execute_dsl_function(target_def, args) if isinstance(target_def, tuple) and len(target_def) == 3 else await visitor.visit(target_def)
+            '''if target_def is None:
+                target_def = target
+                print(args)
+                ok = await visitor.execute_dsl_function(target_def, *args)
+                print("----",ok)
+            print(test,"<----")
+            print(target_def)'''
+            actual = await visitor.execute_dsl_function(target_def, args) if isinstance(target_def, tuple) and len(target_def) == 3 and isinstance(target_def[1], dict) else await visitor.visit(target_def)
+            
             if actual == expected: print("🟢 OK")
             else: print(f"🔴 FAILED (expected {expected}, got {actual})"); all_passed = False
         except Exception as e:
