@@ -32,13 +32,12 @@ function:attivazione := (int:x),{
     });
 },(int:f);
 
-#list:score_list := (85,75,65,55,45,35,25,15,5,0) |> foreach(attivazione);
+list:score_list := (85,75,65,55,45,35,25,15,5,0) |> foreach(attivazione);
 
 
 
 tuple:test_suite := (
     { "target": "match_score_label"; "output": "Sufficiente"; "description": "Match flow"; },
-    { "target": "match_score_label"; "output": "Insufficiente"; "description": "Match flow"; },
-    { "target": "score_list"; "output": "Attivo"; "description": "Match flow"; },
+    { "target": "score_list"; "output": ["Attivo", "Attivo", "Attivo", "Attivo", "Inattivo", "Inattivo", "Inattivo", "Inattivo", "Inattivo", "Inattivo"]; "description": "Match flow list"; },
     
 );

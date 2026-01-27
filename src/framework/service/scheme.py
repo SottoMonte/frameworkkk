@@ -152,11 +152,11 @@ def transform(data_dict, mapper, values, input, output):
         if n1:
             output_key = v.get(key, None)
             value = n1
-            translated |= put(translated, output_key, value, output)
+            translated |= put2(translated, output_key, value, output)
         if n2:
             output_key = k
             value = n2
-            translated |= put(translated, output_key, value, output)
+            translated |= put2(translated, output_key, value, output)
 
     fieldsData = data_dict.keys()
     fieldsOutput = output.keys()
@@ -164,7 +164,7 @@ def transform(data_dict, mapper, values, input, output):
     for field in fieldsData:
         if field in fieldsOutput:
             value = get(data_dict, field)
-            translated |= put(translated, field, value, output)
+            translated |= put2(translated, field, value, output)
 
     return translated
 

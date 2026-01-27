@@ -51,10 +51,31 @@ async def _execute_step_internal(action_step, context=dict()) -> Any:
             kkk[k] = v
     kwargs = kkk
 
-    if not isinstance(action_step, tuple) or len(action_step) < 2 or not callable(fun):
-        step_repr = str(action_step)[:100]
-        raise TypeError(f"L'azione fornita non è un formato step valido. Action: {step_repr}", fun, args, kwargs)
+    # Support for DSL Functions (macro) defined as (params, body, returns)
+    is_dsl_func = isinstance(fun, (list, tuple)) and len(fun) == 3 and isinstance(fun[1], dict)
+    
+    if is_dsl_func:
+        dsl_exec = context.get('__execute_dsl_function__')
+        if dsl_exec:
+            return await dsl_exec(fun, args, kwargs)
+        raise TypeError(f"Rilevata funzione DSL ma nessun esecutore trovato nel contesto. Fun: {fun}")
 
+    if not callable(fun):
+        # Resolve from context if it's a variable name
+        fun_resolved = get({'@':context}, fun)
+        if fun_resolved and callable(fun_resolved):
+            fun = fun_resolved
+        elif isinstance(fun_resolved, (list, tuple)) and len(fun_resolved) == 3 and isinstance(fun_resolved[1], dict):
+            # The name resolved to a DSL function
+            dsl_exec = context.get('__execute_dsl_function__')
+            if dsl_exec:
+                return await dsl_exec(fun_resolved, args, kwargs)
+            raise TypeError(f"Nome '{fun}' risolto in funzione DSL ma nessun esecutore nel contesto.")
+        else:
+            step_repr = str(action_step)[:100]
+            raise TypeError(f"L'azione '{fun}' non è callable e non è una funzione DSL valida. Action: {step_repr}")
+
+    # It's a Python callable
     if asyncio.iscoroutinefunction(fun):
         # Inspect the function to see if it accepts 'context'
         sig = inspect.signature(fun)
@@ -73,6 +94,8 @@ async def _execute_step_internal(action_step, context=dict()) -> Any:
         result = fun(*args, **kwargs)
         if asyncio.iscoroutine(result):
             result = await result
+    
+    return result
 
     # Auto-wrapping in Transaction se non lo è già
     if isinstance(result, dict) and 'success' in result and ('data' in result or 'errors' in result):
@@ -469,18 +492,36 @@ async def foreach(input_data, step_to_run, context=dict()) -> List[Any]:
         raise TypeError(f"foreach si aspetta una lista, tupla o dizionario, ricevuto: {type(input_data)}")
     
     results = []
-    fun = step_to_run[0]
-    orig_args = step_to_run[1] if len(step_to_run) > 1 else ()
-    orig_kwargs = step_to_run[2] if len(step_to_run) > 2 else {}
+    
+    # Identify the callable or action to run
+    # If step_to_run is a DSL function (triple), we treat it as the callable part of an action
+    is_dsl_func = isinstance(step_to_run, (tuple, list)) and len(step_to_run) == 3 and isinstance(step_to_run[1], dict)
+    
     for item in items:
-        action = (fun, (item,),{} )
+        if is_dsl_func or callable(step_to_run) or isinstance(step_to_run, str):
+            action = (step_to_run, (item,), {})
+        elif isinstance(step_to_run, (tuple, list)) and len(step_to_run) >= 1:
+            # step_to_run is already an action (func, args, kwargs)
+            # we prepend the item to the positional args
+            fun = step_to_run[0]
+            orig_args = step_to_run[1] if len(step_to_run) > 1 else ()
+            orig_kwargs = step_to_run[2] if len(step_to_run) > 2 else {}
+            action = (fun, (item,) + orig_args, orig_kwargs)
+        else:
+            action = (step_to_run, (item,), {})
 
         outcome = await _execute_step_internal(action, context=context.copy())
         
-        if isinstance(outcome, dict) and 'success' in outcome:
-            results.append(outcome.get('data'))
-        else:
-            results.append(outcome)
+        # Auto-unwrapping transactional result
+        if isinstance(outcome, dict):
+            is_success = outcome.get('success') or outcome.get('ok')
+            if is_success is True and 'data' in outcome:
+                outcome = outcome['data']
+            elif is_success is False:
+                # Handle error if needed, for now just append the error dict
+                pass
+        
+        results.append(outcome)
     return results
 
 async def batch(*steps_to_run) -> Dict[str, Any]:

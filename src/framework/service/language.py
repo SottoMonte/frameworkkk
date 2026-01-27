@@ -181,7 +181,9 @@ class ConfigTransformer(Transformer):
     def false(self, _): return False
     def simple_key(self, s): 
         # For qualified names or simple keys, we treat them as variables
-        return DSLVariable(str(s))
+        # Ensure we take the string value if it's a list or token
+        val = str(s[0] if isinstance(s, list) else s)
+        return DSLVariable(val)
     def any_val(self, _): return '*'
     def typed_name_node(self, args): return ('TYPED', str(args[0]), str(args[1]))
     def pair(self, args): return args[0]
@@ -204,6 +206,8 @@ class DSLVisitor:
 
     async def run(self, data):
         self.root_data = data
+        # Inject DSL executor for flow support at root level
+        self.root_data['__execute_dsl_function__'] = self.execute_dsl_function
         res = await self.visit(data)
         
         # Se abbiamo dei task in background (cron, event), attendiamo che finiscano
@@ -246,9 +250,18 @@ class DSLVisitor:
             
         name = str(node.name if hasattr(node, 'name') else node)
         
-        # If it's a string, ensure it's not a literal or keyword we should ignore
-        # (Though strings are usually handled as literal values earlier)
-        
+        # Handle dot notation (e.g., service.config.timeout)
+        if '.' in name:
+            parts = name.split('.')
+            val = await self._resolve(parts[0], ctx)
+            for part in parts[1:]:
+                if isinstance(val, dict):
+                    val = val.get(part)
+                else:
+                    val = getattr(val, part, None)
+                if val is None: break
+            return val
+
         if ctx and name in ctx: return await self.visit(ctx[name], ctx)
         
         # Priority to functions map
@@ -264,7 +277,7 @@ class DSLVisitor:
                 return await self.visit(self.root_data[k], ctx)
 
         # Fallback to standard types if not shadowed
-        type_map = {'dict': dict, 'list': list, 'str': str, 'int': int, 'float': float, 'bool': bool, 'any': object}
+        type_map = {'dict': dict, 'list': list, 'str': str, 'int': int, 'float': float, 'bool': bool, 'any': object, 'tuple': tuple}
         if name in type_map:
             return type_map[name]
         
@@ -301,6 +314,8 @@ class DSLVisitor:
         if isinstance(node, dict):
             # Use a working context to allow references to previous definitions in the same block
             working_ctx = (ctx or {}).copy()
+            # Inject DSL executor for flow support
+            working_ctx['__execute_dsl_function__'] = self.execute_dsl_function
             res = {}
             
             # Extract triggers first but evaluate them later
@@ -414,12 +429,19 @@ class DSLVisitor:
                 await asyncio.sleep(5)
 
     async def execute_call(self, call, ctx):
-        _, name, p_nodes, k_nodes = call
-        # Ensure name is a string
-        name = str(name.name if hasattr(name, 'name') else name)
-
+        _, name_node, p_nodes, k_nodes = call
+        
+        # Resolve the function definition first
+        func_def = await self._resolve(name_node, ctx)
+        
         p_args = [await self.visit(a, ctx) for a in p_nodes]
         k_args = {k: await self.visit(v, ctx) for k, v in k_nodes.items()}
+        
+        if isinstance(func_def, (list, tuple)) and len(func_def) == 3 and isinstance(func_def[1], dict):
+            return await self.execute_dsl_function(func_def, p_args, k_args)
+            
+        # If it's a string, use standard execution
+        name = str(name_node.name if hasattr(name_node, 'name') else name_node)
         return await self._execute(name, p_args, k_args, ctx=ctx)
 
     async def _execute(self, name, p_args, k_args, ctx=None):
@@ -446,6 +468,19 @@ class DSLVisitor:
                 framework_log("ERROR", f"Failed to include {path}: {e}", emoji="❌")
                 return {"error": str(e)}
 
+        if name in ('foreach', 'map') and len(p_args) >= 4:
+            # Recompose split macro definition
+            data = p_args[0]
+            func_triple = (p_args[1], p_args[2], p_args[3])
+            if name == 'foreach': return await self._dsl_foreach(data, func_triple, ctx=ctx)
+            return await self._dsl_map(data, func_triple, ctx=ctx)
+
+        if name == 'foreach' and p_args:
+            return await self._dsl_foreach(p_args[0], p_args[1] if len(p_args)>1 else None, ctx=ctx)
+        
+        if name == 'map' and p_args:
+            return await self._dsl_map(p_args[0], p_args[1] if len(p_args)>1 else None, ctx=ctx)
+
         # Handle qualified names (e.g., executor.all_completed)
         if '.' in name:
             parts = name.split('.')
@@ -467,9 +502,11 @@ class DSLVisitor:
         if func:
             res = func(*p_args, **k_args)
             result = await res if asyncio.iscoroutine(res) else res
-            # Auto-unwrap transactional results
-            if isinstance(result, dict) and result.get('success') is True and 'data' in result:
-                return result['data']
+            # Auto-unwrap transactional results (success or ok)
+            if isinstance(result, dict):
+                is_success = result.get('success') or result.get('ok')
+                if is_success is True and 'data' in result:
+                    return result['data']
             return result
             
         # Resolve from context or root
@@ -487,56 +524,109 @@ class DSLVisitor:
         framework_log("ERROR", f"Function {name} not found", emoji="🤷")
         return None
 
+    async def _dsl_foreach(self, data, func, ctx=None):
+        if not isinstance(data, (list, tuple, dict)): return []
+        items = list(data.values()) if isinstance(data, dict) else list(data)
+        
+        # Se func è una funzione DSL (tupla di 3 con dict centrale)
+        if isinstance(func, (list, tuple)) and len(func) == 3 and isinstance(func[1], dict):
+            results = []
+            for item in items:
+                res = await self.execute_dsl_function(func, [item])
+                results.append(res)
+            return results
+        
+        # Altrimenti usa flow.foreach standard
+        return await flow.foreach(data, func, context=ctx)
+
+    async def _dsl_map(self, data, func, ctx=None):
+        if not isinstance(data, (list, tuple, dict)): return data
+        
+        # Se func è una funzione DSL
+        if isinstance(func, (list, tuple)) and len(func) == 3 and isinstance(func[1], dict):
+            return [await self.execute_dsl_function(func, [i]) for i in data]
+        
+        # Se è una stringa, usa MistQL
+        if isinstance(func, str):
+            # Resolve data for MistQL
+            return [mistql.query(func, data=i) for i in (data if isinstance(data, list) else [data])]
+            
+        return data
+
     async def evaluate_expression(self, ops, ctx):
         if not ops: return None
-        print(f"DEBUG: evaluate_expression for {ops[0]}...")
-        seed = await self.visit(ops[0], ctx)
-        stages = [flow.step(lambda context=None: seed)]
+        # Always merge with root_data for core features like DSL executor
+        context = self.root_data.copy()
+        if ctx: context.update(ctx)
+        
+        seed = await self.visit(ops[0], context)
+        stages = [] # We'll build stages carefully
+        
+        # Initial stage just returns the seed
+        stages.append(flow.step(lambda context=None: seed))
+
         for op in ops[1:]:
-            async def stage(context=None, _op=op):
-                print(f"DEBUG: Pipe stage executing for {_op}...")
-                prev_raw = context['outputs'][-1] if context and context.get('outputs') else seed
-                # Auto-unwrapping for transactional outputs
-                prev = prev_raw.get('data') if isinstance(prev_raw, dict) and prev_raw.get('success') is True and 'data' in prev_raw else prev_raw
-                
-                name = None
-                p_nodes = []
-                k_nodes = {}
-                
-                if isinstance(_op, tuple) and _op[0] == 'CALL':
-                    _, name, p_nodes, k_nodes = _op
-                elif isinstance(_op, tuple) and _op[0] == 'TYPED':
-                    name = str(_op[2])
-                elif isinstance(_op, DSLVariable):
-                    name = str(_op.name)
-                elif isinstance(_op, str):
-                    name = _op
-                elif isinstance(_op, (list, tuple)) and len(_op) == 3:
-                    # Anonymous function def in pipe
-                    return await self.execute_dsl_function(_op, [prev], {})
-                
-                if name and isinstance(name, str):
-                    p_args = [prev] + [await self.visit(a, ctx) for a in p_nodes]
-                    k_args = {k: await self.visit(v, ctx) for k, v in k_nodes.items()}
+            # Use a closure to capture the current op
+            def make_stage(_op):
+                async def pipe_stage(context=None):
+                    # Get previous stage result correctly from context
+                    prev_raw = context['outputs'][-1] if context and context.get('outputs') else seed
                     
-                    # Resolve function definition from context or root
-                    func_def = (ctx or {}).get(name) or self.root_data.get(name)
-                    framework_log("TRACE", f"Pipe Stage: {name} (DSL Function: {func_def is not None})")
+                    # Auto-unwrapping for transactional outputs
+                    prev = (prev_raw.get('data') 
+                            if isinstance(prev_raw, dict) and (prev_raw.get('success') is True or prev_raw.get('ok') is True) and 'data' in prev_raw 
+                            else prev_raw)
                     
-                    if isinstance(func_def, (list, tuple)) and len(func_def) == 3:
-                        res = await self.execute_dsl_function(func_def, p_args, k_args)
-                        framework_log("TRACE", f"DSL Function {name} result: {res}")
-                        return res
+                    name = None
+                    p_nodes = []
+                    k_nodes = {}
+                    
+                    if isinstance(_op, tuple) and _op[0] == 'CALL':
+                        _, name, p_nodes, k_nodes = _op
+                    elif isinstance(_op, tuple) and _op[0] == 'TYPED':
+                        name = str(_op[2])
+                    elif isinstance(_op, DSLVariable):
+                        name = str(_op.name)
+                    elif isinstance(_op, str):
+                        name = _op
+                    elif isinstance(_op, (list, tuple)) and len(_op) == 3 and isinstance(_op[1], dict):
+                        # Anonymous function def in pipe
+                        return await self.execute_dsl_function(_op, [prev], {})
+                    
+                    if name and isinstance(name, str):
+                        # Handle split DSL functions in p_nodes
+                        if len(p_nodes) == 3 and isinstance(p_nodes[1], dict):
+                             p_args = [prev, p_nodes]
+                        elif len(p_nodes) == 1 and hasattr(p_nodes[0], 'data') and p_nodes[0].data == 'dictionary':
+                             p_args = [prev, p_nodes[0]]
+                        else:
+                             p_args = [prev] + [await self.visit(a, context) for a in p_nodes]
+                             
+                        k_args = {k: await self.visit(v, context) for k, v in k_nodes.items()}
                         
-                    res = await self._execute(name, p_args, k_args)
-                    framework_log("TRACE", f"Executed {name} result: {res}")
-                    return res
+                        # Resolve function definition from context
+                        func_def = await self._resolve(name, context)
+                        
+                        if isinstance(func_def, (list, tuple)) and len(func_def) == 3 and isinstance(func_def[1], dict):
+                            return await self.execute_dsl_function(func_def, p_args, k_args)
+                            
+                        # Use _execute for library calls or single names
+                        res = await self._execute(name, p_args, k_args, ctx=context)
+                        # Auto-unwrap pipe transit
+                        if isinstance(res, dict) and (res.get('success') is True or res.get('ok') is True) and 'data' in res:
+                            res = res['data']
+                        return res
+                    
+                    # Fallback for simple values/variables in pipe
+                    return await self.visit(_op, context)
                 
-                return await self._execute(str(_op), [prev], {})
-            stage.__name__ = f"dsl_{str(op)[:20]}"
-            stages.append(flow.step(stage))
+                pipe_stage.__name__ = f"dsl_stage_{str(_op)[:20]}"
+                return pipe_stage
+            
+            stages.append(flow.step(make_stage(op)))
+
         try:
-            return await flow.pipe(*stages, context=(ctx or {}).copy())
+            return await flow.pipe(*stages, context=context)
         except Exception as e:
             framework_log("ERROR", f"Exception during DSL expression evaluation: {e}", emoji="💥")
             import traceback
@@ -544,14 +634,9 @@ class DSLVisitor:
             return {"success": False, "errors": [str(e)]}
 
     async def execute_dsl_function(self, func_def, p_args, k_args=None):
-        '''if func_def in dsl_functions:
-            func =  dsl_functions[func_def]
-            if asyncio.iscoroutinefunction(func):
-                return await func(*p_args, **k_args)
-            return func(*p_args, **k_args)'''
-
         in_def, body, out_def = func_def
         ctx = {}
+        p_args = p_args or []
         k_args = k_args or {}
         
         def get_p(p):

@@ -58,5 +58,16 @@ tuple:test_suite := (
     { target: 'convert_7'; output: "true"; },
     { target: 'convert_8'; output: "false"; },
     { target: 'put_1'; output: merge(data,{"nome": "Progetto B"; }); },
-    { target: 'put_3'; output: merge(data,{"config.timeout": 60; }); },
+    { target: 'put_3'; output: {
+        "nome": "Progetto A";
+        "versioni": (
+            {"id": 1; "status": "completo";},
+            {"id": 2; "status": "in_corso"; "dettagli": {"tester": "Mario";};},
+            {"id": 3; "status": "fallito";}
+        );
+        "config": {
+            "timeout": 60;
+            "log_livello": "DEBUG";
+        };
+    }; },
 );

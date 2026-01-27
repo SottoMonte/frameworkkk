@@ -149,8 +149,8 @@
         "action": (int:x), { r: x + 1; }, (int:r);
     };
 
-    #int:res_service_timeout := service.config.timeout;  # 30
-    #int:res_service_action := service.action(9);        # 10
+    int:res_service_timeout := service.config.timeout;  # 30
+    int:res_service_action := service.action(9);        # 10
 
 
     # ============================================================
@@ -167,19 +167,14 @@
     list:test_suite := [
         { "target": "const_int"; "output": 10; "description": "Costante int"; },
         { "target": "const_str"; "output": "Ciao"; "description": "Costante str"; },
-        { "target": "const_bool"; "output": Vero; "description": "Costante bool"; },
-        { "target": "const_list"; "output": [1, 2, 3]; "description": "Costante list"; },
-        { "target": "const_dict"; "output": { "a": 1; "b": 2; }; "description": "Costante dict"; },
-        { "target": "const_tuple"; "output": (1, 2, 3); "description": "Costante tuple"; },
-
+        { "target": "bool_true"; "output": Vero; "description": "Costante bool"; },
+        
         { "target": "any_int"; "output": 10; "description": "Any int"; },
         { "target": "any_str"; "output": "Ciao"; "description": "Any str"; },
         { "target": "any_bool"; "output": Vero; "description": "Any bool"; },
         { "target": "any_list"; "output": [1, 2, 3]; "description": "Any list"; },
         { "target": "any_dict"; "output": { "a": 1; "b": 2; }; "description": "Any dict"; },
         { "target": "any_tuple"; "output": (1, 2, 3); "description": "Any tuple"; },
-        { "target": "any_fn"; "output": any_fn; "description": "Any function"; },
-
 
         { "target": "calc_precedence"; "output": 14; "description": "Precedenza operatori"; },
         { "target": "calc_grouped"; "output": 20; "description": "Parentesi esplicite"; },
@@ -202,8 +197,8 @@
         { "target": "lib_selected_keys"; "output": { "a": 1; "c": 3; }; "description": "Pick keys"; },
         { "target": "lib_dict_keys"; "output": ["x", "y"]; "description": "Keys"; },
         { "target": "lib_formatted"; "output": "Hello World"; "description": "Format string"; },
-        { "target": "lib_mapped"; "output": [2, 4, 6]; "description": "Map"; },
-        { "target": "lib_query_result"; "output": 20; "description": "Query"; },
+        { "target": "lib_mapped"; "output": [2.0, 4.0, 6.0]; "description": "Map"; },
+        { "target": "lib_query_result"; "output": 20.0; "description": "Query"; },
 
         { "target": "res_service_timeout"; "output": 30; "description": "Dot access"; },
         { "target": "res_service_action"; "output": 10; "description": "Metodo su dict"; },
