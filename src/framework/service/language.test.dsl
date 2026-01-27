@@ -1,126 +1,213 @@
 {
-    # --- 1. GRAMMATICA BASE E TIPI ---
-    int:base_int := 10;
-    float:base_float := 20.5;
-    str:base_str := "Ciao";
-    str:base_str_single := 'Mondo';
-    boolean:b1 := Vero;
-    boolean:b2 := False;
-    any:qualsiasi := *;
+    # ============================================================
+    # 1. TIPI BASE
+    # ============================================================
 
-    # --- 2. OPERATORI ARITMETICI (Precedenza e Parentesi) ---
-    int:math_1 := 2 + 3 * 4;       # 14
-    int:math_2 := (2 + 3) * 4;     # 20
-    int:math_3 := 10 / 2 - 1;      # 4
-    int:math_4 := 10 % 3;          # 1
-    int:math_5 := 2 ^ 3;           # 8
-    
-    # --- 3. OPERATORI LOGICI E COMPARAZIONE ---
-    boolean:logic_1 := Vero & (10 > 5) or Falso; # Vero
-    boolean:logic_2 := not (5 == 5) or (1 != 2); # Vero
-    boolean:logic_3 := (10 >= 10) & (5 <= 6) & (2 < 3) & (4 > 1); # Vero
-    
-    # --- 4. COLLEZIONI (Liste, Dizionari, Tuple) ---
-    list:lista_semplice := [1, 2, "tre", Vero];
-    dict:diz_semplice := { "chiave": "valore"; "num": 42; };
-    tuple:tupla_semplice := (1, "test"); 
-    tuple:tupla_inline := 1, 2, 3; # Test tuple_inline senza parentesi
-    list:lista_trailing := [1, 2]; 
-    dict:diz_trailing := { "a": 1; "b": 2; };
+    int:const_int := 10;
+    float:const_float := 20.5;
+    str:const_str := "Ciao";
+    str:const_str_alt := 'Mondo';
 
-    # --- 5. FUNZIONI (Definizione, Chiamata, Ritorno Multiplo) ---
-    function:f_base := (int:n), { 
-        res: n * 2; 
-    }, (int:res);
-    
-    function:f_multi_in := (int:x, int:y), { 
-        somma: x + y; 
-    }, (int:somma);
-    
-    function:f_multi_out := (int:val), {
-        v1: val + 1;
-        v2: val + 2;
-    }, (int:v1, int:v2);
-    
-    int:test_f1 := f_base(5);                # 10
-    int:test_f2 := f_multi_in(10, 20);       # 30
-    tuple:test_f3 := f_multi_out(100);       # (101, 102)
-    
-    # Chiamata con argomenti keyword
-    int:test_kw := f_multi_in(y: 50, x: 10); # 60
+    boolean:bool_true := Vero;
+    boolean:bool_false := Falso;
 
-    # --- 6. PIPE E ESPRESSIONI AVANZATE ---
-    int:test_pipe := 10 |> f_base |> f_base; # 10 -> 20 -> 40
-    
-    # Pipe con parametri extra
-    int:test_pipe_extra := 10 |> f_multi_in(5); # 15
+    any:any_str := "Ciao";
+    any:any_int := 10;
+    any:any_bool := Vero;
+    any:any_list := [1, 2, 3];
+    any:any_dict := { "a": 1; "b": 2; };
+    any:any_tuple := (1, 2, 3);
+    any:any_fn := (int:x), { r: x + 1; }, (int:r);
 
-    # --- 7. LIBRERIA STANDARD (flow.py) ---
-    dict:lib_merge := merge({ "a": 1; }, { "b": 2; });
-    list:lib_concat := concat([1], [2]);
-    dict:lib_pick := { "a": 1; "b": 2; "c": 3; } |> pick(["a", "c"]);
-    
-    list:lib_keys := keys({ "x": 1; "y": 2; });
-    list:lib_values := values({ "x": 1; "y": 2; });
-    
-    str:lib_format := format("Hello {name}", name: "World");
-    #str:lib_convert := 123 |> convert(str);
-    
-    list:lib_map := [1, 2, 3] |> map("@ * 2"); # [2, 4, 6]
-    #list:lib_foreach := [10, 20] |> foreach((int:v), { r: v + 5; }, (int:r)); # [15, 25]
-    
-    dict:lib_project := { "nested": { "val": 99; }; } |> project({ "out": "@.nested.val"; });
-    
-    int:lib_query := { "data": [10, 20, 30]; } |> query("data[1]"); # 20
 
-    # --- 8. CONTROLLO DI FLUSSO (Switch/Match) ---
-    str:test_match := 75 |> match({
-        "@ > 90": "Ottimo";
-        "@ > 60": "Sufficiente";
-        "*": "Insufficiente";
-    });
+    # ============================================================
+    # 2. ESPRESSIONI MATEMATICHE
+    # ============================================================
 
-    # --- 9. QUALIFIED NAMES E DOT NOTATION ---
-    dict:servizio := { 
+    int:calc_precedence := 2 + 3 * 4;       # 14
+    int:calc_grouped := (2 + 3) * 4;        # 20
+    int:calc_div_sub := 10 / 2 - 1;          # 4
+    int:calc_mod := 10 % 3;                  # 1
+    int:calc_power := 2 ^ 3;                 # 8
+
+
+    # ============================================================
+    # 3. LOGICA E COMPARAZIONI
+    # ============================================================
+
+    boolean:logic_and_or :=
+        Vero & (10 > 5) or Falso;
+
+    boolean:logic_not :=
+        not (5 == 5) or (1 != 2);
+
+    boolean:logic_comparison_chain :=
+        (10 >= 10) & (5 <= 6) & (2 < 3) & (4 > 1);
+
+
+    # ============================================================
+    # 4. COLLEZIONI
+    # ============================================================
+
+    list:collection_mixed_list := [1, 2, "tre", Vero];
+    dict:collection_simple_dict := { "chiave": "valore"; "num": 42; };
+
+    tuple:collection_pair := (1, "test");
+    tuple:collection_inline_tuple := 1, 2, 3;
+
+    list:collection_list_trailing := [1, 2];
+    dict:collection_dict_trailing := { "a": 1; "b": 2; };
+
+
+    # ============================================================
+    # 5. FUNZIONI
+    # ============================================================
+
+    function:fn_double :=
+        (int:n),
+        {
+            out: n * 2;
+        },
+        (int:out);
+
+    function:fn_sum :=
+        (int:x, int:y),
+        {
+            sum: x + y;
+        },
+        (int:sum);
+
+    function:fn_increment_pair :=
+        (int:val),
+        {
+            inc1: val + 1;
+            inc2: val + 2;
+        },
+        (int:inc1, int:inc2);
+
+
+    # ============================================================
+    # 6. RISULTATI FUNZIONI
+    # ============================================================
+
+    int:res_double := fn_double(5);                    # 10
+    int:res_sum := fn_sum(10, 20);                     # 30
+    tuple:res_increment_pair := fn_increment_pair(100);# (101, 102)
+
+    int:res_sum_kw := fn_sum(y: 50, x: 10);            # 60
+
+
+    # ============================================================
+    # 7. PIPE
+    # ============================================================
+
+    int:pipe_chain_double :=
+        10 |> fn_double |> fn_double;                  # 40
+
+    int:pipe_partial_sum :=
+        10 |> fn_sum(5);                               # 15
+
+
+    # ============================================================
+    # 8. LIBRERIA STANDARD
+    # ============================================================
+
+    dict:lib_merged_dict :=
+        merge({ "a": 1; }, { "b": 2; });
+
+    list:lib_concatenated_list :=
+        concat([1], [2]);
+
+    dict:lib_selected_keys :=
+        { "a": 1; "b": 2; "c": 3; } |> pick(["a", "c"]);
+
+    list:lib_dict_keys :=
+        keys({ "x": 1; "y": 2; });
+
+    list:lib_dict_values :=
+        values({ "x": 1; "y": 2; });
+
+    str:lib_formatted :=
+        format("Hello {{name}}", name: "World");
+
+    list:lib_mapped :=
+        [1, 2, 3] |> map("@ * 2");
+
+    dict:lib_projected :=
+        { "nested": { "val": 99; }; }
+        |> project({ "out": "@.nested.val"; });
+
+    int:lib_query_result :=
+        { "data": [10, 20, 30]; } |> query("data[1]");
+
+    # ============================================================
+    # 10. DOT NOTATION / OGGETTI
+    # ============================================================
+
+    dict:service := {
         "config": { "timeout": 30; };
-        "azione": (int:x), { r: x + 1; }, (int:r);
+        "action": (int:x), { r: x + 1; }, (int:r);
     };
-    #int:test_dot_1 := servizio.config.timeout; # 30
-    #int:test_dot_2 := servizio.azione(9);      # 10
 
-    # --- 10. INCLUDE ---
-    #dict:test_include_res := include("src/framework/service/dependency.dsl");
-    #str:check_include_var := valore_incluso;
-    #int:check_include_func := raddoppia(5);
+    #int:res_service_timeout := service.config.timeout;  # 30
+    #int:res_service_action := service.action(9);        # 10
 
-    # --- 11. EDGE CASES ---
-    (p1: 100); # Mapping tra parentesi
-    
-    # --- 12. TEST SUITE COMPLETA ---
+
+    # ============================================================
+    # 11. EDGE CASE
+    # ============================================================
+
+    (mapped_value: 100);
+
+
+    # ============================================================
+    # 12. TEST SUITE
+    # ============================================================
+
     list:test_suite := [
-        { "target": "math_1"; "expected_output": 14; "description": "Moltiplicazione prima di addizione"; },
-        { "target": "math_2"; "expected_output": 20; "description": "Parentesi forzano addizione prima"; },
-        { "target": "math_5"; "expected_output": 8; "description": "Potenza 2^3"; },
-        { "target": "logic_1"; "expected_output": Vero; "description": "Logica AND/OR"; },
-        { "target": "logic_2"; "expected_output": Vero; "description": "Logica NOT"; },
-        { "target": "tupla_semplice"; "expected_output": (1, "test"); "description": "Tupla definita senza parentesi (semplice)"; },
-        { "target": "tupla_inline"; "expected_output": (1, 2, 3); "description": "Tupla definita senza parentesi (inline)"; },
-        { "target": "test_f1"; "expected_output": 10; "description": "Chiamata funzione base"; },
-        { "target": "test_f3"; "expected_output": (101, 102); "description": "Ritorno multiplo"; },
-        { "target": "test_kw"; "expected_output": 60; "description": "Keyword arguments"; },
-        { "target": "test_pipe"; "expected_output": 40; "description": "Chaining di pipe"; },
-        { "target": "test_pipe_extra"; "expected_output": 15; "description": "Pipe con argomenti extra"; },
-        { "target": "lib_merge"; "expected_output": { "a": 1; "b": 2; }; "description": "Standard merge"; },
-        { "target": "lib_pick"; "expected_output": { "a": 1; "c": 3; }; "description": "Standard pick"; },
-        { "target": "lib_keys"; "expected_output": ["x", "y"]; "description": "Standard keys"; },
-        { "target": "lib_format"; "expected_output": "Hello World"; "description": "Standard format"; },
-        { "target": "lib_map"; "expected_output": [2, 4, 6]; "description": "MistQL map"; },
-        { "target": "lib_query"; "expected_output": 20; "description": "MistQL query"; },
-        { "target": "test_match"; "expected_output": "Sufficiente"; "description": "Controllo flusso match"; },
-        { "target": "test_dot_1"; "expected_output": 30; "description": "Accesso attributo annidato"; },
-        { "target": "test_dot_2"; "expected_output": 10; "description": "Chiamata metodo su dizionario"; },
-        { "target": "check_include_var"; "expected_output": "PRESENTE"; "description": "Variabile da include"; },
-        { "target": "check_include_func"; "expected_output": 10; "description": "Funzione da include"; },
-        { "target": "p1"; "expected_output": 100; "description": "Mappa tra parentesi"; }
+        { "target": "const_int"; "output": 10; "description": "Costante int"; },
+        { "target": "const_str"; "output": "Ciao"; "description": "Costante str"; },
+        { "target": "const_bool"; "output": Vero; "description": "Costante bool"; },
+        { "target": "const_list"; "output": [1, 2, 3]; "description": "Costante list"; },
+        { "target": "const_dict"; "output": { "a": 1; "b": 2; }; "description": "Costante dict"; },
+        { "target": "const_tuple"; "output": (1, 2, 3); "description": "Costante tuple"; },
+
+        { "target": "any_int"; "output": 10; "description": "Any int"; },
+        { "target": "any_str"; "output": "Ciao"; "description": "Any str"; },
+        { "target": "any_bool"; "output": Vero; "description": "Any bool"; },
+        { "target": "any_list"; "output": [1, 2, 3]; "description": "Any list"; },
+        { "target": "any_dict"; "output": { "a": 1; "b": 2; }; "description": "Any dict"; },
+        { "target": "any_tuple"; "output": (1, 2, 3); "description": "Any tuple"; },
+        { "target": "any_fn"; "output": any_fn; "description": "Any function"; },
+
+
+        { "target": "calc_precedence"; "output": 14; "description": "Precedenza operatori"; },
+        { "target": "calc_grouped"; "output": 20; "description": "Parentesi esplicite"; },
+        { "target": "calc_power"; "output": 8; "description": "Operatore potenza"; },
+
+        { "target": "logic_and_or"; "output": Vero; "description": "Logica AND/OR"; },
+        { "target": "logic_not"; "output": Vero; "description": "Operatore NOT"; },
+
+        { "target": "collection_pair"; "output": (1, "test"); "description": "Tuple standard"; },
+        { "target": "collection_inline_tuple"; "output": (1, 2, 3); "description": "Tuple inline"; },
+
+        { "target": "res_double"; "output": 10; "description": "Funzione double"; },
+        { "target": "res_increment_pair"; "output": (101, 102); "description": "Ritorno multiplo"; },
+        { "target": "res_sum_kw"; "output": 60; "description": "Keyword arguments"; },
+
+        { "target": "pipe_chain_double"; "output": 40; "description": "Pipe chaining"; },
+        { "target": "pipe_partial_sum"; "output": 15; "description": "Pipe con argomenti"; },
+
+        { "target": "lib_merged_dict"; "output": { "a": 1; "b": 2; }; "description": "Merge dict"; },
+        { "target": "lib_selected_keys"; "output": { "a": 1; "c": 3; }; "description": "Pick keys"; },
+        { "target": "lib_dict_keys"; "output": ["x", "y"]; "description": "Keys"; },
+        { "target": "lib_formatted"; "output": "Hello World"; "description": "Format string"; },
+        { "target": "lib_mapped"; "output": [2, 4, 6]; "description": "Map"; },
+        { "target": "lib_query_result"; "output": 20; "description": "Query"; },
+
+        { "target": "res_service_timeout"; "output": 30; "description": "Dot access"; },
+        { "target": "res_service_action"; "output": 10; "description": "Metodo su dict"; },
+
+        { "target": "mapped_value"; "output": 100; "description": "Mapping tra parentesi"; }
     ];
 }

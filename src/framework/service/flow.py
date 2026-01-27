@@ -469,14 +469,11 @@ async def foreach(input_data, step_to_run, context=dict()) -> List[Any]:
         raise TypeError(f"foreach si aspetta una lista, tupla o dizionario, ricevuto: {type(input_data)}")
     
     results = []
+    fun = step_to_run[0]
+    orig_args = step_to_run[1] if len(step_to_run) > 1 else ()
+    orig_kwargs = step_to_run[2] if len(step_to_run) > 2 else {}
     for item in items:
-        if isinstance(step_to_run, tuple) and len(step_to_run) >= 1:
-            fun = step_to_run[0]
-            orig_args = step_to_run[1] if len(step_to_run) > 1 else ()
-            orig_kwargs = step_to_run[2] if len(step_to_run) > 2 else {}
-            action = (fun, (item,) + orig_args, orig_kwargs)
-        else:
-            action = (step_to_run, (item,), {})
+        action = (fun, (item,),{} )
 
         outcome = await _execute_step_internal(action, context=context.copy())
         

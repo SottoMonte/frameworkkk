@@ -18,20 +18,27 @@ exports: {
     'catch': 'catch';
 };
 
-data: {
-    "nome": "Progetto A";
-    "versioni": (
-        {"id": 1; "status": "completo";},
-        {"id": 2; "status": "in_corso"; "dettagli": {"tester": "Mario";};},
-        {"id": 3; "status": "fallito";}
-    );
-    "config": {
-        "timeout": 30;
-        "log_livello": "DEBUG";
-    };
-};
+str:match_score_label :=
+    75 |> match({
+        "@ > 90": "Ottimo";
+        "@ > 60": "Sufficiente";
+        "*": "Insufficiente";
+    });
 
-any:get(data,nome)|print;
+function:attivazione := (int:x),{
+    f:x |> match({
+        "@ >= 50": "Attivo";
+        "@ < 50": "Inattivo";
+    });
+},(int:f);
+
+#list:score_list := (85,75,65,55,45,35,25,15,5,0) |> foreach(attivazione);
+
+
 
 tuple:test_suite := (
+    { "target": "match_score_label"; "output": "Sufficiente"; "description": "Match flow"; },
+    { "target": "match_score_label"; "output": "Insufficiente"; "description": "Match flow"; },
+    { "target": "score_list"; "output": "Attivo"; "description": "Match flow"; },
+    
 );
