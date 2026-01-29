@@ -10,6 +10,7 @@ from framework.service.flow import (
     _transaction_id, convert, get, put, format, route, normalize, framework_log, _load_resource
 )
 import framework.service.flow as flow
+import framework.service.load as load
 
 # --- 1. Grammar ---
 grammar = r"""
@@ -801,6 +802,7 @@ async def _dsl_switch(cases_or_value, value_or_context=None, context=None):
     return await flow.switch(wrapped_cases, ctx)
 
 dsl_functions.update({
+    'resource': load.resource,
     'transform': flow.transform,
     'normalize': flow.normalize,
     'put': flow.put,
@@ -839,7 +841,7 @@ dsl_functions.update({
     ),
     'concat': lambda a, b: ((list(a) if isinstance(a, (list, tuple)) else [a]) + (list(b) if isinstance(b, (list, tuple)) else [b])),
     'query': lambda data, q: mistql.query(q, data=data),
-    'resource': lambda *a, **k: _dsl_load_service('resource', *a, **k),
+    #'resource': lambda *a, **k: _dsl_load_service('resource', *a, **k),
     'register': lambda *a, **k: _dsl_load_service('register', *a, **k),
     'messenger': LazyService('messenger'),
     'executor': LazyService('executor'),

@@ -152,6 +152,14 @@
     int:res_service_timeout := service.config.timeout;  # 30
     int:res_service_action := service.action(9);        # 10
 
+    any:imported := resource("framework/service/language.py") |> print;
+
+    str:file_content := resource("framework/scheme/user.dsl") |> print;
+
+    function:tt := imported.parse_dsl_file;
+    dict:tt2 := tt(file_content);
+    any:Container := imported.container |> print;
+    any:sus := imported.sus |> print;
 
     # ============================================================
     # 11. EDGE CASE
