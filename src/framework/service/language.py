@@ -4,6 +4,7 @@ import operator
 import re
 from lark import Lark, Transformer, v_args, Token
 import mistql
+import inspect
 
 from framework.service.flow import (
     asynchronous, synchronous, get_transaction_id, set_transaction_id, 
@@ -89,12 +90,16 @@ class ConfigTransformer(Transformer):
     def declaration(self, args): return args[0], args[1]
     def mapping(self, args): return args[0], args[1]
     def function_call(self, args):
-        name_node, call_args = args[0], (args[1] if len(args)>1 else [])
-        if isinstance(name_node, tuple) and name_node[0] == 'TYPED':
-            name = str(name_node[2])
-        else:
-            name = str(name_node)
-        return ('CALL', name, tuple(a[1] for a in call_args if a[0]=='POS'), {a[1]: a[2] for a in call_args if a[0]=='KW'})
+        name = self._extract_call_name(args[0])
+        raw_args = args[1] if len(args) > 1 else []
+        pos_args = tuple(a[1] for a in raw_args if a[0] == 'POS')
+        kw_args = {a[1]: a[2] for a in raw_args if a[0] == 'KW'}
+        return ('CALL', name, pos_args, kw_args)
+
+    def _extract_call_name(self, node):
+        if isinstance(node, tuple) and node[0] == 'TYPED':
+            return str(node[2])
+        return str(node)
     def pair(self, args):
         return args[0]
     def statement(self, args):
@@ -125,27 +130,29 @@ class ConfigTransformer(Transformer):
 
     def dictionary(self, items):
         if len(items) == 1 and isinstance(items[0], dict): return items[0]
-            
         res, triggers = {}, []
-        for i in items:
-            if isinstance(i, tuple) and len(i) == 2:
-                self._process_pair(i, res, triggers)
-            elif isinstance(i, tuple) and i[0] == 'CALL':
-                res[f"__stmt_{i[1]}"] = i
-            elif isinstance(i, dict):
-                res.update(i)
-        
+        for item in items:
+            self._handle_item(item, res, triggers)
         if triggers: res['__triggers__'] = triggers
         return res
+
+    def _handle_item(self, item, res, triggers):
+        if isinstance(item, tuple):
+            if len(item) == 2: self._process_pair(item, res, triggers)
+            elif item[0] == 'CALL': res[f"__stmt_{item[1]}"] = item
+        elif isinstance(item, dict):
+            res.update(item)
 
     def _process_pair(self, pair, res, triggers):
         k, v = pair
         if self._is_trigger(k):
             triggers.append((k, v))
         else:
-            t_node = self._extract_typed_node(k)
-            key = t_node if t_node else self._normalize_key(k)
-            res[key] = v
+            res[self._determine_key(k)] = v
+
+    def _determine_key(self, k):
+        t_node = self._extract_typed_node(k)
+        return t_node if t_node else self._normalize_key(k)
     def binary_op(self, args):
         l, o, r = args[0], args[1], args[2]
         m = {'+':'ADD','-':'SUB','*':'MUL','/':'DIV','%':'MOD','==':'EQ','!=':'NEQ','>=':'GTE','<=':'LTE','>':'GT','<':'LT'}
@@ -268,6 +275,7 @@ class DSLVisitor:
         return None
 
     def _resolve_type_fallback(self, name):
+        if not isinstance(name, str): return name
         type_map = {'dict': dict, 'list': list, 'str': str, 'int': int, 'float': float, 'bool': bool, 'any': object, 'tuple': tuple}
         return type_map.get(name, name)
 
@@ -305,41 +313,65 @@ class DSLVisitor:
         return await self._visit_scalar(node, ctx)
 
     async def _visit_dict(self, node, ctx):
-        working_ctx = (ctx or {}).copy()
-        working_ctx['__execute_dsl_function__'] = self.execute_dsl_function
+        working_ctx = self._prepare_context(ctx)
+        res = await self._resolve_dict_items(node, working_ctx)
+        self._start_background_triggers(node, working_ctx)
+        return res
+
+    def _prepare_context(self, ctx):
+        prepared = (ctx or {}).copy()
+        prepared['__execute_dsl_function__'] = self.execute_dsl_function
+        return prepared
+
+    async def _resolve_dict_items(self, node, working_ctx):
         res = {}
-        triggers = node.pop('__triggers__', [])
-        
         for k, v in node.items():
             val = await self.visit(v, working_ctx)
-            if isinstance(k, tuple) and len(k) == 3 and k[0] == 'TYPED':
-                _, type_name, name = k
-                self._validate_type(val, type_name, name)
-                res[name] = val
-                working_ctx[name] = val
-            else:
-                name_str = str(k)
-                res[name_str] = val
-                working_ctx[name_str] = val
-        
+            key_name = self._handle_typed_assignment(k, val, working_ctx) if self._is_typed_key(k) else str(k)
+            res[key_name] = val
+            working_ctx[key_name] = val
+        return res
+
+    def _is_typed_key(self, k):
+        return isinstance(k, tuple) and len(k) == 3 and k[0] == 'TYPED'
+
+    def _handle_typed_assignment(self, k, val, working_ctx):
+        _, type_name, name = k
+        self._validate_type(val, type_name, name)
+        return name
+
+    def _start_background_triggers(self, node, working_ctx):
+        triggers = node.pop('__triggers__', [])
         for trigger_key, action in triggers:
             task = asyncio.create_task(self._start_trigger(trigger_key, action, working_ctx))
             self._background_tasks.append(task)
-        return res
 
     async def _visit_tuple(self, node, ctx):
+        # Defensively ensure we have a tag and it's hashable for lookups
+        if not node or not isinstance(node, (list, tuple)): return node
         tag = node[0]
+        
+        # Operation Dispatch
         if isinstance(tag, str) and tag in self.ops:
             return self.ops[tag](*[await self.visit(a, ctx) for a in node[1:]])
-        if tag == 'EXPRESSION': return await self.evaluate_expression(node[1], ctx)
-        if tag == 'CALL': return await self.execute_call(node, ctx)
-        if tag == 'VAR': return await self._resolve(node, ctx)
-        if tag == 'TYPED': return await self._resolve(node[2], ctx)
         
-        # Detect function definition: (args), {body}, (returns)
-        if len(node) == 3 and isinstance(node[1], dict): return node
+        # Tag Handlers Dispatch
+        handlers = {
+            'EXPRESSION': lambda: self.evaluate_expression(node[1], ctx),
+            'CALL': lambda: self.execute_call(node, ctx),
+            'VAR': lambda: self._resolve(node, ctx),
+            'TYPED': lambda: self._resolve(node[2], ctx)
+        }
+        
+        if isinstance(tag, str) and tag in handlers: 
+            return await handlers[tag]()
+            
+        if self._is_function_def(node): return node
             
         return tuple([await self.visit(x, ctx) for x in node])
+
+    def _is_function_def(self, node):
+        return isinstance(node, (list, tuple)) and len(node) == 3 and isinstance(node[1], dict)
 
     async def _visit_scalar(self, node, ctx):
         if hasattr(node, 'type'): return await self._resolve(node, ctx)
@@ -406,19 +438,19 @@ class DSLVisitor:
 
     async def execute_call(self, call, ctx):
         _, name_node, p_nodes, k_nodes = call
-        
-        # Resolve the function definition first
         func_def = await self._resolve(name_node, ctx)
+        p_args, k_args = await self._prepare_call_args(p_nodes, k_nodes, ctx)
         
-        p_args = [await self.visit(a, ctx) for a in p_nodes]
-        k_args = {k: await self.visit(v, ctx) for k, v in k_nodes.items()}
-        
-        if isinstance(func_def, (list, tuple)) and len(func_def) == 3 and isinstance(func_def[1], dict):
+        if self._is_function_def(func_def):
             return await self.execute_dsl_function(func_def, p_args, k_args)
             
-        # If it's a string, use standard execution
         name = str(name_node.name if hasattr(name_node, 'name') else name_node)
         return await self._execute(name, p_args, k_args, ctx=ctx)
+
+    async def _prepare_call_args(self, p_nodes, k_nodes, ctx):
+        p_args = [await self.visit(a, ctx) for a in p_nodes]
+        k_args = {k: await self.visit(v, ctx) for k, v in k_nodes.items()}
+        return p_args, k_args
 
     async def _execute(self, name, p_args, k_args, ctx=None):
         name = str(name)
@@ -445,18 +477,6 @@ class DSLVisitor:
                 framework_log("ERROR", f"Failed to include {path}: {e}", emoji="❌")
                 return {"error": str(e)}
 
-        if name in ('foreach', 'map') and len(p_args) >= 4:
-            # Recompose split macro definition
-            data = p_args[0]
-            func_triple = (p_args[1], p_args[2], p_args[3])
-            if name == 'foreach': return await self._dsl_foreach(data, func_triple, ctx=ctx)
-            return await self._dsl_map(data, func_triple, ctx=ctx)
-
-        if name == 'foreach' and p_args:
-            return await self._dsl_foreach(p_args[0], p_args[1] if len(p_args)>1 else None, ctx=ctx)
-        
-        if name == 'map' and p_args:
-            return await self._dsl_map(p_args[0], p_args[1] if len(p_args)>1 else None, ctx=ctx)
 
         # Handle qualified names (e.g., executor.all_completed)
         if '.' in name:
@@ -495,6 +515,14 @@ class DSLVisitor:
                 return obj
 
         if func:
+            # Inject context if function expects it
+            try:
+                sig = inspect.signature(func)
+                if ('context' in sig.parameters or 'ctx' in sig.parameters) and ctx:
+                    k_args[('context' if 'context' in sig.parameters else 'ctx')] = ctx
+            except (ValueError, TypeError):
+                pass
+
             res = func(*p_args, **k_args)
             result = await res if asyncio.iscoroutine(res) else res
             # Auto-unwrap transactional results (success or ok)
@@ -523,34 +551,6 @@ class DSLVisitor:
         framework_log("ERROR", f"Function {name} not found", emoji="🤷")
         return None
 
-    async def _dsl_foreach(self, data, func, ctx=None):
-        if not isinstance(data, (list, tuple, dict)): return []
-        items = list(data.values()) if isinstance(data, dict) else list(data)
-        
-        # Se func è una funzione DSL (tupla di 3 con dict centrale)
-        if isinstance(func, (list, tuple)) and len(func) == 3 and isinstance(func[1], dict):
-            results = []
-            for item in items:
-                res = await self.execute_dsl_function(func, [item])
-                results.append(res)
-            return results
-        
-        # Altrimenti usa flow.foreach standard
-        return await flow.foreach(data, func, context=ctx)
-
-    async def _dsl_map(self, data, func, ctx=None):
-        if not isinstance(data, (list, tuple, dict)): return data
-        
-        # Se func è una funzione DSL
-        if isinstance(func, (list, tuple)) and len(func) == 3 and isinstance(func[1], dict):
-            return [await self.execute_dsl_function(func, [i]) for i in data]
-        
-        # Se è una stringa, usa MistQL
-        if isinstance(func, str):
-            # Resolve data for MistQL
-            return [mistql.query(func, data=i) for i in (data if isinstance(data, list) else [data])]
-            
-        return data
 
     async def evaluate_expression(self, ops, ctx):
         if not ops: return None
@@ -634,53 +634,51 @@ class DSLVisitor:
 
     async def execute_dsl_function(self, func_def, p_args, k_args=None):
         in_def, body, out_def = func_def
-        ctx = {}
-        p_args = p_args or []
-        k_args = k_args or {}
+        ctx = await self._map_parameters(in_def, p_args, k_args or {})
         
-        def get_p(p):
-            if isinstance(p, tuple) and p[0] == 'TYPED': return (p[2], p[1])
-            if isinstance(p, tuple) and len(p) == 2 and p[0] == 'VAR': return (p[1], None)
-            return (str(p), None)
-            
-        def is_multi(d):
-            if not isinstance(d, (list, tuple)) or not d: return False
-            if len(d) == 3 and d[0] == 'TYPED': return False
-            return True
-
-        params = [get_p(p) for p in in_def] if is_multi(in_def) else [get_p(in_def)]
-        
-        # 1. Map positional arguments
-        for i, (name, type_name) in enumerate(params):
-            val = None
-            if i < len(p_args):
-                val = p_args[i]
-            elif name in k_args:
-                val = k_args.pop(name)
-            
-            if type_name:
-                t_map = {'int':int,'integer':int,'str':str,'string':str,'float':float,'number':(int,float),'bool':bool,'boolean':bool,'dict':dict,'list':list,'tuple':tuple}
-                exp = t_map.get(type_name) or self.functions_map.get(type_name)
-                if exp and not isinstance(val, exp): 
-                    raise TypeError(f"Parametro {name} atteso {type_name}, ricevuto {type(val).__name__}")
-            ctx[name] = val
-            
-        # 2. Execute body using the visitor's dictionary logic
         body_res = await self.visit(body, ctx)
         ctx.update(body_res)
         
-        # 3. Return outputs
-        outs = [get_p(p)[0] for p in out_def] if is_multi(out_def) else [get_p(out_def)[0]]
+        return await self._extract_outputs(out_def, ctx)
+
+    async def _map_parameters(self, in_def, p_args, k_args):
+        ctx = {}
+        params = self._get_param_list(in_def)
+        for i, (name, type_name) in enumerate(params):
+            val = p_args[i] if i < len(p_args) else k_args.pop(name, None)
+            if type_name: self._validate_param_type(name, val, type_name)
+            ctx[name] = val
+        return ctx
+
+    def _get_param_list(self, def_node):
+        def extract(p):
+            if isinstance(p, tuple) and len(p) >= 3 and p[0] == 'TYPED': return (p[2], p[1])
+            if isinstance(p, tuple) and len(p) >= 2 and p[0] == 'VAR': return (p[1], None)
+            return (str(p), None)
+        
+        is_seq = isinstance(def_node, (list, tuple))
+        is_typed = is_seq and len(def_node) == 3 and def_node[0] == 'TYPED'
+        nodes = def_node if (is_seq and not is_typed) else [def_node]
+        return [extract(n) for n in nodes]
+
+    def _validate_param_type(self, name, val, type_name):
+        t_map = {
+            'int': int, 'integer': int, 'str': str, 'string': str, 
+            'float': float, 'number': (int, float), 'bool': bool, 'boolean': bool, 
+            'dict': dict, 'list': list, 'tuple': tuple
+        }
+        expected = t_map.get(type_name) or self.functions_map.get(type_name)
+        if expected and not isinstance(val, expected): 
+            raise TypeError(f"Parametro {name} atteso {type_name}, ricevuto {type(val).__name__}")
+
+    async def _extract_outputs(self, out_def, ctx):
+        params = self._get_param_list(out_def)
+        outs = [p[0] for p in params]
         res = []
         for o in outs:
             val = ctx.get(o)
-            print(f"DEBUG: Function output lookup for '{o}': {val} (found in ctx: {o in ctx})")
-            # If not found directly, try to resolve as a variable just in case
-            if val is None:
-                val = await self._resolve(o, ctx)
-                print(f"DEBUG: Resolved output '{o}' to: {val}")
+            if val is None: val = await self._resolve(o, ctx)
             res.append(val)
-        
         return res[0] if len(res) == 1 else tuple(res)
 
 
@@ -690,6 +688,13 @@ def parse_dsl_file(content):
 async def execute_dsl_file(content_or_parsed):
     parsed = parse_dsl_file(content_or_parsed) if isinstance(content_or_parsed, str) else content_or_parsed
     return await DSLVisitor(dsl_functions).run(parsed)
+
+async def dsl_map(data, func, context=None):
+    if isinstance(func, str):
+        items = data if isinstance(data, (list, tuple, dict)) else [data]
+        if isinstance(items, dict): items = list(items.values())
+        return [mistql.query(func, data=i) for i in items]
+    return await flow.foreach(data, func, context=context)
 
 async def run_dsl_tests(visitor, parsed_data):
     test_suite = parsed_data.get('test_suite', [])
@@ -728,6 +733,7 @@ dsl_functions = {
     'put': flow.put,
     'format': flow.format, 
     'foreach': flow.foreach, 
+    'map': dsl_map,
     'convert': flow.convert, 
     'get': flow.get,
     'keys': lambda d: list(d.keys()) if isinstance(d, dict) else [],
@@ -754,5 +760,6 @@ dsl_functions = {
     #'executor': LazyService('executor'),
     **{k: v for k, v in zip(['dict','list','str','int','float','bool'], [dict,list,str,int,float,bool])},
     'not': lambda x: not x,
-    'integer':int,'string':str,'boolean':bool,'number':float,'relative':int,'natural':int,'rational':float,'complex':float
+    'integer':int,'string':str,'boolean':bool,'number':float,'relative':int,'natural':int,'rational':float,'complex':float,
+    'True': True, 'False': False, 'true': True, 'false': False, 'Null': None, 'null': None
 }

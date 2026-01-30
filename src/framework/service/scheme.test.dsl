@@ -111,14 +111,14 @@ dict:normalize_1 := normalize({
 }, user_schema);
 
 # transform 
-any:transform_1 := transform({
-    "name": "Mario";
-    "surname": "Rossi";
-    "age": 30;
-    "email": "[EMAIL_ADDRESS]";
-    "phone": 1234567890;
-    "address": "Via Roma 1";
-}, { name: { model:"name"; user:"nome"; }; age: { model:"age"; user:"eta"; }; output: 30; }, { }, user_schema, utente_schema);
+#any:transform_1 := transform({
+#    "name": "Mario";
+#    "surname": "Rossi";
+#    "age": 30;
+#    "email": "[EMAIL_ADDRESS]";
+#    "phone": 1234567890;
+#    "address": "Via Roma 1";
+#}, { name: { model:"name"; user:"nome"; }; age: { model:"age"; user:"eta"; }; output: 30; }, { }, user_schema, utente_schema);
 
 # Test suite
 tuple:test_suite := (

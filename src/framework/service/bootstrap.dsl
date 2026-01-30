@@ -22,15 +22,15 @@
         |> remap("key", "val")
         |> transform(mask);
 
-    boolean:stato := 1 == "presentation" | Vero;
+    boolean:stato := 1 == "presentation" | True;
 
     managers:managers := (
-        {"path": "framework/manager/tester.py"; "service": "tester"; "config": {"cache_enabled": Vero; "log_level": "INFO";}; "dependency_keys": ("messenger","persistence"); "manager": "tester"; },
-        {"path": "framework/manager/messenger.py"; "service": "messenger"; "config": {"cache_enabled": Vero; "log_level": "INFO";}; "dependency_keys": ("message"); "manager": "messenger"; },
-        {"path": "framework/manager/executor.py"; "service": "executor"; "config": {"cache_enabled": Vero; "log_level": "INFO";}; "dependency_keys": ("actuator"); "manager": "executor"; },
-        {"path": "framework/manager/presenter.py"; "service": "presenter"; "config": {"cache_enabled": Vero; "log_level": "INFO";}; "dependency_keys": ("messenger"); "manager": "presenter"; },
-        {"path": "framework/manager/defender.py"; "service": "defender"; "config": {"cache_enabled": Vero; "log_level": "INFO";}; "dependency_keys": ("authentication"); "manager": "defender"; },
-        {"path": "framework/manager/storekeeper.py"; "service": "storekeeper"; "config": {"cache_enabled": Vero; "log_level": "INFO";}; "dependency_keys": ("persistence"); "manager": "storekeeper"; }
+        {"path": "framework/manager/tester.py"; "service": "tester"; "config": {"cache_enabled": True; "log_level": "INFO";}; "dependency_keys": ("messenger","persistence"); "manager": "tester"; },
+        {"path": "framework/manager/messenger.py"; "service": "messenger"; "config": {"cache_enabled": True; "log_level": "INFO";}; "dependency_keys": ("message"); "manager": "messenger"; },
+        {"path": "framework/manager/executor.py"; "service": "executor"; "config": {"cache_enabled": True; "log_level": "INFO";}; "dependency_keys": ("actuator"); "manager": "executor"; },
+        {"path": "framework/manager/presenter.py"; "service": "presenter"; "config": {"cache_enabled": True; "log_level": "INFO";}; "dependency_keys": ("messenger"); "manager": "presenter"; },
+        {"path": "framework/manager/defender.py"; "service": "defender"; "config": {"cache_enabled": True; "log_level": "INFO";}; "dependency_keys": ("authentication"); "manager": "defender"; },
+        {"path": "framework/manager/storekeeper.py"; "service": "storekeeper"; "config": {"cache_enabled": True; "log_level": "INFO";}; "dependency_keys": ("persistence"); "manager": "storekeeper"; }
     );
     
     # Priorità degli operatori garantita dalla nuova grammatica (Pipe > Boolean)

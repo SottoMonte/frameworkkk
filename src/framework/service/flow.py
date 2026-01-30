@@ -667,7 +667,8 @@ async def _dsl_switch(cases_or_value, value_or_context=None, context=None):
         # First arg is the value (from pipe), second is cases
         value = cases_or_value
         cases = value_or_context if isinstance(value_or_context, dict) else {}
-        ctx = {'@': value}
+        ctx = (context or {}).copy()
+        ctx['@'] = value
     
     # Wrap actions as steps
     if isinstance(cases, dict):

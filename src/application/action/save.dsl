@@ -6,7 +6,7 @@
   
   PI: 3.14159;
   TENTATIVI_MAX: 5;
-  MODO_DEBUG: Vero;
+  MODO_DEBUG: True;
   
   numeri: 100, 250, 50;
   
@@ -15,7 +15,7 @@
   utente_completo: {
       nome: "Giulia"; 
       eta: 25; 
-      attivo: Vero; 
+      attivo: True; 
       residenza: {
           citta: "Roma";
           cap: 100; # Corretto il CAP per matchare l'output atteso

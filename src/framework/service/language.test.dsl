@@ -49,7 +49,7 @@
     # 4. COLLEZIONI
     # ============================================================
 
-    list:collection_mixed_list := [1, 2, "tre", Vero];
+    list:collection_mixed_list := [1, 2, "tre", True];
     dict:collection_simple_dict := { "chiave": "valore"; "num": 42; };
 
     tuple:collection_pair := (1, "test");
