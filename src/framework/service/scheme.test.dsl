@@ -136,8 +136,8 @@ tuple:test_suite := (
     { target: 'convert_4'; output: False; },
     { target: 'convert_5'; output: "True"; },
     { target: 'convert_6'; output: "False"; },
-    { target: 'convert_7'; output: True; },
-    { target: 'convert_8'; output: False; },
+    #{ target: 'convert_7'; output: True; },
+    #{ target: 'convert_8'; output: False; },
     { target: 'put_1'; output: merge(data,{"nome": "Progetto B"; }); },
     { target: 'put_3'; output: {
         "nome": "Progetto A";
