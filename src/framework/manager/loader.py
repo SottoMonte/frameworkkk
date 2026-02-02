@@ -102,6 +102,8 @@ class loader:
         """
         # 1. Inizializzazione servizi core ordinata
         await self._initialize_services()
+
+        print(self.services,"<----")
         
         # 2. Caricamento ed esecuzione del bootstrap applicativo
         print("[INFO] Avvio Bootstrap dello strato applicativo (DSL)...")

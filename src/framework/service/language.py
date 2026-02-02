@@ -4,7 +4,7 @@ DSL Language Interpreter - Improved Version
 A robust, maintainable DSL interpreter with enhanced error handling,
 performance optimizations, and cleaner architecture.
 """
-
+import types
 from typing import Dict, Any, Optional, List, Callable, Union, Tuple, Set
 import asyncio
 import operator
@@ -500,6 +500,7 @@ class TypeValidator:
     """Enhanced type validation with better error reporting"""
     
     TYPE_MAP = {
+        'type':dict,'function':Union[tuple,types.FunctionType,types.MethodType],
         'int': int, 'integer': int, 'i8': int, 'i16': int, 'i32': int, 'i64': int, 'i128': int,
         'str': str, 'string': str, 'dict': dict, 'list': list, 'array': list,
         'float': float, 'f8': float, 'f16': float, 'f32': float, 'f64': float, 'f128': float,
@@ -770,7 +771,6 @@ class DSLVisitor:
         self._visited_nodes: Set = set()  # For cycle detection
         self.store: Optional[DataStore] = None
         self.PROCESSORS: Dict = {}
-
 
     # ========================================================================
     # RECURSION TRACKING
