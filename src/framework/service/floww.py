@@ -145,7 +145,6 @@ async def parallel(*acts, **options):
 
 # ------------ Decisione ------------
 
-@flow()
 async def assertt(condition, context=dict()):
     if not eval(condition, context):
         raise AssertionError(f"Assertion failed: {condition}")

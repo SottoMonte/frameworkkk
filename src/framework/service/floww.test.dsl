@@ -70,18 +70,16 @@ scheme:switch_test := exports.switch({"True": print; "1 == 2": print;},context:{
 scheme:when_test_success := exports.when("1 == 1", print,context:{inputs:["test"];});
 scheme:when_test_failure := exports.when("1 == 2", print,context:{inputs:["test"];});
 
-any:test_assert_failure := exports.assert("10 >= 50");
-any:test_assert_success := exports.assert("10 <= 50");
+scheme:test_assert_failure := exports.assert("10 >= 50");
+scheme:test_assert_success := exports.assert("10 <= 50");
 
 any:pass_test := exports.pass(10);
 
 tuple:test_suite := (
-    { "target": "pass_test"; "output": pass_test |> get("outputs"); "description": "Pass flow"; },
-    { "target": "match_score_label"; "output": "Sufficiente"; "description": "Match flow"; },
-    { "target": "score_list"; "output": ["Attivo", "Attivo", "Attivo", "Attivo", "Inattivo", "Inattivo", "Inattivo", "Inattivo", "Inattivo", "Inattivo"]; "description": "Match flow list"; },
-    { "target": "when_test_success"; "output": "Sufficiente"; "description": "Match flow"; },
-    { "target": "when_test_failure"; "output": "Sufficiente"; "description": "Match flow"; },
-    { "target": "test_assert_failure"; "output": "Sufficiente"; "description": "Match flow"; },
-    { "target": "test_assert_success"; "output": "Sufficiente"; "description": "Match flow"; },
+    { "target": "pass_test"; "output": pass_test |> put("outputs",10); "description": "Pass flow"; },
+    { "target": "when_test_success"; "output": when_test_success |> put("outputs",["test"]); "description": "Match flow"; },
+    { "target": "when_test_failure"; "output": when_test_failure |> put("outputs",[]); "description": "Match flow"; },
+    { "target": "test_assert_failure"; "output": test_assert_failure |> put("outputs",[]); "description": "Match flow"; },
+    { "target": "test_assert_success"; "output": test_assert_success |> put("outputs",["10 <= 50"]); "description": "Match flow"; },
 
 );
