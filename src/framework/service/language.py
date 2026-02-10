@@ -483,6 +483,7 @@ class Interpreter:
     def __init__(self, functions=None):
         self.env = {}
         self.functions = functions or {}
+        self._node_stack = [] 
 
     # -------------------------
     # entry
@@ -498,7 +499,7 @@ class Interpreter:
     # dispatcher
     # -------------------------
 
-    async def visit(self, node):
+    '''async def visit(self, node):
         if not isinstance(node, dict):
             return node
 
@@ -514,7 +515,44 @@ class Interpreter:
         if len(res.get('errors')) != 0:
             raise Exception(res.get('errors'))
         
-        return res.get('outputs')
+        return res.get('outputs')'''
+
+    async def visit(self, node):
+        if not isinstance(node, dict):
+            return node
+
+        t = node.get("type")
+        method = getattr(self, f"visit_{t}", None)
+
+        if not method:
+            raise DSLRuntimeError(f"Unknown node type: {t}", node.get("meta"))
+
+        if not hasattr(self, "_node_stack"):
+            self._node_stack = []
+
+        self._node_stack.append(node)
+        try:
+            res = await flow.act(flow.step(method, node))
+
+            if res.get('errors'):
+                # Solleva il primo errore già formattato
+                raise DSLRuntimeError(res['errors'][0])
+
+            return res.get('outputs')
+
+        except DSLRuntimeError as e:
+            # ricostruisci solo lo stack trace dei nodi, senza ripetere linee
+            trace = " -> ".join(
+                f"{n.get('type')}({n.get('meta', {}).get('line','?')}:{n.get('meta', {}).get('column','?')})"
+                for n in self._node_stack
+            )
+            # aggiorna il messaggio senza duplicare le linee
+            e.args = (f"{e.args[0]} | Stack trace: {trace}",)
+            raise
+        finally:
+            self._node_stack.pop()
+
+
 
     # -------------------------
     # primitives
