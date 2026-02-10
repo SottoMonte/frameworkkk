@@ -49,7 +49,7 @@ class tester():
             for file in files:
                 if file.endswith('.test.dsl'):
                     # Crea il nome del modulo di test per ciascun file trovato
-                    module_path = os.path.join(root, file).replace('./','')
+                    module_path = os.path.join(root, "data_driven.test.dsl").replace('./','')
                     
                     # Importa il modulo di test dinamicamente via loader
                     parser = language.create_parser()
@@ -58,7 +58,7 @@ class tester():
                         flow.step(flow.pipeline,
                             flow.step(loader.resource,path=module_path),
                             flow.step(language.parse,'@.inputs',parser),
-                            #flow.step(visitor.run,'@.inputs'),
+                            flow.step(visitor.run,'@.inputs'),
                             flow.step(flow.log,"--->: {inputs}  \n"),
                         ),
                         flow.step(flow.log,"Errore: {errors[0]} "),
