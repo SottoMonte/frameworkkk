@@ -28,17 +28,13 @@ start: dictionary
 dictionary: "{" item* "}" | item*
 item: pair ";"?
 
-pair: declaration | mapping | function_call
+declaration: pair ":=" atom
 
-typed_name: type_name ":" CNAME
-type_name: CNAME | QUALIFIED_CNAME
+pair: key ":" expr
 
-declaration: typed_name ":=" expr
-mapping: key ":" expr
+key: value | CNAME | QUALIFIED_CNAME
 
-key: value | typed_name | function_call | CNAME | QUALIFIED_CNAME
-
-?expr: pipe
+?expr: declaration | atom | pipe
 
 ?pipe: logic (PIPE logic)* -> pipe_node
 
@@ -51,10 +47,10 @@ key: value | typed_name | function_call | CNAME | QUALIFIED_CNAME
            | comparison COMPARISON_OP sum -> binary_op
 
 ?sum: term
-    | sum ("+" | "-") term -> binary_op
+    | sum ARITHMETIC_OP term -> binary_op
 
 ?term: power
-     | term ("*" | "/" | "%") power -> binary_op
+     | term  power -> binary_op
 
 ?power: atom
       | atom "^" power -> power
@@ -63,17 +59,19 @@ key: value | typed_name | function_call | CNAME | QUALIFIED_CNAME
      | function_call
      | dictionary
      | tuple
+     | inline_tuple
      | list
      | "(" expr ")"
-     | typed_name
-     | CNAME
-     | QUALIFIED_CNAME -> simple_key
+     | CNAME -> identifier
+     | QUALIFIED_CNAME -> identifier
 
 tuple: "(" [expr ("," expr)* ","?] ")" -> tuple_
+inline_tuple: expr ("," expr)+ -> tuple_
 list:  "[" [expr ("," expr)* ","?] "]" -> list_
 
 function_call: callable "(" [call_args] ")"
-callable: typed_name | CNAME | QUALIFIED_CNAME
+function_value: tuple "," dictionary "," tuple
+callable:  CNAME | QUALIFIED_CNAME
 
 call_args: call_arg ("," call_arg)*
 call_arg: expr -> arg_pos
@@ -89,6 +87,7 @@ STRING: ESCAPED_STRING | SINGLE_QUOTED_STRING
 
 PIPE: "|>"
 COMPARISON_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
+ARITHMETIC_OP: "+" | "-" | "*" | "/" | "%"
 QUALIFIED_CNAME: CNAME ("." CNAME)+
 COMMENT: /#[^\n]*/
 
@@ -128,7 +127,9 @@ OPS_FUNCTIONS = {
 
 TYPE_MAP = {
     'int': int, 'float': float, 'str': str, 'bool': bool,
-    'dict': dict, 'list': list, 'any': object, 'type': dict
+    'dict': dict, 'list': list, 'any': object, 'type': dict,
+    'function': dict,
+
 }
 
 CUSTOM_TYPES = {}
@@ -166,10 +167,6 @@ is_trigger = lambda n: is_call(n) or (isinstance(n, tuple) and '*' in n)
 
 get_name = lambda n: n[1] if is_var(n) else n[2] if is_typed(n) else str(n)
 get_type = lambda n: n[1] if is_typed(n) else None
-
-def unwrap(v):
-    return v.get('outputs') if isinstance(v, dict) and 'outputs' in v else v
-
 
 # ============================================================================
 # TRANSFORMER (IDENTICO ALL'ORIGINALE)
@@ -243,32 +240,17 @@ class DSLTransformer(Transformer):
     # VARIABILI / NOMI
     # -------------------------------------------------
 
-    def simple_key(self, meta, s):
+    def identifier(self, meta, s):
         return self.with_meta({
             "type": "var",
             "name": str(s[0])
         }, meta)
 
-    def type_name(self, meta, a):
-        return {
-            "type": "type_name",
-            "name": str(a[0]),
-            "meta": {
-                "line": meta.line if hasattr(meta, "line") else None,
-                "column": meta.column if hasattr(meta, "column") else None
-            }
-        }
-
-    def typed_name(self, meta, a):
-        
-        type_node = a[0]
-        name_node = a[1]
-
-        return self.with_meta({
-            "type": "typed_var",
-            "name": str(name_node),
-            "var_type": str(type_node["name"])  # il tipo
-        }, meta, fallback=type_node)
+    def key(self, meta, a):
+        # Se arriva un Tree, estrai il token e trasformalo
+        if isinstance(a[0], Token):
+            return {"type": "var", "name": str(a[0]), "meta": {"line": meta.line, "column": meta.column}}
+        return a[0]
 
     def callable(self, meta, a):
         return a[0]
@@ -306,15 +288,12 @@ class DSLTransformer(Transformer):
             "value": a[1]
         }, meta)
 
-    def mapping(self, meta, a):
+    def pair(self, meta, a):
         return self.with_meta({
-            "type": "mapping",
+            "type": "pair",
             "key": a[0],
             "value": a[1]
         }, meta)
-
-    def pair(self, meta, a):
-        return a[0]
 
     def item(self, meta, a):
         return a[0]
@@ -322,6 +301,20 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     # FUNZIONI
     # -------------------------------------------------
+
+    def function_value(self, meta, a):
+        params_tuple = a[0]
+        body = a[1]
+        return_tuple = a[2]
+
+        params = params_tuple["items"] if params_tuple["type"] == "tuple" else []
+
+        return self.with_meta({
+            "type": "function_def",
+            "params": params,
+            "body": body,
+            "return_type": return_tuple
+        }, meta)
 
     def call_args(self, meta, a):
         return a
@@ -343,10 +336,10 @@ class DSLTransformer(Transformer):
                     args.append(data[0])
                 else:
                     kwargs[data[0]] = data[1]
-
+        
         return self.with_meta({
             "type": "call",
-            "name": fn["name"],
+            "name": fn,
             "args": args,
             "kwargs": kwargs
         }, meta)
@@ -477,49 +470,42 @@ class DSLRuntimeError(Exception):
                     message = f"{message} (line {start_line}, col {start_col})"
         super().__init__(message)
 
-
 class Interpreter:
 
     def __init__(self, functions=None):
-        self.env = {}
         self.functions = functions or {}
         self._node_stack = [] 
 
-    # -------------------------
-    # entry
-    # -------------------------
+    # =========================================================
+    # ENTRY
+    # =========================================================
     @flow.action()
-    async def run(self, ast,**con):
-        
-        ok = await self.visit(ast)
+    async def run(self, ast,**c):
+        value, _ = await self.visit(ast, {})
+        return value
 
-        return ok
+    # =========================================================
+    # DISPATCH
+    # =========================================================
 
-    # -------------------------
-    # dispatcher
-    # -------------------------
-
-    '''async def visit(self, node):
+    async def visit2(self, node, env):
         if not isinstance(node, dict):
-            return node
+            return node, env
 
         t = node.get("type")
         method = getattr(self, f"visit_{t}", None)
 
         if not method:
-            raise DSLRuntimeError(f"Unknown node type: {t}", node.get("meta"))
+            raise DSLRuntimeError(
+                f"Unknown node type: {t}",
+                node.get("meta"),
+            )
 
-        #return method(node)
-        res = await flow.act(flow.step(method,node))
+        return await method(node, env)
 
-        if len(res.get('errors')) != 0:
-            raise Exception(res.get('errors'))
-        
-        return res.get('outputs')'''
-
-    async def visit(self, node):
+    async def visit(self, node, env):
         if not isinstance(node, dict):
-            return node
+            return node, env
 
         t = node.get("type")
         method = getattr(self, f"visit_{t}", None)
@@ -532,7 +518,7 @@ class Interpreter:
 
         self._node_stack.append(node)
         try:
-            res = await flow.act(flow.step(method, node))
+            res = await flow.act(flow.step(method, node,env))
 
             if res.get('errors'):
                 # Solleva il primo errore già formattato
@@ -552,145 +538,151 @@ class Interpreter:
         finally:
             self._node_stack.pop()
 
+    # =========================================================
+    # PRIMITIVES
+    # =========================================================
 
+    async def visit_number(self, node, env):
+        return node["value"], env
 
-    # -------------------------
-    # primitives
-    # -------------------------
+    async def visit_string(self, node, env):
+        return node["value"], env
 
-    def visit_number(self, node):
-        return node["value"]
+    async def visit_bool(self, node, env):
+        return node["value"], env
 
-    def visit_string(self, node):
-        return node["value"]
+    async def visit_any(self, node, env):
+        return None, env
 
-    def visit_bool(self, node):
-        return node["value"]
+    # =========================================================
+    # VARIABLES
+    # =========================================================
 
-    def visit_any(self, node):
-        return None
-
-    # -------------------------
-    # variables
-    # -------------------------
-
-    async def _check_type(self, value, expected_type, node_meta=None, var_name=None):
-        """
-        Controlla e valida il tipo di un valore.
-        - Se il tipo è custom, usa validate_type asincrono
-        - Altrimenti controlla e converte i tipi standard
-        - Genera DSLRuntimeError se il tipo non corrisponde
-        """
-        # passo 1: validate_type (async) per tipi custom
-        if expected_type in CUSTOM_TYPES:
-            value = await scheme.normalize(value, CUSTOM_TYPES[expected_type])
-            return value
-
-        # passo 2: tipi standard
-        py_type = TYPE_MAP.get(expected_type)
-
-        
-        # controllo tipo
-        if type(value) != py_type:
-            raise DSLRuntimeError(
-                f"Type error in '{var_name}': expected {expected_type}, got {type(value).__name__}",
-                node_meta
-            )
-
-        return value
-
-    def visit_var(self, node):
+    async def visit_var(self, node, env):
         name = node["name"]
-        if name not in self.env:
-            raise DSLRuntimeError(f"Undefined variable '{name}'", node.get("meta"))
-        return self.env[name]
+        
+        '''if name not in env:
+            raise DSLRuntimeError(
+                f"Undefined variable '{name}'",
+                node.get("meta")
+            )'''
 
-    def visit_typed_var(self, node):
-        # in runtime il tipo è metadata, non influenza il valore
-        return self.visit_var({"name": node["name"], "meta": node["meta"]})
+        return env.get(name,name), env
 
-    # -------------------------
-    # collections
-    # -------------------------
+    async def visit_typed_var(self, node, env):
+        return await self.visit_var(
+            {"name": node["name"], "meta": node["meta"]},
+            env
+        )
 
-    async def visit_tuple(self, node):
-        return tuple(await self.visit(i) for i in node["items"])
+    # =========================================================
+    # DECLARATIONS
+    # =========================================================
 
-    async def visit_list(self, node):
-        return [await self.visit(i) for i in node["items"]]
-
-    async def visit_dict(self, node):
-        result = {}
-        for item in node["items"]:
-            value = await self.visit(item)
-
-            # item può essere 'declaration' o 'mapping'
-            if item["type"] == "declaration":
-                key = item["target"]["name"]
-                result[key] = value
-            elif item["type"] == "mapping":
-                key = await self.visit(item["key"])
-                result[key] = value
-
-        return result
-
-    # -------------------------
-    # declarations / mapping
-    # -------------------------
-
-    async def visit_declaration(self, node):
+    async def visit_declaration(self, node, env):
+        
         name = node["target"]["name"]
-        value = await self.visit(node["value"])
+
+        value, env_after = await self.visit(node["value"], env)
+
         declared_type = node["target"].get("var_type")
-        value = await self._check_type(value, declared_type, node.get("meta"), name)
-        self.env[name] = value
-        return value
+        value = await self._check_type(
+            value,
+            declared_type,
+            node.get("meta"),
+            name
+        )
 
-    async def visit_mapping(self, node):
-        key = await self.visit(node["key"])
-        value = await self.visit(node["value"])
-        self.env[key] = value
-        return value
+        # 🔥 immutabilità: nuovo env
+        new_env = {**env_after, name: value}
 
-    # -------------------------
-    # expressions
-    # -------------------------
+        return value, new_env
 
-    async def visit_binop(self, node):
-        left = await self.visit(node["left"])
-        right = await self.visit(node["right"])
+    # =========================================================
+    # COLLECTIONS
+    # =========================================================
+
+    async def visit_pair(self, node, env):
+        key, env1 = await self.visit(node["key"], env) 
+        value, env2 = await self.visit(node["value"], env1) 
+        return (key,value), env1|env2
+
+    async def visit_list(self, node, env):
+        items = []
+        current_env = env
+
+        for item in node["items"]:
+            value, current_env = await self.visit(item, current_env)
+            items.append(value)
+
+        return items, current_env
+
+    async def visit_tuple(self, node, env):
+        items = []
+        current_env = env
+
+        for item in node["items"]:
+            value, current_env = await self.visit(item, current_env)
+            items.append(value)
+
+        return tuple(items), current_env
+
+    async def visit_dict(self, node, env):
+        current_env = env
+        for item in node["items"]:
+            pair, current_env = await self.visit(item, current_env)
+            key, value = pair
+            #print(pair,current_env)
+            current_env[key] = value
+
+        return current_env, current_env
+
+    # =========================================================
+    # EXPRESSIONS
+    # =========================================================
+
+    async def visit_binop(self, node, env):
+        left, env1 = await self.visit(node["left"], env)
+        right, env2 = await self.visit(node["right"], env1)
+
         op = node["op"]
 
         try:
-            if op == "+": return left + right
-            if op == "-": return left - right
-            if op == "*": return left * right
-            if op == "/": return left / right
-            if op == "%": return left % right
-            if op == "^": return left ** right
-            if op == "==": return left == right
-            if op == "!=": return left != right
-            if op == ">": return left > right
-            if op == "<": return left < right
-            if op == ">=": return left >= right
-            if op == "<=": return left <= right
-            if op == "and": return left and right
-            if op == "or": return left or right
+            if op == "+": return left + right, env2
+            if op == "-": return left - right, env2
+            if op == "*": return left * right, env2
+            if op == "/": return left / right, env2
+            if op == "%": return left % right, env2
+            if op == "^": return left ** right, env2
+            if op == "==": return left == right, env2
+            if op == "!=": return left != right, env2
+            if op == ">": return left > right, env2
+            if op == "<": return left < right, env2
+            if op == ">=": return left >= right, env2
+            if op == "<=": return left <= right, env2
+            if op == "and": return left and right, env2
+            if op == "or": return left or right, env2
+
         except Exception as e:
             raise DSLRuntimeError(str(e), node.get("meta"))
 
-        raise DSLRuntimeError(f"Unsupported operator '{op}'", node.get("meta"))
+        raise DSLRuntimeError(
+            f"Unsupported operator '{op}'",
+            node.get("meta")
+        )
 
-    async def visit_not(self, node):
-        return not await self.visit(node["value"])
+    async def visit_not(self, node, env):
+        value, env2 = await self.visit(node["value"], env)
+        return not value, env2
 
-    # -------------------------
-    # pipe
-    # -------------------------
+    # =========================================================
+    # PIPE
+    # =========================================================
 
-    async def visit_pipe(self, node):
+    async def visit_pipe(self, node, env):
         steps = node["steps"]
-        value = await self.visit(steps[0])
+
+        value, current_env = await self.visit(steps[0], env)
 
         for step in steps[1:]:
             if step["type"] != "call":
@@ -698,20 +690,74 @@ class Interpreter:
                     "Pipe expects function calls",
                     step.get("meta")
                 )
-            value = self._call(step, value)
 
-        return value
+            value, current_env = await self._call(
+                step,
+                current_env,
+                piped_value=value
+            )
 
-    # -------------------------
-    # function calls
-    # -------------------------
+        return value, current_env
 
-    def visit_call(self, node):
-        return self._call(node)
+    # =========================================================
+    # CALLS
+    # =========================================================
 
-    async def _call(self, node, piped_value=None):
+    async def visit_call(self, node, env): 
+        return await self._call(node, env)
+
+    async def _call(self, node, env, piped_value=None):
+        """
+        Esegue una funzione: built-in o definita dall'utente.
+        node: nodo AST di tipo "call"
+        env: environment corrente
+        piped_value: valore passato da una pipe
+        """
         name = node["name"]
 
+        # ------------------------------
+        # Funzione utente dichiarata
+        # ------------------------------
+        if name in env and isinstance(env[name], dict) and env[name].get("type") == "function_def":
+            func_node = env[name]
+
+            # Scope locale per eseguire la funzione
+            local_env = {}
+            print("BOOOOOOOOOOOM")
+            # Lega parametri della funzione con gli argomenti
+            for param_node, arg_node in zip(func_node["params"], node["args"]):
+                print(param_node)
+                print("BOOOOOOOOOOOM2")
+                param_name = param_node["name"]
+                param_type = param_node.get("var_type")
+                arg_value, _ = await self.visit(arg_node, env)
+                if param_type:
+                    arg_value = await self._check_type(arg_value, param_type, arg_node.get("meta"), param_name)
+                local_env[param_name] = arg_value
+
+            # Se pipe passa un valore, lo aggiunge come primo argomento
+            if piped_value is not None:
+                local_env["__pipe__"] = piped_value
+
+            # Esegui il corpo della funzione
+            body_result, local_env_after = await self.visit(func_node["body"], local_env)
+
+            # Gestione tipo di ritorno (solo controllo tipo, ritorna direttamente il corpo)
+            ret_node = func_node.get("return_type")
+            print("BOOOOOOOOOOOM")
+            if ret_node:
+                # Se è specificato un tipo di ritorno, esegue solo check
+                if ret_node.get("type") == "tuple" and ret_node.get("items"):
+                    ret_type_name = ret_node["items"][0].get("var_type")
+                    if ret_type_name:
+                        body_result = await self._check_type(body_result, ret_type_name, ret_node.get("meta"))
+
+            # Ritorna valore e environment originale
+            return body_result, env
+
+        # ------------------------------
+        # Funzione built-in
+        # ------------------------------
         if name not in self.functions:
             raise DSLRuntimeError(
                 f"Unknown function '{name}'",
@@ -720,16 +766,64 @@ class Interpreter:
 
         fn = self.functions[name]
 
-        args = [await self.visit(a) for a in node["args"]]
-        kwargs = {k: await self.visit(v) for k, v in node["kwargs"].items()}
+        # Valuta argomenti posizionali
+        args = []
+        current_env = env
+        for a in node["args"]:
+            val, current_env = await self.visit(a, current_env)
+            args.append(val)
 
+        # Valuta argomenti keyword
+        kwargs = {}
+        for k, v in node["kwargs"].items():
+            val, current_env = await self.visit(v, current_env)
+            kwargs[k] = val
+
+        # Se pipe passa un valore, lo inserisce come primo argomento
         if piped_value is not None:
             args.insert(0, piped_value)
 
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:
-            raise DSLRuntimeError(str(e), node.get("meta"))
+        # Chiama la funzione
+        result = fn(*args, **kwargs)
+
+        # Se è coroutine, aspetta il risultato
+        if inspect.isawaitable(result):
+            result = await result
+
+        return result, current_env
+
+
+
+    # =========================================================
+    # TYPE CHECK
+    # =========================================================
+
+    async def visit_function_def(self, node, env):
+        # Una funzione è un valore già pronto
+        return node, env
+
+    async def _check_type(self, value, expected_type, meta=None, var_name=None):
+
+        if expected_type in CUSTOM_TYPES:
+            return await scheme.normalize(value, CUSTOM_TYPES[expected_type])
+
+        py_type = TYPE_MAP.get(expected_type)
+
+        if py_type is None:
+            raise DSLRuntimeError(
+                f"Unknown type '{expected_type}'",
+                meta
+            )
+
+        if not isinstance(value, py_type):
+            raise DSLRuntimeError(
+                f"Type error in '{var_name}': expected {expected_type}, "
+                f"got {type(value).__name__}",
+                meta
+            )
+
+        return value
+
 
 # ============================================================================
 # PUBLIC API (NO GLOBAL PARSER)

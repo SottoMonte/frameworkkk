@@ -63,6 +63,7 @@ class tester():
                         ),
                         flow.step(flow.log,"Errore: {errors[0]} "),
                     )
+                    exit(1)
     
     async def unittest2(self, code: str, **constants):
         def get_test_methods( suite):
