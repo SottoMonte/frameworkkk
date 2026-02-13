@@ -628,14 +628,15 @@ class Interpreter:
         return tuple(items), current_env
 
     async def visit_dict(self, node, env):
-        current_env = env
-        for item in node["items"]:
-            pair, current_env = await self.visit(item, current_env)
-            key, value = pair
-            #print(pair,current_env)
-            current_env[key] = value
+        result = {}
 
-        return current_env, current_env
+        for item in node["items"]:
+            evaluation_env = env | result
+            pair, _ = await self.visit(item, evaluation_env)
+            key, value = pair
+            result[key] = value
+
+        return result, env
 
     # =========================================================
     # EXPRESSIONS
