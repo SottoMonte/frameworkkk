@@ -688,10 +688,6 @@ class Interpreter:
             args,kwargs = [value],{}
             if not isinstance(step, dict):
                 continue
-            if step["type"] == "call":
-                args = [*step["args"],*args]
-                #kwargs = step["kwargs"]
-            
             
             value, current_env = await self.visit_call(step,current_env,args,kwargs)
 
@@ -703,6 +699,7 @@ class Interpreter:
     
     async def _call_function(self, node, env,args=[],kwargs={}):
         local_env = {}
+        
         name = node["name"]
         params_ast, body_ast, return_ast = env[name]
         # Bind parametri
@@ -711,11 +708,11 @@ class Interpreter:
             param_name = param_node["value"]["name"]
             arg_value = await self._check_type(arg_node, param_type, param_node.get("meta"), param_name)
             local_env[param_name] = arg_value
-
         # Esegui body
         result, _ = await self.visit(body_ast, local_env)
         out = None
         # Controllo tipo di ritorno
+
         for ty in return_ast:
             pair,env = await self.visit(ty,local_env)
             tipo,name = pair
@@ -727,7 +724,7 @@ class Interpreter:
 
     async def visit_call(self, node, env, args=[], kwargs={}):
         name, meta = node.get("name"), node.get("meta")
-        args = [(await self.visit(a, env))[0] for a in node.get("args",[])] + args
+        args = args + [(await self.visit(a, env))[0] for a in node.get("args",[])]
         kwargs = {k: (await self.visit(v, env))[0] for k, v in kwargs.items()}
         function = env[name]
         

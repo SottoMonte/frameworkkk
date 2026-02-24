@@ -16,7 +16,7 @@ int:x := 10000 - 9999;
 
 ziooo:somma(10,-15);
 
-#ok: 20 |> somma(10);
+ok: 23 |> somma(10);
 
 ttt: a |> print;
 
