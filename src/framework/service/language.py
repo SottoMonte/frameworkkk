@@ -472,8 +472,10 @@ class DSLRuntimeError(Exception):
 
 class Interpreter:
 
-    def __init__(self, functions=None):
-        self.functions = functions or {}
+    def __init__(self, env={}):
+        self.env = env
+        #for key, value in self.functions.items():
+        #    self.functions[key] = {'type': 'call', 'name': Token('CNAME', key), 'args': [], 'kwargs': {}, 'meta': {'line': 19, 'column': 17, 'end_line': 19, 'end_column': 19}}
         self._node_stack = [] 
 
     # =========================================================
@@ -481,7 +483,7 @@ class Interpreter:
     # =========================================================
     @flow.action()
     async def run(self, ast,**c):
-        value, _ = await self.visit(ast, {})
+        value, _ = await self.visit(ast, self.env)
         return value
 
     # =========================================================
@@ -580,7 +582,6 @@ class Interpreter:
     # =========================================================
 
     async def visit_declaration(self, node, env):
-        #print(node)
         pair,pass_env = await self.visit(node["target"],env)
 
         value, env_after = await self.visit(node["value"], env)
@@ -679,178 +680,69 @@ class Interpreter:
 
     async def visit_pipe(self, node, env):
         steps = node["steps"]
-
+        if len(steps) == 1:
+            return await self.visit(steps[0], env)
         value, current_env = await self.visit(steps[0], env)
-
+        
         for step in steps[1:]:
-            if step["type"] != "call":
-                raise DSLRuntimeError(
-                    "Pipe expects function calls",
-                    step.get("meta")
-                )
-
-            value, current_env = await self._call(
-                step,
-                current_env,
-                piped_value=value
-            )
+            args,kwargs = [value],{}
+            if not isinstance(step, dict):
+                continue
+            if step["type"] == "call":
+                args = [*step["args"],*args]
+                #kwargs = step["kwargs"]
+            
+            
+            value, current_env = await self.visit_call(step,current_env,args,kwargs)
 
         return value, current_env
 
     # =========================================================
     # CALLS
     # =========================================================
-
-    async def visit_call(self, node, env): 
-        return await self._call(node, env)
-
-    async def _call2(self, node, env, piped_value=None):
-        """
-        Esegue una funzione: built-in o definita dall'utente.
-        node: nodo AST di tipo "call"
-        env: environment corrente
-        piped_value: valore passato da una pipe
-        """
+    
+    async def _call_function(self, node, env,args=[],kwargs={}):
+        local_env = {}
         name = node["name"]
+        params_ast, body_ast, return_ast = env[name]
+        # Bind parametri
+        for param_node, arg_node in zip(params_ast, args):
+            param_type = param_node["key"]["name"]
+            param_name = param_node["value"]["name"]
+            arg_value = await self._check_type(arg_node, param_type, param_node.get("meta"), param_name)
+            local_env[param_name] = arg_value
 
-        # ------------------------------
-        # Funzione utente dichiarata
-        # ------------------------------
-        if name in env and isinstance(env[name], dict) and env[name].get("type") == "function_def":
-            func_node = env[name]
+        # Esegui body
+        result, _ = await self.visit(body_ast, local_env)
+        out = None
+        # Controllo tipo di ritorno
+        for ty in return_ast:
+            pair,env = await self.visit(ty,local_env)
+            tipo,name = pair
+            if name in result:
+                out = await self._check_type(result[name], tipo, ty.get("meta"))
+                #print("####",ody_result)
 
-            # Scope locale per eseguire la funzione
-            local_env = {}
-            print("BOOOOOOOOOOOM")
-            # Lega parametri della funzione con gli argomenti
-            for param_node, arg_node in zip(func_node["params"], node["args"]):
-                print(param_node)
-                print("BOOOOOOOOOOOM2")
-                param_name = param_node["name"]
-                param_type = param_node.get("var_type")
-                arg_value, _ = await self.visit(arg_node, env)
-                if param_type:
-                    arg_value = await self._check_type(arg_value, param_type, arg_node.get("meta"), param_name)
-                local_env[param_name] = arg_value
+        return out   
 
-            # Se pipe passa un valore, lo aggiunge come primo argomento
-            if piped_value is not None:
-                local_env["__pipe__"] = piped_value
+    async def visit_call(self, node, env, args=[], kwargs={}):
+        name, meta = node.get("name"), node.get("meta")
+        args = [(await self.visit(a, env))[0] for a in node.get("args",[])] + args
+        kwargs = {k: (await self.visit(v, env))[0] for k, v in kwargs.items()}
+        function = env[name]
+        
+        if callable(function):
+            step = flow.step(function,*args,**kwargs)
+        elif isinstance(function, tuple) and len(function) == 3:
+            #params_ast, body_ast, return_ast = function
+            step = flow.step(self._call_function,node,env,args,kwargs)
+        else:
+            raise DSLRuntimeError(f"Unknown function '{name}'", meta)
 
-            # Esegui il corpo della funzione
-            body_result, local_env_after = await self.visit(func_node["body"], local_env)
+        action = await flow.act(step)
 
-            # Gestione tipo di ritorno (solo controllo tipo, ritorna direttamente il corpo)
-            ret_node = func_node.get("return_type")
-            print("BOOOOOOOOOOOM")
-            if ret_node:
-                # Se è specificato un tipo di ritorno, esegue solo check
-                if ret_node.get("type") == "tuple" and ret_node.get("items"):
-                    ret_type_name = ret_node["items"][0].get("var_type")
-                    if ret_type_name:
-                        body_result = await self._check_type(body_result, ret_type_name, ret_node.get("meta"))
-
-            # Ritorna valore e environment originale
-            return body_result, env
-
-        # ------------------------------
-        # Funzione built-in
-        # ------------------------------
-        if name not in self.functions:
-            raise DSLRuntimeError(
-                f"Unknown function '{name}'",
-                node.get("meta")
-            )
-
-        fn = self.functions[name]
-
-        # Valuta argomenti posizionali
-        args = []
-        current_env = env
-        for a in node["args"]:
-            val, current_env = await self.visit(a, current_env)
-            args.append(val)
-
-        # Valuta argomenti keyword
-        kwargs = {}
-        for k, v in node["kwargs"].items():
-            val, current_env = await self.visit(v, current_env)
-            kwargs[k] = val
-
-        # Se pipe passa un valore, lo inserisce come primo argomento
-        if piped_value is not None:
-            args.insert(0, piped_value)
-
-        # Chiama la funzione
-        result = fn(*args, **kwargs)
-
-        # Se è coroutine, aspetta il risultato
-        if inspect.isawaitable(result):
-            result = await result
-
-        return result, current_env
-
-    async def _call(self, node, env, piped_value=None):
-        name = node["name"]
-
-        if name in env:
-            func_obj = env[name]
-
-            if isinstance(func_obj, tuple) and len(func_obj) == 3:
-                params_ast, body_ast, return_ast = func_obj
-            else:
-                raise DSLRuntimeError(f"Invalid function object for '{name}'", node.get("meta"))
-
-            local_env = {}
-
-            # Bind parametri
-            for param_node, arg_node in zip(params_ast, node["args"]):
-                param_type = param_node["key"]["name"]
-                param_name = param_node["value"]["name"]
-                arg_value, _ = await self.visit(arg_node, env)
-                arg_value = await self._check_type(arg_value, param_type, arg_node.get("meta"), param_name)
-                local_env[param_name] = arg_value
-            
-            # Esegui body
-            result, _ = await self.visit(body_ast, local_env)
-            out = None
-            # Controllo tipo di ritorno
-            ret_node = func_obj[2]
-            for ty in ret_node:
-                pair,env = await self.visit(ty,local_env)
-                tipo,name = pair
-                if name in result:
-                    out = await self._check_type(result[name], tipo, ty.get("meta"))
-                    #print("####",ody_result)
-
-            return out, env
-
-        # Built-in
-        if name not in self.functions:
-            raise DSLRuntimeError(f"Unknown function '{name}'", node.get("meta"))
-
-        fn = self.functions[name]
-
-        args = []
-        current_env = env
-        for a in node["args"]:
-            val, current_env = await self.visit(a, current_env)
-            args.append(val)
-
-        kwargs = {}
-        for k, v in node["kwargs"].items():
-            val, current_env = await self.visit(v, current_env)
-            kwargs[k] = val
-
-        if piped_value is not None:
-            args.insert(0, piped_value)
-
-        result = fn(*args, **kwargs)
-        if inspect.isawaitable(result):
-            result = await result
-
-        return result, current_env
-
+        output = action["outputs"]
+        return output, env
 
     # =========================================================
     # TYPE CHECK

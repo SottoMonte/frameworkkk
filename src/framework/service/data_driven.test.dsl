@@ -6,7 +6,7 @@
 function:somma := (int:c,int:b),{x:c+b},(int:x);
 marco: 10 / 2 + 10 ;
 a:marco + 23;
-#b:print(somma);
+#b:print("ciao  123");
 #int:a := 10;
 #int:b := a + 10;
 
@@ -15,3 +15,11 @@ a:marco + 23;
 int:x := 10000 - 9999;
 
 ziooo:somma(10,-15);
+
+#ok: 20 |> somma(10);
+
+ttt: a |> print;
+
+ggg: print |> print;
+
+ooo: print(10);

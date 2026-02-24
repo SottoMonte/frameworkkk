@@ -90,7 +90,9 @@ async def act(step, context=dict()):
                 ss = scheme.get(gg,x)
                 nn.append(ss)
             else:
-                nn.append(inputs[i])
+                #nn.append(inputs[i])
+                nn.append(x)
+                pass
         inputs = tuple(nn)
 
 
