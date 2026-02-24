@@ -20,6 +20,12 @@ ok: 23 |> somma(10);
 
 ttt: a |> print;
 
-ggg: print |> print;
+ggg: resource |> print;
 
 ooo: print(10);
+
+imports: {
+    'flow':resource("framework/service/flow.py");
+};
+
+tttt: imports.flow.step(print,1,2);

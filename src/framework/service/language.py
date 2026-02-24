@@ -726,7 +726,7 @@ class Interpreter:
         name, meta = node.get("name"), node.get("meta")
         args = args + [(await self.visit(a, env))[0] for a in node.get("args",[])]
         kwargs = {k: (await self.visit(v, env))[0] for k, v in kwargs.items()}
-        function = env[name]
+        function = scheme.get(env,str(name))
         
         if callable(function):
             step = flow.step(function,*args,**kwargs)
