@@ -53,9 +53,7 @@ function:error_function := (str:y),{
     x:y/2;
 },(str:x);
 
-any:catch_error := exports.catch(error_function,print,{inputs:["test"];}) |> print;
-
-any:catch_error := exports.catch(error_function,print,{inputs:["test"];}) |> print;
+scheme:catch_error := exports.catch(print,print,{inputs:["test"];}) |> print;
 
 scheme:foreach_test := exports.serial([1,2,3],print,{inputs:["test"];}) |> print;
 

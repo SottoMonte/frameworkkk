@@ -74,7 +74,7 @@ class tester():
         parser = language.create_parser()
         s = language.parse(ok,parser)
         parsed = await visitor.run(s)
-        print(parsed)
+        print(parsed.get('errors'))
         exit(1)
         # 2. Esecuzione Test Suite (TDD)
         test_suite = ok

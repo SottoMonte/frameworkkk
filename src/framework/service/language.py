@@ -582,17 +582,18 @@ class Interpreter:
     # =========================================================
 
     async def visit_declaration(self, node, env):
-        pair,pass_env = await self.visit(node["target"],env)
+        pair,pass_env = await self.visit(node["target"],dict())
 
         value, env_after = await self.visit(node["value"], env)
+        
         declared_type,name = pair
 
-        value = await self._check_type(
-            value,
-            declared_type,
-            node.get("meta"),
-            name
-        )
+        if declared_type == "type":
+            CUSTOM_TYPES[name] = value
+            #env_after[name] = value
+            declared_type = 'dict'
+
+        value = await self._check_type(value,declared_type,node.get("meta"),name)
 
         return (name,value), env_after
 
@@ -786,19 +787,18 @@ class Interpreter:
         return (params, body_value, return_types), env
 
     async def _check_type(self, value, expected_type, meta=None, var_name=None):
-
-        if expected_type in CUSTOM_TYPES:
-            return await scheme.normalize(value, CUSTOM_TYPES[expected_type])
-
         py_type = TYPE_MAP.get(expected_type)
 
-        if py_type is None:
+        if expected_type in CUSTOM_TYPES and isinstance(value, dict):
+            return await scheme.normalize(value, CUSTOM_TYPES[expected_type])
+        
+        if expected_type not in CUSTOM_TYPES and py_type is None:
             raise DSLRuntimeError(
                 f"Unknown type '{expected_type}'",
                 meta
             )
 
-        if not isinstance(value, py_type):
+        if expected_type in CUSTOM_TYPES or not isinstance(value, py_type):
             raise DSLRuntimeError(
                 f"Type error in '{var_name}': expected {expected_type}, "
                 f"got {type(value).__name__}",
