@@ -15,30 +15,6 @@ class tester():
         self.sessions = dict()
         self.providers = constants.get('providers',[])
 
-    async def discover_tests(self):
-        # Pattern personalizzato per i test
-        import framework.service.load as loader
-        test_dir = './src'
-        test_suite = unittest.TestSuite()
-        
-        # Scorri tutte le sottocartelle e i file
-        for root, dirs, files in os.walk(test_dir):
-            for file in files:
-                if file.endswith('.test.py'):
-                    # Crea il nome del modulo di test per ciascun file trovato
-                    module_path = os.path.join(root, file).replace('./','')
-                    
-                    # Importa il modulo di test dinamicamente via loader
-                    try:
-                        res = await loader.resource(path=module_path)
-                        if res.get('success'):
-                            module = res['data']
-                            # Aggiungi i test dal modulo
-                            test_suite.addTest(unittest.defaultTestLoader.loadTestsFromModule(module))
-                    except Exception as e:
-                        framework_log("ERROR", f"Errore caricamento test {module_path}: {e}", emoji="❌")
-        return test_suite
-
     async def run(self,**constants):
         framework_log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
         import framework.service.load as loader
@@ -48,11 +24,12 @@ class tester():
         for root, dirs, files in os.walk(test_dir):
             for file in files:
                 if file.endswith('.test.dsl'):
+                    print(file)
                     # Crea il nome del modulo di test per ciascun file trovato
-                    module_path = os.path.join(root, "data_driven.test.dsl").replace('./','')
+                    module_path = os.path.join(root, file).replace('./','')
                     
                     # Importa il modulo di test dinamicamente via loader
-                    parser = language.create_parser()
+                    '''parser = language.create_parser()
                     visitor = language.Interpreter(language.DSL_FUNCTIONS)
                     await flow.catch(
                         flow.step(flow.pipeline,
@@ -62,143 +39,9 @@ class tester():
                             flow.step(flow.log,"--->: {inputs}  \n"),
                         ),
                         flow.step(flow.log,"Errore: {errors[0]} "),
-                    )
+                    )'''
+                    print(await self.dsl(path= module_path))
                     exit(1)
-    
-    async def unittest2(self, code: str, **constants):
-        def get_test_methods( suite):
-            test_methods = []
-            for test in suite:
-                if hasattr(test, 'test_'):  # Verifica se è un caso di test
-                    method_name = test._testMethodName
-                    method = getattr(test, method_name, None)
-                    if asyncio.iscoroutinefunction(method):  # Controlla se è una coroutine
-                        test_methods.append((method_name, "async"))
-                    else:
-                        test_methods.append((method_name, "sync"))
-            return test_methods
-        #code = code.replace('unittest.IsolatedAsyncioTestCase','unittest.TestCase')
-        # Crea un modulo Python temporaneo
-        module_name = "__dynamic_test_module__"
-        test_module = types.ModuleType(module_name)
-
-        # Inietta le costanti nel contesto del modulo
-        for key, value in constants.items():
-            setattr(test_module, key, value)
-
-        # Esegue il codice della stringa nel contesto del modulo
-        exec(code, test_module.__dict__)
-
-        # Registra il modulo temporaneamente in sys.modules
-        sys.modules[module_name] = test_module
-
-        # Trova le classi di test definite nel modulo
-        loader = unittest.TestLoader()
-        suite = loader.loadTestsFromModule(test_module)
-
-        # Esegue i test e cattura l'output
-        stream = io.StringIO()
-        #runner = unittest.TextTestRunner(stream=stream, verbosity=2)
-        #result = runner.run(suite)
-        results = unittest.TestResult()
-        for test in suite:
-            #test.run(results)
-            #print(get_test_methods(suite))
-            lol = getattr(test, '_tests', [])
-            for case in lol:
-                print(case())
-            #print(await test())
-
-        # Risultati
-        framework_log("INFO", "Risultati Test Unittest2", emoji="🧪", 
-                      total=results.testsRun, 
-                      errors=len(results.errors), 
-                      failures=len(results.failures))
-
-        # Rimuove il modulo temporaneo
-        del sys.modules[module_name]
-
-        # Stampa o restituisce i risultati
-        print(stream.getvalue())
-        #return result
-        if results.failures or results.errors:
-            return (False,results.testsRun,results.errors,results.failures)
-        else:
-            return (True,results.testsRun,results.errors,results.failures)
-
-
-    async def unittest(self, code: str, **constants):
-        '''module = types.ModuleType("dynamic_module")
-        module.__dict__.update(constants)
-        module.__dict__.update({
-            'unittest': unittest,
-            'asyncio': asyncio,
-        })
-
-        exec(code, module.__dict__)'''
-
-        module = await language.load_module(language,code=code)
-
-        test_classes = [
-            cls for cls in module.__dict__.values()
-            if inspect.isclass(cls) and issubclass(cls, unittest.TestCase)
-        ]
-
-        results = {
-            "testsRun": 0,
-            "errors": [],
-            "failures": [],
-            "successes": [],
-            "setup":None,
-            "teardown":None,
-        }
-
-        for TestClass in test_classes:
-            test_methods = [
-                name for name, func in inspect.getmembers(TestClass, predicate=inspect.isfunction)
-                if name.startswith("test_")
-            ]
-
-            for method_name in test_methods:
-                test_instance = TestClass(method_name)
-                results["testsRun"] += 1
-                test_id = f"{TestClass.__name__}.{method_name}"
-
-                async def run_test():
-                    if hasattr(test_instance, "setUp"):
-                        results["setup"] = test_instance.setUp()
-                    if hasattr(test_instance, "asyncSetUp"):
-                        ok = await test_instance.asyncSetUp()
-                        results["teardown"] = ok
-                        
-
-                    method = getattr(test_instance, method_name)
-                    if inspect.iscoroutinefunction(method):
-                        await method()
-                    else:
-                        method()
-
-                    if hasattr(test_instance, "tearDown"):
-                        test_instance.tearDown()
-                    if hasattr(test_instance, "asyncTearDown"):
-                        await test_instance.asyncTearDown()
-
-                try:
-                    await run_test()
-                    results["successes"].append(test_id)
-                except AssertionError as e:
-                    results["failures"].append((test_id, str(e)))
-                except Exception as e:
-                    results["errors"].append((test_id, str(e)))
-
-        # Determina lo stato complessivo
-        if results["failures"] or results["errors"]:
-            results["state"] = False
-        else:
-            results["state"] = True
-
-        return results
-
 
 
     async def dsl(self, **kwargs):
@@ -206,20 +49,17 @@ class tester():
         Esegue i test definiti in un file DSL o in una struttura dati DSL.
         Supporta la verifica di hash (integrità) e casi di test TDD.
         """
-        from framework.service.load import resource, helper_verify_integrity, helper_get_contract
+        from framework.service.load import resource
         
         path = kwargs.get('path')
         parsed = kwargs.get('data') or kwargs.get('parsed')
+        #path = "src/framework/service/data_driven.test.dsl"
         
-        if path and not parsed:
-            res = await resource(path)
-            if res.get('success'):
-                parsed = res.get('data')
-        
-        if not parsed:
-             return {"success": False, "errors": ["DSL non caricabile o non fornito"]}
+        res = await resource(path)
+        ok = res.get('outputs',path)
+        #print(res)
 
-        # 1. Verifica Integrità (Hash) se possibile
+        '''# 1. Verifica Integrità (Hash) se possibile
         integrity_results = {}
         source_path = parsed.get('source') or (path.replace('.test.dsl', '.py') if path and '.test.dsl' in path else None)
         
@@ -229,10 +69,15 @@ class tester():
                 if contract:
                     integrity_results = await helper_verify_integrity(source_path, contract)
             except Exception as e:
-                framework_log("WARNING", f"Errore verifica integrità per {source_path}: {e}")
-
+                framework_log("WARNING", f"Errore verifica integrità per {source_path}: {e}")'''
+        visitor = language.Interpreter(language.DSL_FUNCTIONS)
+        parser = language.create_parser()
+        s = language.parse(ok,parser)
+        parsed = await visitor.run(s)
+        print(parsed)
+        exit(1)
         # 2. Esecuzione Test Suite (TDD)
-        test_suite = parsed.get('test_suite', [])
+        test_suite = ok
         if isinstance(test_suite, dict): test_suite = [test_suite]
         
         results = {

@@ -569,7 +569,7 @@ class Interpreter:
                 node.get("meta")
             )'''
 
-        return env.get(name,name), env
+        return scheme.get(env,name,name), env
 
     async def visit_typed_var(self, node, env):
         return await self.visit_var(

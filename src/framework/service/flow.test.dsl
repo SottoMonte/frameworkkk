@@ -1,5 +1,5 @@
 imports: {
-    'flow':resource("framework/service/floww.py");
+    'flow':resource("framework/service/flow.py");
 };
 
 exports: {
@@ -53,7 +53,9 @@ function:error_function := (str:y),{
     x:y/2;
 },(str:x);
 
-scheme:catch_error := exports.catch(error_function,print,{inputs:["test"];}) |> print;
+any:catch_error := exports.catch(error_function,print,{inputs:["test"];}) |> print;
+
+any:catch_error := exports.catch(error_function,print,{inputs:["test"];}) |> print;
 
 scheme:foreach_test := exports.serial([1,2,3],print,{inputs:["test"];}) |> print;
 

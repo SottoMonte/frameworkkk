@@ -3,7 +3,7 @@
 #int:entrata := 1000;
 #int:uscita := entrata;
 
-function:somma := (int:c,int:b),{x:c+b},(int:x);
+#function:somma := (int:c,int:b),{x:c+b},(int:x);
 marco: 10 / 2 + 10 ;
 a:marco + 23;
 #b:print("ciao  123");
@@ -14,9 +14,9 @@ a:marco + 23;
 
 int:x := 10000 - 9999;
 
-ziooo:somma(10,-15);
+#ziooo:somma(10,-15);
 
-ok: 23 |> somma(10);
+#ok: 23 |> somma(10);
 
 ttt: a |> print;
 
@@ -28,4 +28,12 @@ imports: {
     'flow':resource("framework/service/flow.py");
 };
 
-tttt: imports.flow.step(print,1,2);
+exports: {
+    'flow':imports.flow;
+};
+
+c:print(exports.test);
+a:print(exports.flow);
+
+
+tttt: exports.flow.step(print,1,2);
