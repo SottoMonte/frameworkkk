@@ -1,6 +1,7 @@
 import uuid
 import asyncio
 import functools
+import traceback
 import inspect
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -26,8 +27,18 @@ def merge_foreach_structure(data):
         data['success'] = new_success
         data['outputs'] = new_outputs
         data['errors'] = new_errors
+        data['kwargs'] = data.get('kwargs', {})
         
     return data
+
+def sss(new,old):
+    if not isinstance(new,dict) or not isinstance(old,dict):
+        return new
+    if all(k in new for k in old):
+        new['outputs'] = old
+        return new
+    else:
+        return merge_foreach_structure(old)
 
 def action(custom_filename: str = __file__, app_context = None, **constants):
     
@@ -76,54 +87,45 @@ def action(custom_filename: str = __file__, app_context = None, **constants):
 
 def step(fn,*args, **kwargs) -> tuple: return (fn,args,kwargs)
 
-
-async def act(step, context=dict()):
-    
-
-    function, inputs, schemes = step
-    nn = []
-    gg = {'@':context}
-    if hasattr(inputs,'__iter__'):
-        for i,x in enumerate(inputs):
-            if isinstance(x,str) and x.startswith('@'):
-                
-                ss = scheme.get(gg,x)
-                nn.append(ss)
-            else:
-                #nn.append(inputs[i])
-                nn.append(x)
-                pass
-        inputs = tuple(nn)
-
-
+async def act(step, context={}):
     start_time = time.perf_counter()
+    if not isinstance(step,tuple):
+        raise Exception("Step must be a tuple",step)
+    
+    function, args, kwargs = step
+    
     try:
         
+        # 3. Esecuzione (Unificata)
         if asyncio.iscoroutinefunction(function):
-            result = await function(*inputs,**schemes|context)
+            result = await function(*args, **kwargs)
         else:
-            result = function(*inputs,**schemes|context)
-        end_time = time.perf_counter()
+            if isinstance(kwargs,list):
+                print(kwargs,"<-----------kwargs")
+                exit()
+            result = function(*args, **kwargs)
 
-        ok = {
-            'action': function.__name__,
-            'success': True,
-            'inputs': inputs,
-            'outputs': result,
-            'errors': [],
-            'time': str(end_time - start_time)
-        }
-        return merge_foreach_structure(ok)
+        status = {"success": True, "outputs": result, "errors": []}
+
     except Exception as e:
-        end_time = time.perf_counter()
-        return {
-            'action': function.__name__,
-            'success': False,
-            'inputs': inputs,
-            'outputs': None,
-            'errors': [str(e)],
-            #'time': str(end_time - start_time)
+        tb = traceback.extract_tb(e.__traceback__)[-1]
+        status = {
+            "success": False,
+            "outputs": None,
+            "errors": [f"{e} (line {tb.lineno}: {tb.line})"],
+            "error_details": {"line": tb.lineno, "code": tb.line, "traceback": traceback.format_exc()}
         }
+
+    # 4. Ritorno unico (Don't Repeat Yourself)
+    res = {
+        'action': getattr(function, "__name__", str(function)),
+        'inputs': args,
+        'kwargs': kwargs,
+        'time': f"{time.perf_counter() - start_time:.8f}",
+        **status
+    }
+    #if status["success"] else res
+    return sss(res,status.get('outputs')) 
 
 from collections import defaultdict
 
@@ -295,14 +297,17 @@ def log(*a,**b):
 @action()
 async def catch(action, catch_act=passs,context=dict()):
     # action = (action, inputs, options) - fn, inputs, options
+    
     n1 = await act(action, context)
+    
     if n1.get('success',False):
         return n1
     
     recovery = await act(catch_act, context|n1)
-    
+
     # Uniamo gli errori precedenti a quelli nuovi (se presenti)
     all_errors = n1.get('errors', []) + recovery.get('errors', [])
+
+    return recovery | {'errors': all_errors}
+
     
-    # Restituiamo il risultato del recovery ma con la lista errori completa
-    return recovery | {'errors': list(set(all_errors))} # set() opzionale per evitare duplicati

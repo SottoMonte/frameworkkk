@@ -1,3 +1,5 @@
+bbb: (1,2,3) |> print;
+
 imports: {
     'flow':resource("framework/service/flow.py");
 };
@@ -53,7 +55,9 @@ function:error_function := (str:y),{
     x:y/2;
 },(str:x);
 
-scheme:catch_error := exports.catch(print,print,{inputs:["test"];}) |> print;
+
+aaa:imports.flow.outputs.catch |> print;
+scheme:catch_error := imports.flow.outputs.catch(error_function,(print,1,{}),{inputs:["test"];}) |> print ;
 
 scheme:foreach_test := exports.serial([1,2,3],print,{inputs:["test"];}) |> print;
 

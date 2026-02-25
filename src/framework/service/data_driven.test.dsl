@@ -1,39 +1,56 @@
-#int:numero:=10;int:zio:="ciao   1";int:cane:=10;
-
-#int:entrata := 1000;
-#int:uscita := entrata;
-
-#function:somma := (int:c,int:b),{x:c+b},(int:x);
-marco: 10 / 2 + 10 ;
-a:marco + 23;
-#b:print("ciao  123");
-#int:a := 10;
-#int:b := a + 10;
-
-#print("ciao  123");
-
-int:x := 10000 - 9999;
-
-#ziooo:somma(10,-15);
-
-#ok: 23 |> somma(10);
-
-ttt: a |> print;
-
-ggg: resource |> print;
-
-ooo: print(10);
-
 imports: {
     'flow':resource("framework/service/flow.py");
 };
 
 exports: {
-    'flow':imports.flow;
+    'assert': imports.flow.assertt;
+    'foreach': imports.flow.foreach;
+    'pass': imports.flow.passs;
+    'catch':  imports.flow.catch;
+    'serial': imports.flow.serial;
+    'parallel': imports.flow.parallel;
+    'retry': imports.flow.retry;
+    'pipeline': imports.flow.pipeline;
+    'sentry': imports.flow.sentry;
+    'switch': imports.flow.switch;
+    'when': imports.flow.when;
+    'timeout': imports.flow.timeout;
 };
 
-c:print(exports.test);
-a:print(exports.flow);
+type:scheme := {
+    "action": {
+        "type": "string";
+        "default": "unknown";
+    };
+    "inputs": {
+        "type": "list";
+        "default": [];
+    };
+    "outputs": {
+        "type": "list";
+        "default": [];
+        "convert": list;
+    };
+    "errors": {
+        "type": "list";
+        "default": [];
+    };
+    "success": {
+        "type": "boolean";
+        "default": false;
+    };
+    "time": {
+        "type": "string";
+        "default": "0";
+    };
+    "worker": {
+        "type": "string";
+        "default": "unknown";
+    };
+};
 
+function:error_function := (str:y),{
+    x:"19";
+},(str:x);
 
-tttt: exports.flow.step(print,1,2);
+scheme:catch_error := imports.flow.outputs.catch((error_function,[10],{}),(print,[1],{})) |> print  ;

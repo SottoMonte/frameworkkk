@@ -53,7 +53,7 @@ class tester():
         
         path = kwargs.get('path')
         parsed = kwargs.get('data') or kwargs.get('parsed')
-        #path = "src/framework/service/data_driven.test.dsl"
+        path = "src/framework/service/data_driven.test.dsl"
         
         res = await resource(path)
         ok = res.get('outputs',path)
@@ -74,7 +74,7 @@ class tester():
         parser = language.create_parser()
         s = language.parse(ok,parser)
         parsed = await visitor.run(s)
-        print(parsed.get('errors'))
+        print("[ERRORI]:",parsed.get('errors'))
         exit(1)
         # 2. Esecuzione Test Suite (TDD)
         test_suite = ok

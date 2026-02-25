@@ -54,12 +54,12 @@ key: value | CNAME | QUALIFIED_CNAME
 ?power: atom
       | atom "^" power -> power
 
-?atom: value
+?atom: tuple|value
      | function_value
      | function_call
      | dictionary
-     | tuple
-     | inline_tuple
+     #| tuple
+     #| inline_tuple
      | list
      | "(" expr ")"
      | CNAME -> identifier
@@ -719,8 +719,6 @@ class Interpreter:
             tipo,name = pair
             if name in result:
                 out = await self._check_type(result[name], tipo, ty.get("meta"))
-                #print("####",ody_result)
-
         return out   
 
     async def visit_call(self, node, env, args=[], kwargs={}):
@@ -738,8 +736,9 @@ class Interpreter:
             raise DSLRuntimeError(f"Unknown function '{name}'", meta)
 
         action = await flow.act(step)
-
+        #print("####1",action)
         output = action["outputs"]
+        #print("####2",output)
         return output, env
 
     # =========================================================
@@ -790,7 +789,9 @@ class Interpreter:
         py_type = TYPE_MAP.get(expected_type)
 
         if expected_type in CUSTOM_TYPES and isinstance(value, dict):
-            return await scheme.normalize(value, CUSTOM_TYPES[expected_type])
+            #print("BOOOM",value)
+            #return await scheme.normalize(value, CUSTOM_TYPES[expected_type])
+            return value
         
         if expected_type not in CUSTOM_TYPES and py_type is None:
             raise DSLRuntimeError(
