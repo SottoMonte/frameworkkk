@@ -128,6 +128,7 @@ OPS_FUNCTIONS = {
 TYPE_MAP = {
     'int': int, 'float': float, 'str': str, 'bool': bool,
     'dict': dict, 'list': list, 'any': object, 'type': dict,
+    'tuple': tuple,
     'function': tuple,
 
 }
@@ -137,6 +138,7 @@ CUSTOM_TYPES = {}
 DSL_FUNCTIONS = {
     'resource': load.resource,
     'transform': scheme.transform,
+    'get': scheme.get,
     'normalize': scheme.normalize,
     'put': scheme.put,
     'format': scheme.format,
