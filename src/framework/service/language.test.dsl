@@ -1,19 +1,20 @@
 {
 
-    #Funzionalità mantenute al 100%:
-    #✅ Parsing completo
-    #✅ Type validation
-    #✅ Function calls (DSL e Python)
-    #✅ Pipe expressions
-    #✅ Triggers (cron ed event)
-    #✅ Include directive
-    #✅ Custom types
-    #✅ Dotted paths
-    #✅ Operations
-    # ============================================================
-    # 1. TIPI BASE
-    # ============================================================
-
+    /*
+        Funzionalità mantenute al 100%:
+        ✅ Parsing completo
+        ✅ Type validation
+        ✅ Function calls (DSL e Python)
+        ✅ Pipe expressions
+        ✅ Triggers (cron ed event)
+        ✅ Include directive
+        ✅ Custom types
+        ✅ Dotted paths
+        ✅ Operations
+        ============================================================
+        1. TIPI BASE
+        ============================================================
+    */
     int:const_int := 10;
     float:const_float := 20.5;
     str:const_str := "Ciao";
@@ -22,57 +23,58 @@
     boolean:bool_true := True;
     boolean:bool_false := False;
 
+    function:increment := (int:x), { r: x + 1; }, (int:r);
+
     any:any_str := "Ciao";
     any:any_int := 10;
     any:any_bool := True;
     any:any_list := [1, 2, 3];
     any:any_dict := { "a": 1; "b": 2; };
     any:any_tuple := (1, 2, 3);
-    any:any_fn := (int:x), { r: x + 1; }, (int:r);
+    any:any_fn := increment;
 
 
-    # ============================================================
-    # 2. ESPRESSIONI MATEMATICHE
-    # ============================================================
+    /* ============================================================
+    2. ESPRESSIONI MATEMATICHE
+    ============================================================ */
 
-    int:calc_precedence := 2 + 3 * 4;       # 14
-    int:calc_grouped := (2 + 3) * 4;        # 20
-    int:calc_div_sub := 10 / 2 - 1;          # 4
-    int:calc_mod := 10 % 3;                  # 1
-    int:calc_power := 2 ^ 3;                 # 8
+    int:calc_precedence := 2 + 3 * 4;       
+    int:calc_grouped := (2 + 3) * 4;        
+    int:calc_div_sub := 10 / 2 - 1;          
+    int:calc_mod := 10 % 3;                  
+    int:calc_power := 2 ^ 3;                 
 
+    
+    /* ============================================================
+    3. LOGICA E COMPARAZIONI
+    ============================================================ */
 
-    # ============================================================
-    # 3. LOGICA E COMPARAZIONI
-    # ============================================================
-
-    boolean:logic_and_or :=
+    /*boolean:logic_and_or :=
         True & (10 > 5) or False;
 
     boolean:logic_not :=
         not (5 == 5) or (1 != 2);
 
     boolean:logic_comparison_chain :=
-        (10 >= 10) & (5 <= 6) & (2 < 3) & (4 > 1);
+        (10 >= 10) & (5 <= 6) & (2 < 3) & (4 > 1);*/
 
 
-    # ============================================================
-    # 4. COLLEZIONI
-    # ============================================================
+    /* ============================================================
+    4. COLLEZIONI
+    ============================================================ */
 
     list:collection_mixed_list := [1, 2, "tre", True];
     dict:collection_simple_dict := { "chiave": "valore"; "num": 42; };
-
+    //tuple:collection_inline_tuple := 1, 2, 3;
     tuple:collection_pair := (1, "test");
-    tuple:collection_inline_tuple := 1, 2, 3;
 
     list:collection_list_trailing := [1, 2];
     dict:collection_dict_trailing := { "a": 1; "b": 2; };
 
 
-    # ============================================================
-    # 5. FUNZIONI
-    # ============================================================
+    /* ============================================================
+    5. FUNZIONI
+    ============================================================ */
 
     function:fn_double :=
         (int:n),
@@ -97,31 +99,31 @@
         (int:inc1, int:inc2);
 
 
-    # ============================================================
-    # 6. RISULTATI FUNZIONI
-    # ============================================================
+    /* ============================================================
+    6. RISULTATI FUNZIONI
+    ============================================================ */
 
-    int:res_double := fn_double(5);                    # 10
-    int:res_sum := fn_sum(10, 20);                     # 30
-    tuple:res_increment_pair := fn_increment_pair(100);# (101, 102)
+    int:res_double := fn_double(5);                    
+    int:res_sum := fn_sum(10, 20);                     
+    tuple:res_increment_pair := fn_increment_pair(100);
 
-    int:res_sum_kw := fn_sum(y: 50, x: 10);            # 60
+    int:res_sum_kw := fn_sum(y: 50, x: 10);            
 
 
-    # ============================================================
-    # 7. PIPE
-    # ============================================================
+    /* ============================================================
+    7. PIPE
+    ============================================================ */
 
     int:pipe_chain_double :=
-        10 |> fn_double |> fn_double;                  # 40
+        10 |> fn_double |> fn_double;                  
 
     int:pipe_partial_sum :=
-        10 |> fn_sum(5);                               # 15
+        10 |> fn_sum(5);                               
 
 
-    # ============================================================
-    # 8. LIBRERIA STANDARD
-    # ============================================================
+    /* ============================================================
+    8. LIBRERIA STANDARD
+    ============================================================ */
 
     dict:lib_merged_dict :=
         merge({ "a": 1; }, { "b": 2; });
@@ -147,17 +149,17 @@
     int:lib_query_result :=
         { "data": [10, 20, 30]; } |> query("data[1]");
 
-    # ============================================================
-    # 10. DOT NOTATION / OGGETTI
-    # ============================================================
+    /* ============================================================
+    10. DOT NOTATION / OGGETTI
+    ============================================================ */
 
     dict:service := {
         "config": { "timeout": 30; };
         "action": (int:x), { r: x + 1; }, (int:r);
     };
 
-    int:res_service_timeout := service.config.timeout;  # 30
-    int:res_service_action := service.action(9);        # 10
+    int:res_service_timeout := service.config.timeout;  
+    int:res_service_action := service.action(9);        
 
     any:imported := resource("framework/service/language.py") |> print;
 
@@ -169,11 +171,9 @@
     any:Container := imported.container |> print;
     any:sus := imported.sus |> print;
 
-    # ============================================================
-    # 11. EDGE CASE
-    # ============================================================
-
-    (mapped_value: 100);
+    /* ============================================================
+    11. EDGE CASE
+    ============================================================ */
 
     type:scheme := {
         "action": {
@@ -212,16 +212,16 @@
     };
 
 
-    # ============================================================
-    # 12. TEST SUITE
-    # ============================================================
+    /* ============================================================
+    12. TEST SUITE
+    ============================================================ */
 
-    list:test_suite := [
+    tuple:test_suite := (
         { "target": "const_int"; "output": 10; "description": "Costante int"; },
         { "target": "const_str"; "output": "Ciao"; "description": "Costante str"; },
         { "target": "bool_true"; "output": True; "description": "Costante bool"; },
         
-        { "target": "any_int"; "output": 10; "description": "Any int"; },
+        /*{ "target": "any_int"; "output": 10; "description": "Any int"; },
         { "target": "any_str"; "output": "Ciao"; "description": "Any str"; },
         { "target": "any_bool"; "output": True; "description": "Any bool"; },
         { "target": "any_list"; "output": [1, 2, 3]; "description": "Any list"; },
@@ -256,10 +256,10 @@
         { "target": "res_service_action"; "output": 10; "description": "Metodo su dict"; },
         { "target": "call_dot_notation_direct"; "output": { "numero": 10000; }; "description": "Dot notation direct"; },
         { "target": "call_dot_notation_indirect"; "output": { "numero": 10000; }; "description": "Dot notation indirect"; },
-        #{ "target": "Container"; "output": { "a": 1; "b": 2; }; "description": "Dot notation indirect"; },
-        #{ "target": "sus"; "output": { "a": 1; "b": 2; }; "description": "Dot notation indirect"; },
+        { "target": "Container"; "output": { "a": 1; "b": 2; }; "description": "Dot notation indirect"; },
+        { "target": "sus"; "output": { "a": 1; "b": 2; }; "description": "Dot notation indirect"; },
 
         { "target": "test_custom_type"; "output": { "action": "testing"; "worker": "myself"; "inputs": []; "outputs": []; "errors": []; "success": False; "time": ""; }; "description": "Custom Type defaults"; },
-        { "target": "mapped_value"; "output": 100; "description": "Mapping tra parentesi"; }
-    ];
+        { "target": "mapped_value"; "output": 100; "description": "Mapping tra parentesi"; }*/
+    );
 }

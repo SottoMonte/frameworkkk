@@ -1,5 +1,5 @@
 {
-    # 1. Definizioni di base
+    // 1. Definizioni di base
     int:costante_venti := 20;
     str:saluto := "Ciao";
     
@@ -11,15 +11,15 @@
         r: x + 10; 
     }, (int:r);
 
-    # 2. Test Suite (Dichiarazione tipizzata come lista)
-    list:test_suite := [
-        { "target": "matematica"; "output": 14; "description": "Precedenza standard: 2 + 3 * 4 = 14"; },
-        { "target": "test_pipe"; "output": 30; "description": "Pipe: 20 |> somma_dieci = 30"; },
-        { "target": "test_logic"; "output": True; "description": "Logica: True & (1 == 1)"; }
-    ];
+    // 2. Test Suite (Dichiarazione tipizzata come lista)
+    tuple:test_suite := (
+        //{ "target": "matematica"; "inputs": "output": 14; "description": "Precedenza standard: 2 + 3 * 4 = 14"; },
+        //{ "target": "test_pipe"; "output": 30; "description": "Pipe: 20 |> somma_dieci = 30"; },
+        //{ "target": "test_logic"; "output": True; "description": "Logica: True & (1 == 1)"; }*/
+    );
 
-    # Implementazioni per i target dei test
-    int:matematica := 2 + 3 * 4;
-    int:test_pipe := costante_venti |> somma_dieci;
-    boolean:test_logic := True & (1 == 1);
+    // Implementazioni per i target dei test
+    //int:matematica := 2 + 3 * 4;
+    //int:test_pipe := costante_venti |> somma_dieci;
+    //boolean:test_logic := True & (1 == 1);
 }

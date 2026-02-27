@@ -27,7 +27,7 @@ start: dictionary
 
 dictionary: "{" item* "}" | item*
 item: pair ";"? | declaration ";"?
-declaration: pair ":=" expr
+declaration: pair ":=" expr 
 
 pair: key ":" expr
 
@@ -144,17 +144,12 @@ DSL_FUNCTIONS = {
     'put': scheme.put,
     'format': scheme.format,
     'foreach': flow.foreach,
-    #'batch': flow.batch,
-    #'parallel': flow.batch,
-    #'race': flow.race,
-    #'timeout': flow.timeout,
-    #'throttle': flow.throttle,
     'retry': flow.retry,
-    #'fallback': flow.fallback,
+    'convert': scheme.convert,
     'keys': lambda d: list(d.keys()) if isinstance(d, dict) else [],
     'values': lambda d: list(d.values()) if isinstance(d, dict) else [],
     'print': lambda *inputs: (print(*inputs), inputs)[1],
-}
+}|TYPE_MAP
 
 
 # ============================================================================

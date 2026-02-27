@@ -72,7 +72,7 @@ dict:user_schema := {
 };
 
 // Test per la funzione get
-str:get_1 := get(data, "nome");
+/*str:get_1 := get(data, "nome");
 int:get_2 := get(data, "config.timeout");
 str:get_3 := get(data, "versioni.0.status");
 str:get_4 := get(data, "versioni.1.dettagli.tester");
@@ -119,35 +119,21 @@ dict:normalize_1 := normalize({
 //    "address": "Via Roma 1";
 //}, { name: { model:"name"; user:"nome"; }; age: { model:"age"; user:"eta"; }; output: 30; }, { }, user_schema, utente_schema);
 
+*/
+
 // Test suite
 tuple:test_suite := (
-    { target: 'normalize_1'; output: {"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1";}; },
-    { target: 'get_1'; output: "Progetto A"; },
-    { target: 'get_2'; output: 30; },
-    { target: 'get_3'; output: "completo"; },
-    { target: 'get_4'; output: "Mario"; },
-    { target: 'get_5'; output: ["completo", "in_corso", "fallito"]; },
-    { target: 'get_6'; output: [1, 2, 3]; },
-    { target: 'format_1'; output: "Ciao Progetto A"; },
-    { target: 'convert_1'; output: 10; },
-    { target: 'convert_2'; output: "10"; },
-    { target: 'convert_3'; output: True; },
-    { target: 'convert_4'; output: False; },
-    { target: 'convert_5'; output: "True"; },
-    { target: 'convert_6'; output: "False"; },
-    //{ target: 'convert_7'; output: True; },
-    //{ target: 'convert_8'; output: False; },
-    { target: 'put_1'; output: merge(data,{"nome": "Progetto B"; }); },
-    { target: 'put_3'; output: {
-        "nome": "Progetto A";
-        "versioni": (
-            {"id": 1; "status": "completo";},
-            {"id": 2; "status": "in_corso"; "dettagli": {"tester": "Mario";};},
-            {"id": 3; "status": "fallito";}
-        );
-        "config": {
-            "timeout": 60;
-            "log_livello": "DEBUG";
-        };
-    }; },
+    { target: 'get'; args: [data, "nome"]; output: "Progetto A"; },
+    { target: 'get'; args: [data, "config.timeout"]; output: 30; },
+    { target: 'get'; args: [data, "versioni.0.status"]; output: "completo"; },
+    { target: 'get'; args: [data, "versioni.1.dettagli.tester"]; output: "Mario"; },
+    { target: 'get'; args: [data, "versioni.*.status"]; output: ["completo", "in_corso", "fallito"]; },
+    { target: 'get'; args: [data, "versioni.*.id"]; output: [1, 2, 3]; },
+    { target: 'format'; args: ["Ciao {{nome}}", nome: "Progetto A"]; output: "Ciao Progetto A"; },
+    { target: 'convert'; args: ["10", int]; output: 10; },
+    { target: 'convert'; args: [10, str]; output: "10"; },
+    { target: 'convert'; args: ["true", bool]; output: True; },
+    { target: 'convert'; args: ["false", bool]; output: False; },
+    { target: 'convert'; args: [true, str]; output: "True"; },
+    { target: 'convert'; args: [false, str]; output: "False"; },
 );

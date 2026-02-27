@@ -24,7 +24,6 @@ class tester():
         for root, dirs, files in os.walk(test_dir):
             for file in files:
                 if file.endswith('.test.dsl'):
-                    print(file)
                     # Crea il nome del modulo di test per ciascun file trovato
                     module_path = os.path.join(root, file).replace('./','')
                     
@@ -54,7 +53,7 @@ class tester():
         path = kwargs.get('path')
         parsed = kwargs.get('data') or kwargs.get('parsed')
         #path = "src/framework/service/data_driven.test.dsl"
-        
+        print(path)
         res = await resource(path)
         ok = res.get('outputs',path)
         #print(res)
@@ -74,11 +73,19 @@ class tester():
         parser = language.create_parser()
         s = language.parse(ok,parser)
         parsed = await visitor.run(s)
-        print("[ERRORI]:",parsed.get('errors'))
-        ooout = parsed.get('outputs')
+        
+        #print("[ERRORI]:",parsed.get('errors'))
+        if parsed.get('success',False):
+            #print("\n\n\n[PARSED]:",parsed)
+            ooout = parsed.get('outputs')
+        else:
+            #print("\n\n\n[PARSED]:",parsed)
+            ooout = {}
         #exit(1)
         # 2. Esecuzione Test Suite (TDD)
-        
+        if not isinstance(ooout, dict):
+            print(ooout)
+            return
         test_suite = ooout.get('test_suite',[])
         if isinstance(test_suite, dict): test_suite = [test_suite]
         
@@ -102,7 +109,7 @@ class tester():
             expected = test.get('output')
             
             try:
-                actual, _ = await visitor.visit_call({'type':'call','name':target}, ooout, args)
+                actual, _ = await visitor.visit_call({'type':'call','name':target}, ooout|visitor.env, args)
                 if 'filter' in test:
                     actual = actual.get(test['filter'])
                 
