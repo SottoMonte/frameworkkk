@@ -153,9 +153,11 @@ def aggregate_results(dict_list):
 async def foreach(data, step, context=dict()):
     outputs = []
     errors = []
+    function, args, kwargs = step
 
     for item in data:
-        result = await act(step, context | {'inputs': (item,)})
+        item_step = (function, [item]+list(args), kwargs)
+        result = await act(item_step, context)
         outputs.append(result.get('outputs'))
         errors.extend(result.get('errors', []))
 
@@ -219,15 +221,19 @@ async def switch(cases: dict, context=None):
     Seleziona ed esegue uno step tra molti in base al risultato di condition_fn.
     cases = {'valore1': step1, 'valore2': step2, 'default': step_default}
     """
-
+    default = None
     for case in cases:
         if case.lower() == 'true':
+            default = cases[case]
             continue
         pas = await when(case, cases[case], context)
+
         if pas.get('success', False):
             return pas
     
-    return await when('true', cases['true'], context)
+    ok = await when('1==1', default, context)
+
+    return ok
 
 # ------------ Sequenza ------------
 
@@ -292,14 +298,6 @@ async def timeout(action, seconds: float, context=None):
             'errors': [f"Action timed out after {seconds}s"],
             'outputs': None
         }
-
-@action()
-def log(*a,**b):
-    a = "".join(a)
-    c = a.format(**b)
-    print(c)
-    return c
-
 
 @action()
 async def catch(action, catch_act=passs,context=dict()):

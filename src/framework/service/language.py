@@ -152,7 +152,7 @@ DSL_FUNCTIONS = {
     #'fallback': flow.fallback,
     'keys': lambda d: list(d.keys()) if isinstance(d, dict) else [],
     'values': lambda d: list(d.values()) if isinstance(d, dict) else [],
-    'print': lambda d: (print(d), d)[1],
+    'print': lambda *inputs: (print(*inputs), inputs)[1],
 }
 
 

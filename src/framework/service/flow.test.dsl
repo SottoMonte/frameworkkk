@@ -53,13 +53,19 @@ function:error_function := (str:y),{
     x:y/2;
 },(str:x);
 
+tuple:token_print := (123);
+
 tuple:test_suite := (
-    { "target": "exports.catch"; "inputs":((error_function,[10],{}),(print,[123],{})); "filter":"outputs"; "output": 123; "description": "Pass flow"; },
+    { "target": "exports.switch"; "inputs":({"True":(print,["ciao"],{});"1!=1":(print,[123],{})}); "filter":"outputs"; "output": ("ciao"); "description": "Pass flow"; },
+    { "target": "exports.switch"; "inputs":({"True":(print,["ciao"],{});"1==1":(print,[123],{})}); "filter":"outputs"; "output": token_print; "description": "Pass flow"; },
+    { "target": "exports.foreach"; "inputs":([1,2],(print,[3],{})); "filter":"outputs"; "output": [(1, 3), (2, 3)]; "description": "Pass flow"; },
+    { "target": "exports.foreach"; "inputs":((1,2),(print,(3),{})); "filter":"outputs"; "output": [(1, 3), (2, 3)]; "description": "Pass flow"; },
+    { "target": "exports.catch"; "inputs":((error_function,[10],{}),(print,[123],{})); "filter":"outputs"; "output": token_print; "description": "Pass flow"; },
     { "target": "exports.pass"; "inputs":(10); "filter":"outputs"; "output": 10;  },
     { "target": "exports.sentry"; "inputs":("1 == 1"); "filter":"success"; "output": true; "description": "Pass flow"; },
     { "target": "exports.sentry"; "inputs":("1 != 1"); "filter":"success"; "output": false; "description": "Pass flow"; },
     { "target": "exports.when"; "inputs":("1 != 1",(print,[123],{}),{inputs:["test"]}); "filter":"success"; "output": false; "description": "Pass flow"; },
-    { "target": "exports.when"; "inputs":("1 == 1",(print,[123],{}),{inputs:["test"]}); "filter":"outputs"; "output": 123; "description": "Pass flow"; },
+    { "target": "exports.when"; "inputs":("1 == 1",(print,[123],{}),{inputs:["test"]}); "filter":"outputs"; "output": token_print; "description": "Pass flow"; },
     { "target": "exports.assert"; "inputs":("10 >= 50"); "filter":"success"; "output": false;  },
     { "target": "exports.assert"; "inputs":("10 <= 50"); "filter":"success"; "output": true;  },
     { "target": "exports.pass"; "inputs":(10); "filter":"outputs"; "output": 10;  },
