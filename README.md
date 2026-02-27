@@ -172,7 +172,7 @@ SottoMonte prevede l'uso di TypeScript per lo sviluppo del frontend, sfruttando 
 4. **Avvia l'applicazione**:
 
    ```bash
-   python3 public/app.py
+   python3 public/main.py
    ```
 
 ## 📁 Struttura del Progetto

@@ -90,22 +90,22 @@ class tester():
             "details": [],
             "integrity": {}
         }
-        #print("##########",test_suite)
+
+        # Esecuzione della test suite definita
+        tested_targets = set()
         for test in test_suite:
             if not isinstance(test, dict): continue
             results["total"] += 1
             target = test.get('target')
+            tested_targets.add(target)
             args = test.get('inputs', ())
-            #if not isinstance(args, (list, tuple)):
-            #    args = (args,)
-            
             expected = test.get('output')
             
             try:
-                actual, _ = await visitor.visit_call({'type':'call','name':target},ooout, args)
+                actual, _ = await visitor.visit_call({'type':'call','name':target}, ooout, args)
                 if 'filter' in test:
                     actual = actual.get(test['filter'])
-                #actual = actual.get('outputs')
+                
                 if actual == expected:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
@@ -120,11 +120,23 @@ class tester():
                     })
                     framework_log("WARNING", f"Test {target}: FAIL", expected=expected, actual=actual, emoji="❌")
             except Exception as e:
-                #raise e
                 results["failed"] += 1
                 results["errors"].append({"target": target, "error": str(e)})
                 results["details"].append({"target": target, "status": "ERROR", "message": str(e)})
                 framework_log("ERROR", f"Test {target}: ERROR", error=str(e), emoji="⚠️")
+
+        # 3. Verifica Copertura (Exports)
+        exports = ooout.get('exports', {})
+        if isinstance(exports, dict):
+            for export_name in exports.keys():
+                target_to_find = f"exports.{export_name}"
+                if target_to_find not in tested_targets:
+                    msg = f"Manca almeno un test per l'elemento esportato: {export_name}"
+                    results["total"] += 1
+                    results["failed"] += 1
+                    results["errors"].append({"target": target_to_find, "error": msg})
+                    results["details"].append({"target": target_to_find, "status": "FAIL", "message": msg})
+                    framework_log("ERROR", msg, emoji="⚠️")
 
         framework_log("INFO", f"DSL Test {path or 'Inline'}: {'PASSED' if results['failed'] == 0 else 'FAILED'}", 
                       total=results["total"], passed=results["passed"], failed=results["failed"])
