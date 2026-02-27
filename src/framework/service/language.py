@@ -725,7 +725,7 @@ class Interpreter:
 
     async def visit_call(self, node, env, args=[], kwargs={}):
         name, meta = node.get("name"), node.get("meta")
-        args = args + [(await self.visit(a, env))[0] for a in node.get("args",[])]
+        args = list(args) + [(await self.visit(a, env))[0] for a in node.get("args",[])]
         kwargs = {k: (await self.visit(v, env))[0] for k, v in kwargs.items()}
         function = scheme.get(env,str(name))
         

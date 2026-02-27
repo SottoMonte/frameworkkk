@@ -75,9 +75,11 @@ class tester():
         s = language.parse(ok,parser)
         parsed = await visitor.run(s)
         print("[ERRORI]:",parsed.get('errors'))
+        ooout = parsed.get('outputs')
         #exit(1)
         # 2. Esecuzione Test Suite (TDD)
-        test_suite = ok
+        
+        test_suite = ooout.get('test_suite',[])
         if isinstance(test_suite, dict): test_suite = [test_suite]
         
         results = {
@@ -88,28 +90,20 @@ class tester():
             "details": [],
             "integrity": {}
         }
-        
-        visitor = language.Interpreter(language.DSL_FUNCTIONS)
-        #parsed = await visitor.run(s)
-        await visitor.run(parsed)
-
+        #print("##########",test_suite)
         for test in test_suite:
             if not isinstance(test, dict): continue
             results["total"] += 1
             target = test.get('target')
-            args = test.get('input_args', ())
-            if not isinstance(args, (list, tuple)):
-                args = (args,)
+            args = test.get('inputs', ())
+            #if not isinstance(args, (list, tuple)):
+            #    args = (args,)
             
-            expected = test.get('expected_output')
+            expected = test.get('output')
             
             try:
-                target_def = parsed.get(target)
-                if isinstance(target_def, tuple) and len(target_def) == 3:
-                    actual = await visitor.execute_dsl_function(target_def, args)
-                else: 
-                    actual = await visitor.visit(target_def)
-                
+                actual, _ = await visitor.visit_call({'type':'call','name':target},ooout, args)
+                actual = actual.get('outputs')
                 if actual == expected:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
@@ -122,6 +116,7 @@ class tester():
                         "actual": actual
                     })
             except Exception as e:
+                #raise e
                 results["failed"] += 1
                 results["errors"].append({"target": target, "error": str(e)})
                 results["details"].append({"target": target, "status": "ERROR", "message": str(e)})

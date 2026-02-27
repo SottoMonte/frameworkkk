@@ -53,7 +53,7 @@ function:error_function := (str:y),{
     x:y/2;
 },(str:x);
 
-scheme:catch_error := exports.catch((error_function,[10],{}),(print,[123],{})) |> print;
+scheme:catch_error := exports.catch((error_function,[10],{}),(print,[123],{}));
 
 #scheme:foreach_test := exports.serial([1,2,3],print,{inputs:["test"];}) |> print;
 
@@ -76,7 +76,9 @@ scheme:catch_error := exports.catch((error_function,[10],{}),(print,[123],{})) |
 any:pass_test := exports.pass(10);
 
 tuple:test_suite := (
-    { "target": "pass_test"; "output": pass_test |> put("outputs",10); "description": "Pass flow"; },
+    { "target": "exports.catch"; "inputs":((error_function,[10],{}),(print,[123],{}));"output": 123; "description": "Pass flow"; },
+    #{ "target": "catch_error"; "output": 10; "description": "Pass flow"; },
+    #{ "target": "pass_test"; "output": pass_test |> put("outputs",10); "description": "Pass flow"; },
     #{ "target": "when_test_success"; "output": when_test_success |> put("outputs",["test"]); "description": "Match flow"; },
     #{ "target": "when_test_failure"; "output": when_test_failure |> put("outputs",[]); "description": "Match flow"; },
     #{ "target": "test_assert_failure"; "output": test_assert_failure |> put("outputs",[]); "description": "Match flow"; },
