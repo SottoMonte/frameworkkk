@@ -185,6 +185,7 @@ async def parallel(*acts, **options):
 
 # ------------ Decisione ------------
 
+@action()
 async def assertt(condition, context=dict()):
     if not eval(condition, context):
         raise AssertionError(f"Assertion failed: {condition}")
@@ -193,7 +194,13 @@ async def assertt(condition, context=dict()):
 @action()
 async def sentry(condition, context=dict()):
     if not eval(condition,context):
-        raise Exception(f"Condition not met: {condition}")
+        #raise Exception(f"Condition not met: {condition}")
+        return {
+            'success': False,
+            'inputs': condition,
+            'outputs': condition,
+            'errors': [f"Condition not met: {condition}"],
+        }
     else:
         return condition
 

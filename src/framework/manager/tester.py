@@ -103,7 +103,9 @@ class tester():
             
             try:
                 actual, _ = await visitor.visit_call({'type':'call','name':target},ooout, args)
-                actual = actual.get('outputs')
+                if 'filter' in test:
+                    actual = actual.get(test['filter'])
+                #actual = actual.get('outputs')
                 if actual == expected:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
