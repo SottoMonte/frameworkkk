@@ -109,6 +109,7 @@ class tester():
                 if actual == expected:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
+                    framework_log("INFO", f"Test {target}: OK", emoji="✅")
                 else:
                     results["failed"] += 1
                     results["details"].append({
@@ -117,11 +118,13 @@ class tester():
                         "expected": expected, 
                         "actual": actual
                     })
+                    framework_log("WARNING", f"Test {target}: FAIL", expected=expected, actual=actual, emoji="❌")
             except Exception as e:
                 #raise e
                 results["failed"] += 1
                 results["errors"].append({"target": target, "error": str(e)})
                 results["details"].append({"target": target, "status": "ERROR", "message": str(e)})
+                framework_log("ERROR", f"Test {target}: ERROR", error=str(e), emoji="⚠️")
 
         framework_log("INFO", f"DSL Test {path or 'Inline'}: {'PASSED' if results['failed'] == 0 else 'FAILED'}", 
                       total=results["total"], passed=results["passed"], failed=results["failed"])
