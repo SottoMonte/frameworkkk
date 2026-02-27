@@ -40,8 +40,8 @@ class tester():
                         ),
                         flow.step(flow.log,"Errore: {errors[0]} "),
                     )'''
-                    print(await self.dsl(path= module_path))
-                    exit(1)
+                    await self.dsl(path= module_path)
+                    #exit(1)
 
 
     async def dsl(self, **kwargs):

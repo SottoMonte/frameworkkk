@@ -89,7 +89,8 @@ PIPE: "|>"
 COMPARISON_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
 ARITHMETIC_OP: "+" | "-" | "*" | "/" | "%"
 QUALIFIED_CNAME: CNAME ("." CNAME)+
-COMMENT: /#[^\n]*/
+COMMENT: /\/\/[^\n]*/ | /\/\*[\s\S]*?\*\//
+
 
 %import common.SIGNED_NUMBER
 %import common.ESCAPED_STRING

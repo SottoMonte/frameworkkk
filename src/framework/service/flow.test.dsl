@@ -56,7 +56,14 @@ function:error_function := (str:y),{
 tuple:token_print := (123);
 
 tuple:test_suite := (
-    { "target": "exports.pipeline"; "inputs":((print,["ciao"],{}),(print,[1],{})); "filter":"outputs"; "output": ("ciao"); "description": "Pass flow"; },
+    {
+        "target": "exports.serial";
+        "inputs":((print,[1],{}),(print,[2],{}));
+        "filter":"outputs"; "output": [(1), (2)];
+        "description": "Pass flow";
+    },
+    { "target": "exports.parallel"; "inputs":((print,[1],{}),(print,[2],{})); "filter":"outputs"; "output": [(1), (2)]; "description": "Pass flow"; },
+    { "target": "exports.pipeline"; "inputs":((print,["ciao"],{}),(print,[1],{})); "filter":"outputs"; "output": ["ciao",1]; "description": "Pass flow"; },
     { "target": "exports.switch"; "inputs":({"True":(print,["ciao"],{});"1!=1":(print,[123],{})}); "filter":"outputs"; "output": ("ciao"); "description": "Pass flow"; },
     { "target": "exports.switch"; "inputs":({"True":(print,["ciao"],{});"1==1":(print,[123],{})}); "filter":"outputs"; "output": token_print; "description": "Pass flow"; },
     { "target": "exports.foreach"; "inputs":([1,2],(print,[3],{})); "filter":"outputs"; "output": [(1, 3), (2, 3)]; "description": "Pass flow"; },

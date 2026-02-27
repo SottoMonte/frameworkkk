@@ -168,21 +168,17 @@ async def foreach(data, step, context=dict()):
     }
 
 @action()
-async def serial(data, action,context=dict()):
+async def serial(*steps,context=dict()):
     outputs = []
-    for item in data:
-        output = await act(action, context|{'inputs': (item,)})
+    for step in steps:
+        output = await act(step, context)
         outputs.append(output)
     return aggregate_results(outputs)
 
 @action()
-async def parallel(*acts, **options):
-    context = options.get('context',dict())
-    # Avvia tutte le coroutine insieme
-    tasks = [act(action, context) for action in acts]
+async def parallel(*steps, context=dict()):
+    tasks = [act(step, context) for step in steps]
     results = await asyncio.gather(*tasks)
-    
-    # Usi la tua funzione aggregate_results per unire tutto
     return aggregate_results(results)
 
 # ------------ Decisione ------------
@@ -286,11 +282,10 @@ async def retry(action, *,retries=3, delay=1, context=dict()):
     return last_result
 
 @action()
-async def timeout(action, seconds: float, context=None):
-    ctx = context if context is not None else {}
+async def timeout(action, seconds: float, context=dict()):
     try:
         # Avviamo l'azione con un limite di tempo
-        return await asyncio.wait_for(act(action, ctx), timeout=seconds)
+        return await asyncio.wait_for(act(action, context), timeout=seconds)
     except asyncio.TimeoutError:
         return {
             'action': 'timeout',
