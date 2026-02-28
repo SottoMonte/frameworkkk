@@ -1,3 +1,12 @@
+exports: {
+    "get": get;
+    "format": format;
+    "convert": convert;
+    "put": put;
+    "normalize": normalize;
+    "transform": transform;
+};
+
 data: {
     "nome": "Progetto A";
     "versioni": (
@@ -71,44 +80,7 @@ dict:user_schema := {
   };
 };
 
-// Test per la funzione get
-/*str:get_1 := get(data, "nome");
-int:get_2 := get(data, "config.timeout");
-str:get_3 := get(data, "versioni.0.status");
-str:get_4 := get(data, "versioni.1.dettagli.tester");
-list:get_5 := get(data, "versioni.*.status");
-list:get_6 := get(data, "versioni.*.id");
-
-// Test per la funzione format
-str:format_1 := format("Ciao {{nome}}", nome: "Progetto A");
-
-// Convert
-int:convert_1 := convert("10", int);
-str:convert_2 := convert(10, str);
-bool:convert_3 := convert("true", bool);
-bool:convert_4 := convert("false", bool);
-str:convert_5 := convert(true, str);
-str:convert_6 := convert(false, str);
-//str:convert_7 := convert(True, bool);
-//str:convert_8 := convert(False, bool);
-
-// put 
-dict:put_1 := put(data, "nome", "Progetto B");
-//dict:put_2 := put(data, "versioni.1.status", "completo");
-dict:put_3 := put(data, "config.timeout", 60);
-//dict:put_4 := put(data, "versioni.*.status", "completo");
-//dict:put_5 := put(data, "versioni.*.dettagli.tester", "Mario");
-
-// normalize
-dict:normalize_1 := normalize({
-    "name": "Mario";
-    "surname": "Rossi";
-    "age": 30;
-    "email": "[EMAIL_ADDRESS]";
-    "phone": 1234567890;
-    "address": "Via Roma 1";
-}, user_schema);
-
+/*
 // transform 
 //any:transform_1 := transform({
 //    "name": "Mario";
@@ -123,17 +95,25 @@ dict:normalize_1 := normalize({
 
 // Test suite
 tuple:test_suite := (
-    { target: 'get'; args: [data, "nome"]; output: "Progetto A"; },
-    { target: 'get'; args: [data, "config.timeout"]; output: 30; },
-    { target: 'get'; args: [data, "versioni.0.status"]; output: "completo"; },
-    { target: 'get'; args: [data, "versioni.1.dettagli.tester"]; output: "Mario"; },
-    { target: 'get'; args: [data, "versioni.*.status"]; output: ["completo", "in_corso", "fallito"]; },
-    { target: 'get'; args: [data, "versioni.*.id"]; output: [1, 2, 3]; },
-    { target: 'format'; args: ["Ciao {{nome}}", nome: "Progetto A"]; output: "Ciao Progetto A"; },
-    { target: 'convert'; args: ["10", int]; output: 10; },
-    { target: 'convert'; args: [10, str]; output: "10"; },
-    { target: 'convert'; args: ["true", bool]; output: True; },
-    { target: 'convert'; args: ["false", bool]; output: False; },
-    { target: 'convert'; args: [true, str]; output: "True"; },
-    { target: 'convert'; args: [false, str]; output: "False"; },
+    { target: "exports.get"; inputs: [data, "nome"]; output: "Progetto A"; },
+    { target: "exports.get"; inputs: [data, "config.timeout"]; output: 30; },
+    { target: "exports.get"; inputs: [data, "versioni.0.status"]; output: "completo"; },
+    { target: "exports.get"; inputs: [data, "versioni.1.dettagli.tester"]; output: "Mario"; },
+    { target: "exports.get"; inputs: [data, "versioni.*.status"]; output: ["completo", "in_corso", "fallito"]; },
+    { target: "exports.get"; inputs: [data, "versioni.*.id"]; output: [1, 2, 3]; },
+    { target: "exports.format"; inputs: ["Ciao {{nome}}", nome: "Progetto A"]; output: "Ciao Progetto A"; },
+    { target: "exports.convert"; inputs: ["10", int]; output: 10; },
+    { target: "exports.convert"; inputs: [10, str]; output: "10"; },
+    { target: "exports.convert"; inputs: ["true", bool]; output: True; },
+    { target: "exports.convert"; inputs: ["false", bool]; output: False; },
+    { target: "exports.convert"; inputs: [true, str]; output: "True"; },
+    { target: "exports.convert"; inputs: [false, str]; output: "False"; },
+    //{ target: "exports.put"; inputs: [data, "nome", "Progetto B"]; "filter":"nome"; output: "Progetto B"; },
+    //{ target: "exports.put"; inputs: [data, "config.timeout", 60]; "filter":"config.timeout"; output: 60; },
+    //{ target: "exports.put"; inputs: [data, "versioni.0.status", "completo"]; "filter":"versioni.0.status"; output: "completo"; },
+    //{ target: "exports.put"; inputs: [data, "versioni.1.dettagli.tester", "Mario"]; "filter":"versioni.1.dettagli.tester"; output: "Mario"; },
+    //{ target: "exports.put"; inputs: [data, "versioni.*.status", "completo"]; "filter":"versioni.*.status"; output: ["completo", "completo", "completo"]; },
+    //{ target: "exports.put"; inputs: [data, "versioni.*.id", 1]; "filter":"versioni.*.id"; output: [1, 1, 1]; },
+    //{ target: "exports.normalize"; inputs: [{"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}, user_schema]; output: {"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}; },
+    
 );

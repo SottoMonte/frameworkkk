@@ -127,11 +127,35 @@ OPS_FUNCTIONS = {
 }
 
 TYPE_MAP = {
-    'int': int, 'float': float, 'str': str, 'bool': bool,
-    'dict': dict, 'list': list, 'any': object, 'type': dict,
+    'natural': int,
+    'integer': int,
+    'real': float,
+    'rational': float,
+    'boolean': bool,
+    'complex': complex,
+    'matrix': list,
+    'vector': list,
+    'set': set,
+    #Macchine
+    'int': int,
+    'i8': int, 
+    'i16': int, 
+    'i32': int, 
+    'i64': int, 
+    'n8': int, 
+    'n16': int, 
+    'n32': int, 
+    'n64': int, 
+    'f32': float, 
+    'f64': float, 
+    'str': str, 
+    'bool': bool,
+    'dict': dict, 
+    'list': list, 
+    'any': object, 
+    'type': dict,
     'tuple': tuple,
     'function': tuple,
-
 }
 
 CUSTOM_TYPES = {}
@@ -149,6 +173,7 @@ DSL_FUNCTIONS = {
     'keys': lambda d: list(d.keys()) if isinstance(d, dict) else [],
     'values': lambda d: list(d.values()) if isinstance(d, dict) else [],
     'print': lambda *inputs: (print(*inputs), inputs)[1],
+    'pass': lambda *inputs: inputs,
 }|TYPE_MAP
 
 
@@ -347,6 +372,13 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
 
     def binary_op(self, meta, a):
+        if len(a) == 2:
+            return self.with_meta({
+                "type": "binop",
+                "op": "*",
+                "left": a[0],
+                "right": a[1]
+            }, meta)
         return self.with_meta({
             "type": "binop",
             "op": str(a[1]),

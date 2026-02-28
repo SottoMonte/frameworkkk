@@ -71,16 +71,21 @@ class tester():
                 framework_log("WARNING", f"Errore verifica integrità per {source_path}: {e}")'''
         visitor = language.Interpreter(language.DSL_FUNCTIONS)
         parser = language.create_parser()
-        s = language.parse(ok,parser)
+        s = language.parse(ok, parser)
+        if isinstance(s, Exception):
+            framework_log("ERROR", f"Errore di parsing DSL in {path}: {s}", emoji="❌")
+            return {"success": False, "errors": [str(s)]}
+
         parsed = await visitor.run(s)
         
-        #print("[ERRORI]:",parsed.get('errors'))
-        if parsed.get('success',False):
-            #print("\n\n\n[PARSED]:",parsed)
-            ooout = parsed.get('outputs')
-        else:
-            #print("\n\n\n[PARSED]:",parsed)
+        if not parsed.get('success', False):
+            framework_log("ERROR", f"Errore di esecuzione DSL in {path}: {parsed.get('errors')}", emoji="❌")
             ooout = {}
+        else:
+            ooout = parsed.get('outputs')
+            if isinstance(ooout, Exception):
+                framework_log("ERROR", f"Errore nel runtime DSL (ritorno) per {path}: {ooout}", emoji="❌")
+                ooout = {}
         #exit(1)
         # 2. Esecuzione Test Suite (TDD)
         if not isinstance(ooout, dict):
