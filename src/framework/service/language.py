@@ -74,7 +74,9 @@ key: value
 
 // 7. Moltiplicazione, Divisione e Concatenazione (implicita)
 ?term: power
-     | term power -> binary_op
+     | term "*" power -> binary_op
+     | term "/" power -> binary_op
+     | term "%" power -> binary_op
 
 // 8. Elevamento a Potenza (^)
 ?power: atom
@@ -300,8 +302,9 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
 
     def identifier(self, meta, s):
+        # Fondamentale: usiamo "identifier" come tipo per il nome puro
         return self.with_meta({
-            "type": "var",
+            "type": "var", 
             "name": str(s[0])
         }, meta)
 
@@ -461,57 +464,6 @@ class DSLTransformer(Transformer):
     def start(self, meta, items):
         return items[0]
 
-# ============================================================================
-# TRIGGER ENGINE (SEPARATO)
-# ============================================================================
-
-class TriggerEngine:
-
-    def __init__(self, visitor):
-        self.visitor = visitor
-        self.tasks = []
-
-    def register(self, triggers, ctx):
-        for trigger, action in triggers:
-            if is_call(trigger):
-                task = asyncio.create_task(self._event_loop(trigger, action, ctx))
-            else:
-                task = asyncio.create_task(self._cron_loop(trigger, action, ctx))
-            self.tasks.append(task)
-
-    async def _event_loop(self, call_node, action, ctx):
-        framework_log("INFO", f"Event listener: {call_node[1]}", emoji="👂")
-        while True:
-            try:
-                result = await self.visitor.visit(call_node, ctx)
-                if isinstance(result, dict) and result.get('success'):
-                    await self.visitor.visit(action, {**ctx, '@event': result.get('data')})
-                else:
-                    await asyncio.sleep(1)
-            except asyncio.CancelledError:
-                break
-            except Exception:
-                await asyncio.sleep(5)
-
-    async def _cron_loop(self, pattern, action, ctx):
-        import datetime
-        framework_log("INFO", f"Cron trigger: {pattern}", emoji="⏰")
-        while True:
-            now = datetime.datetime.now()
-            cur = (now.minute, now.hour, now.day, now.month, now.weekday())
-            if all(p == '*' or str(p) == str(c) for p, c in zip(pattern, cur)):
-                await self.visitor.visit(action, ctx)
-            await asyncio.sleep(60 - now.second)
-
-    async def shutdown(self):
-        for t in self.tasks:
-            t.cancel()
-        await asyncio.gather(*self.tasks, return_exceptions=True)
-
-# ============================================================================
-# DSL VISITOR (COMPLETO)
-# ============================================================================
-
 class DSLRuntimeError(Exception):
     def __init__(self, message, meta=None):
         if meta:
@@ -528,40 +480,21 @@ class DSLRuntimeError(Exception):
         super().__init__(message)
 
 class Interpreter:
-
-    def __init__(self, env={}):
-        self.env = env
-        #for key, value in self.functions.items():
-        #    self.functions[key] = {'type': 'call', 'name': Token('CNAME', key), 'args': [], 'kwargs': {}, 'meta': {'line': 19, 'column': 17, 'end_line': 19, 'end_column': 19}}
-        self._node_stack = [] 
+    def __init__(self, env=None):
+        self.env = env if env is not None else {}
+        self._node_stack = []
 
     # =========================================================
-    # ENTRY
+    # ENTRY POINT
     # =========================================================
     @flow.action()
-    async def run(self, ast,**c):
+    async def run(self, ast, **c):
         value, _ = await self.visit(ast, self.env)
         return value
 
     # =========================================================
-    # DISPATCH
+    # DISPATCHER (VISIT)
     # =========================================================
-
-    async def visit2(self, node, env):
-        if not isinstance(node, dict):
-            return node, env
-
-        t = node.get("type")
-        method = getattr(self, f"visit_{t}", None)
-
-        if not method:
-            raise DSLRuntimeError(
-                f"Unknown node type: {t}",
-                node.get("meta"),
-            )
-
-        return await method(node, env)
-
     async def visit(self, node, env):
         if not isinstance(node, dict):
             return node, env
@@ -572,78 +505,49 @@ class Interpreter:
         if not method:
             raise DSLRuntimeError(f"Unknown node type: {t}", node.get("meta"))
 
-        if not hasattr(self, "_node_stack"):
-            self._node_stack = []
-
         self._node_stack.append(node)
         try:
-            res = await flow.act(flow.step(method, node,env))
-
-            if res.get('errors'):
-                # Solleva il primo errore già formattato
+            # Esecuzione tramite il framework flow
+            res = await flow.act(flow.step(method, node, env))
+            
+            if isinstance(res, dict) and res.get('errors'):
                 raise DSLRuntimeError(res['errors'][0])
 
+            # Ritorna gli output (valore, ambiente)
             return res.get('outputs')
 
         except DSLRuntimeError as e:
-            # ricostruisci solo lo stack trace dei nodi, senza ripetere linee
             trace = " -> ".join(
                 f"{n.get('type')}({n.get('meta', {}).get('line','?')}:{n.get('meta', {}).get('column','?')})"
                 for n in self._node_stack
             )
-            # aggiorna il messaggio senza duplicare le linee
             e.args = (f"{e.args[0]} | Stack trace: {trace}",)
             raise
         finally:
             self._node_stack.pop()
 
     # =========================================================
-    # PRIMITIVES
+    # PRIMITIVES & IDENTIFIERS
     # =========================================================
-
-    async def visit_number(self, node, env):
-        return node["value"], env
-
-    async def visit_string(self, node, env):
-        return node["value"], env
-
-    async def visit_bool(self, node, env):
-        return node["value"], env
-
-    async def visit_any(self, node, env):
-        return None, env
-
-    # =========================================================
-    # VARIABLES
-    # =========================================================
-
+    async def visit_number(self, node, env): return node["value"], env
+    async def visit_string(self, node, env): return node["value"], env
+    async def visit_bool(self, node, env):   return node["value"], env
+    async def visit_any(self, node, env):    return None, env
+    async def visit_identifier(self, node, env):return node["name"], env
     async def visit_var(self, node, env):
         name = node["name"]
-        
-        '''if name not in env:
-            raise DSLRuntimeError(
-                f"Undefined variable '{name}'",
-                node.get("meta")
-            )'''
-
-        return scheme.get(env,name,name), env
-
-    async def visit_typed_var(self, node, env):
-        return await self.visit_var(
-            {"name": node["name"], "meta": node["meta"]},
-            env
-        )
+        val = scheme.get(env, name, name)
+        return val, env
 
     # =========================================================
-    # DECLARATIONS
+    # DECLARATIONS (MULTIPLE & SINGLE)
     # =========================================================
-
     async def visit_declaration(self, node, env):
-        pair,pass_env = await self.visit(node["target"],dict())
-
-        value, env_after = await self.visit(node["value"], env)
-        
-        declared_type,name = pair
+        env_after = {} | env
+        target,_ = await self.visit(node["target"],dict())
+        value, _ = await self.visit(node["value"], env)
+        print("############# declaration",target)
+        declared_type,name = target
 
         if declared_type == "type":
             CUSTOM_TYPES[name] = value
@@ -651,219 +555,114 @@ class Interpreter:
             declared_type = 'dict'
 
         value = await self._check_type(value,declared_type,node.get("meta"),name)
-
-        return (name,value), env_after
+        print("############# declaration",name,value)
+        return (name,value), env
 
     # =========================================================
     # COLLECTIONS
     # =========================================================
-
-    async def visit_pair(self, node, env):
-        key, env1 = await self.visit(node["key"], env) 
-        value, env2 = await self.visit(node["value"], env1) 
-        return (key,value), env1|env2
-
-    async def visit_list(self, node, env):
-        items = []
-        current_env = env
-
-        for item in node["items"]:
-            value, current_env = await self.visit(item, current_env)
-            items.append(value)
-
-        return items, current_env
-
-    async def visit_tuple(self, node, env):
-        items = []
-        current_env = env
-
-        for item in node["items"]:
-            value, current_env = await self.visit(item, current_env)
-            items.append(value)
-        return tuple(items), current_env
-
     async def visit_dict(self, node, env):
         result = {}
-        
+
         for item in node["items"]:
             evaluation_env = env | result
-            pair, _ = await self.visit(item, evaluation_env)
-            key, value = pair
-            result[key] = value
+            res, _ = await self.visit(item, evaluation_env)
+            if item['type'] == 'pair':
+                #print(f"##### key: {res}")
+                key, value = res
+                if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
+                    for i,k in enumerate(key):
+                        result[k] = value[i]
+                result[key] = value
 
         return result, env
 
-    # =========================================================
-    # EXPRESSIONS
-    # =========================================================
+    async def visit_pair(self, node, env):
+        # Utilizzato sia per i dati {k:v} che per i tipi int:x
+        #print("!!!!! pair", node["key"])
+        key, _ = await self.visit(node["key"], env) 
+        value, _ = await self.visit(node["value"], env) 
+        print("##### pair", key, value)
+        return (key, value), env
 
+    async def visit_tuple(self, node, env):
+        items = []
+        for item in node["items"]:
+            val, env = await self.visit(item, env)
+            items.append(val)
+        return tuple(items), env
+
+    async def visit_list(self, node, env):
+        items = []
+        for item in node["items"]:
+            val, env = await self.visit(item, env)
+            items.append(val)
+        return items, env
+
+    # =========================================================
+    # LOGIC & MATH
+    # =========================================================
     async def visit_binop(self, node, env):
-        left, env1 = await self.visit(node["left"], env)
-        right, env2 = await self.visit(node["right"], env1)
-
+        left, env = await self.visit(node["left"], env)
+        right, env = await self.visit(node["right"], env)
         op = node["op"]
-
+        
         try:
-            if op == "+": return left + right, env2
-            if op == "-": return left - right, env2
-            if op == "*": return left * right, env2
-            if op == "/": return left / right, env2
-            if op == "%": return left % right, env2
-            if op == "^": return left ** right, env2
-            if op == "==": return left == right, env2
-            if op == "!=": return left != right, env2
-            if op == ">": return left > right, env2
-            if op == "<": return left < right, env2
-            if op == ">=": return left >= right, env2
-            if op == "<=": return left <= right, env2
-            if op == "and": return left and right, env2
-            if op == "or": return left or right, env2
-
+            ops = {
+                "+": lambda: left + right, "-": lambda: left - right,
+                "*": lambda: left * right, "/": lambda: left / right,
+                "%": lambda: left % right, "^": lambda: left ** right,
+                "==": lambda: left == right, "!=": lambda: left != right,
+                ">": lambda: left > right, "<": lambda: left < right,
+                ">=": lambda: left >= right, "<=": lambda: left <= right,
+                "and": lambda: left and right, "or": lambda: left or right
+            }
+            return ops[op](), env
         except Exception as e:
             raise DSLRuntimeError(str(e), node.get("meta"))
 
-        raise DSLRuntimeError(
-            f"Unsupported operator '{op}'",
-            node.get("meta")
-        )
-
     async def visit_not(self, node, env):
-        value, env2 = await self.visit(node["value"], env)
-        return not value, env2
+        val, env = await self.visit(node["value"], env)
+        return not val, env
 
     # =========================================================
-    # PIPE
+    # PIPE & CALLS
     # =========================================================
-
     async def visit_pipe(self, node, env):
         steps = node["steps"]
-        if len(steps) == 1:
-            return await self.visit(steps[0], env)
-        value, current_env = await self.visit(steps[0], env)
-        
+        val, env = await self.visit(steps[0], env)
         for step in steps[1:]:
-            args,kwargs = [value],{}
-            if not isinstance(step, dict):
-                continue
-            
-            value, current_env = await self.visit_call(step,current_env,args,kwargs)
-
-        return value, current_env
-
-    # =========================================================
-    # CALLS
-    # =========================================================
-    
-    async def _call_function(self, node, env,args=[],kwargs={}):
-        local_env = {}
-        
-        name = node["name"]
-        params_ast, body_ast, return_ast = env[name]
-        # Bind parametri
-        for param_node, arg_node in zip(params_ast, args):
-            param_type = param_node["key"]["name"]
-            param_name = param_node["value"]["name"]
-            arg_value = await self._check_type(arg_node, param_type, param_node.get("meta"), param_name)
-            local_env[param_name] = arg_value
-        # Esegui body
-        result, _ = await self.visit(body_ast, local_env)
-        out = None
-        # Controllo tipo di ritorno
-
-        for ty in return_ast:
-            pair,env = await self.visit(ty,local_env)
-            tipo,name = pair
-            if name in result:
-                out = await self._check_type(result[name], tipo, ty.get("meta"))
-        return out   
+            val, env = await self.visit_call(step, env, args=[val])
+        return val, env
 
     async def visit_call(self, node, env, args=[], kwargs={}):
-        name, meta = node.get("name"), node.get("meta")
-        args = list(args) + [(await self.visit(a, env))[0] for a in node.get("args",[])]
-        kwargs = {k: (await self.visit(v, env))[0] for k, v in kwargs.items()}
-        function = scheme.get(env,str(name))
+        name = node.get("name")
+        # Risoluzione argomenti aggiuntivi dal nodo AST
+        ast_args = [(await self.visit(a, env))[0] for a in node.get("args", [])]
+        all_args = list(args) + ast_args
+        
+        ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
+        all_kwargs = {**kwargs, **ast_kwargs}
+        
+        function = scheme.get(env, str(name))
         
         if callable(function):
-            step = flow.step(function,*args,**kwargs)
-        elif isinstance(function, tuple) and len(function) == 3:
-            #params_ast, body_ast, return_ast = function
-            step = flow.step(self._call_function,node,env,args,kwargs)
-        else:
-            raise DSLRuntimeError(f"Unknown function '{name}'", meta)
-
-        action = await flow.act(step)
-        #print("####1",action)
-        output = action["outputs"]
-        #print("####2",output)
-        return output, env
-
-    # =========================================================
-    # TYPE CHECK
-    # =========================================================
-
-    async def visit_function_def2(self, node, env):
-        # Una funzione è un valore già pronto
-        return node, env
-
-    async def visit_function_def(self, node, env):
-
-        # ----------------------
-        # PARAMETRI
-        # ----------------------
-        params = []
-
-        for p in node["params"]:
-            # se è typed_var (dopo che sistemi la grammar)
-            if p.get("type") == "typed_var":
-                params.append({
-                    "var_type": p["var_type"],
-                    "name": p["name"]
-                })
-            else:
-                # fallback temporaneo per il tuo AST attuale
-                # dict con pair(int:c)
-                pair = p["items"][0]
-                params.append(pair)
-
-        # ----------------------
-        # BODY
-        # ----------------------
-        body_value = node["body"]
-
-        # ----------------------
-        # RETURN TYPE
-        # ----------------------
-        return_types = []
-
-        for r in node["return_type"]["items"]:
-            pair = r["items"][0]
-            return_types.append(pair)
-
-        return (params, body_value, return_types), env
-
-    async def _check_type(self, value, expected_type, meta=None, var_name=None):
-        py_type = TYPE_MAP.get(expected_type)
-
-        if expected_type in CUSTOM_TYPES and isinstance(value, dict):
-            #print("BOOOM",value)
-            #return await scheme.normalize(value, CUSTOM_TYPES[expected_type])
-            return value
+            action = await flow.act(flow.step(function, *all_args, **all_kwargs))
+            return action["outputs"], env
         
-        if expected_type not in CUSTOM_TYPES and py_type is None:
+        raise DSLRuntimeError(f"Function '{name}' not found or not callable", node.get("meta"))
+
+    async def _check_type(self, value, expected_type, meta, var_name):
+        py_type = TYPE_MAP.get(expected_type)
+        if expected_type in CUSTOM_TYPES:
+            return value # Gestione tipi custom semplificata
+        
+        if py_type and not isinstance(value, py_type):
             raise DSLRuntimeError(
-                f"Unknown type '{expected_type}'",
+                f"Type error for '{var_name}': expected {expected_type}, got {type(value).__name__}", 
                 meta
             )
-
-        if expected_type in CUSTOM_TYPES or not isinstance(value, py_type):
-            raise DSLRuntimeError(
-                f"Type error in '{var_name}': expected {expected_type}, "
-                f"got {type(value).__name__}",
-                meta
-            )
-
         return value
-
 
 # ============================================================================
 # PUBLIC API (NO GLOBAL PARSER)
