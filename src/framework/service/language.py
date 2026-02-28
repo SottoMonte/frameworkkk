@@ -456,9 +456,10 @@ class DSLTransformer(Transformer):
         }, meta)
 
     def pipe_node(self, meta, items):
+        
         return self.with_meta({
             "type": "pipe",
-            "steps": items
+            "steps": [i for i in items if not isinstance(i, Token)],
         }, meta)
 
     def start(self, meta, items):

@@ -9,4 +9,5 @@
     a,b,c : x,y,z;
     cc:print(a,b,c);
     cc:print(x,y,z);
+    cc:"1,2,3" |> print("ciaone");
 }
