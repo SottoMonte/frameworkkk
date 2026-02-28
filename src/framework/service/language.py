@@ -23,83 +23,116 @@ import framework.service.load as load
 # ============================================================================
 
 GRAMMAR = r"""
+// ==========================================
+// PUNTO DI INGRESSO (ROOT)
+// ==========================================
 start: dictionary
 
-dictionary: "{" item* "}" | item*
-item: pair ";"? | declaration ";"?
-declaration: pair ":=" expr 
+// ==========================================
+// STRUTTURE DATI (DIZIONARI E ITEM)
+// ==========================================
+// Il dizionario può avere le graffe o essere "implicito" (senza graffe)
+dictionary: "{" item* "}" -> dictionary
+          | item+          -> dictionary
 
-pair: key ":" expr
+item: pair ";"? 
+    | declaration ";"?
 
-key: value | CNAME | QUALIFIED_CNAME
+declaration: expr ":=" expr 
 
-?expr: atom | pipe
+pair: expr ":" expr
 
-?pipe: logic (PIPE logic)* -> pipe_node
+key: value
+   | inline_tuple
+   | CNAME 
+   | QUALIFIED_CNAME
 
+// ==========================================
+// GERARCHIA DELLE ESPRESSIONI (PRECEDENZE)
+// ==========================================
+
+// 1. La virgola "libera" ha la precedenza più bassa
+?expr: inline_tuple 
+     | unit
+
+// 3. Unità: gestisce l'operatore Pipe |>
+?unit: logic (PIPE logic)* -> pipe_node
+
+// 4. Operatori Logici (and, or, not)
 ?logic: comparison
-      | "not" logic        -> not_op
-      | logic ("and" | "&") logic -> and_op
-      | logic ("or"  | "|") logic -> or_op
+      | "not" logic                -> not_op
+      | logic ("and" | "&") logic  -> and_op
+      | logic ("or"  | "|") logic  -> or_op
 
+// 5. Comparazioni (==, !=, <, >, ecc.)
 ?comparison: sum
            | comparison COMPARISON_OP sum -> binary_op
 
+// 6. Addizione e Sottrazione (+, -)
 ?sum: term
     | sum ARITHMETIC_OP term -> binary_op
 
+// 7. Moltiplicazione, Divisione e Concatenazione (implicita)
 ?term: power
-     | term  power -> binary_op
+     | term power -> binary_op
 
+// 8. Elevamento a Potenza (^)
 ?power: atom
       | atom "^" power -> power
 
-?atom: tuple|value
+// 9. Atomi: i mattoni fondamentali
+?atom: tuple
+     | list
+     | dictionary
      | function_value
      | function_call
-     | dictionary
-     #| tuple
-     #| inline_tuple
-     | list
-     | "(" expr ")"
-     | CNAME -> identifier
+     | value
+     | CNAME           -> identifier
      | QUALIFIED_CNAME -> identifier
 
-tuple: "(" [expr ("," expr)* ","?] ")" -> tuple_
-inline_tuple: expr ("," expr)+ -> tuple_
-list:  "[" [expr ("," expr)* ","?] "]" -> list_
+// 10. Collections
 
+tuple: "(" [unit ("," unit)* ","?] ")" -> tuple_
+inline_tuple: unit ("," unit)+ ","? -> tuple_
+            | unit ","               -> tuple_
+list:  "[" [unit ("," unit)* ","?] "]" -> list_
+
+// 11. Funzioni
 function_call: callable "(" [call_args] ")"
 function_value: tuple "," dictionary "," tuple
-callable:  CNAME | QUALIFIED_CNAME
+
+callable: CNAME | QUALIFIED_CNAME
 
 call_args: call_arg ("," call_arg)*
-call_arg: expr -> arg_pos
-        | CNAME ":" expr -> arg_kw
+call_arg: unit           -> arg_pos
+        | CNAME ":" unit -> arg_kw
 
-value: SIGNED_NUMBER        -> number
-     | STRING               -> string
-     | "true"i              -> true
-     | "false"i             -> false
-     | "*"                  -> any_val
+value: SIGNED_NUMBER      -> number
+     | STRING             -> string
+     | "true"i            -> true
+     | "false"i           -> false
+     | "*"                -> any_val
 
-STRING: ESCAPED_STRING | SINGLE_QUOTED_STRING
-
+// Definizione dei Token
 PIPE: "|>"
 COMPARISON_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
 ARITHMETIC_OP: "+" | "-" | "*" | "/" | "%"
+STRING: ESCAPED_STRING | SINGLE_QUOTED_STRING
+SINGLE_QUOTED_STRING: /'[^']*'/
 QUALIFIED_CNAME: CNAME ("." CNAME)+
-COMMENT: /\/\/[^\n]*/ | /\/\*[\s\S]*?\*\//
 
-
+// Importazioni standard Lark
 %import common.SIGNED_NUMBER
 %import common.ESCAPED_STRING
 %import common.CNAME
 %import common.WS
-SINGLE_QUOTED_STRING: /'[^']*'/
 %ignore WS
+
+// Gestione Commenti
+COMMENT: /\/\/[^\n]*/ | /\/\*[\s\S]*?\*\//
 %ignore COMMENT
 """
+
 
 # ============================================================================
 # ERRORS
@@ -174,6 +207,9 @@ DSL_FUNCTIONS = {
     'values': lambda d: list(d.values()) if isinstance(d, dict) else [],
     'print': lambda *inputs: (print(*inputs), inputs)[1],
     'pass': lambda *inputs: inputs,
+    'assert': flow.assertt,
+    'sentry': flow.sentry,
+    'when': flow.when,
 }|TYPE_MAP
 
 
@@ -285,13 +321,13 @@ class DSLTransformer(Transformer):
     def tuple_(self, meta, items):
         return self.with_meta({
             "type": "tuple",
-            "items": items
+            "items": [i for i in items if i is not None]
         }, meta)
 
     def list_(self, meta, items):
         return self.with_meta({
             "type": "list",
-            "items": items
+            "items": [i for i in items if i is not None]
         }, meta)
 
     def dictionary(self, meta, items):
@@ -422,17 +458,8 @@ class DSLTransformer(Transformer):
             "steps": items
         }, meta)
 
-    # -------------------------------------------------
-    # ROOT
-    # -------------------------------------------------
-
     def start(self, meta, items):
-        if items:
-            return items[0]
-        return self.with_meta({
-            "type": "dict",
-            "items": []
-        }, meta)
+        return items[0]
 
 # ============================================================================
 # TRIGGER ENGINE (SEPARATO)
@@ -653,12 +680,11 @@ class Interpreter:
         for item in node["items"]:
             value, current_env = await self.visit(item, current_env)
             items.append(value)
-
         return tuple(items), current_env
 
     async def visit_dict(self, node, env):
         result = {}
-
+        
         for item in node["items"]:
             evaluation_env = env | result
             pair, _ = await self.visit(item, evaluation_env)

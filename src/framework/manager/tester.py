@@ -40,7 +40,7 @@ class tester():
                         flow.step(flow.log,"Errore: {errors[0]} "),
                     )'''
                     await self.dsl(path= module_path)
-                    #exit(1)
+                    exit(1)
 
 
     async def dsl(self, **kwargs):
@@ -52,7 +52,7 @@ class tester():
         
         path = kwargs.get('path')
         parsed = kwargs.get('data') or kwargs.get('parsed')
-        #path = "src/framework/service/data_driven.test.dsl"
+        path = "src/framework/service/factory.test.dsl"
         print(path)
         res = await resource(path)
         ok = res.get('outputs',path)

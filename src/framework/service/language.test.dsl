@@ -91,6 +91,6 @@
         { "target": "fn_double"; "inputs": [10]; "output": 20; "description": "Double the input"; },
         { "target": "fn_sum"; "inputs": [10, 20]; "output": 30; "description": "Sum of two numbers"; },
         { "target": "fn_increment_pair"; "inputs": [10]; "output": [11, 12]; "description": "Increment pair of numbers"; },
-        { "target": "pass"; "inputs": [tuple_void]; "output": (); "description": "Pass void tuple"; },
+        { "target": "pass"; "inputs": [tuple_void]; "output": [()]; "description": "Pass void tuple"; },
     );
 }
