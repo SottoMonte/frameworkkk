@@ -573,9 +573,10 @@ class Interpreter:
                 key, value = res
                 if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
                     for i,k in enumerate(key):
-                        result[k] = value[i]
-                result[key] = value
-
+                        result[key[i]] = value[i]
+                else:
+                    result[key] = value
+        print("##### dict", result)
         return result, env
 
     async def visit_pair(self, node, env):
@@ -583,7 +584,7 @@ class Interpreter:
         #print("!!!!! pair", node["key"])
         key, _ = await self.visit(node["key"], env) 
         value, _ = await self.visit(node["value"], env) 
-        print("##### pair", key, value)
+        #print("##### pair", key, value)
         return (key, value), env
 
     async def visit_tuple(self, node, env):
