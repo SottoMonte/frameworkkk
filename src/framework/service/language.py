@@ -40,23 +40,17 @@ item: pair ";"?
 
 declaration: pair ("," pair)* ":=" expr
 
-key: value
-   | inline_tuple
-   | CNAME 
-   | QUALIFIED_CNAMEW
+sequence: expr "," (expr | pair)
+    | expr ","
 
 // ==========================================
 // GERARCHIA DELLE ESPRESSIONI (PRECEDENZE)
 // ==========================================
 
 // 1. La virgola "libera" ha la precedenza più bassa
-?expr: inline_tuple 
-     | unit
+?expr: sequence | pair | declaration | pipe
 
 // 3. Unità: gestisce l'operatore Pipe |>
-?unit: logic (PIPE logic)* -> pipe_node 
-     #| pair
-
 ?pipe: logic (PIPE logic)* -> pipe_node
 
 // 4. Operatori Logici (and, or, not)
@@ -84,28 +78,20 @@ key: value
       | atom "^" power -> power
 
 // 9. Atomi: i mattoni fondamentali
-?atom:
+?atom: value
+     | function_value
+     | function_call
+     | CNAME           -> identifier
+     | QUALIFIED_CNAME -> identifier
      | tuple
      | list
      | dictionary
-     | function_value
-     | function_call
-     | value
-     | CNAME           -> identifier
-     | QUALIFIED_CNAME -> identifier
-     | tuple_inline
-     | pipe
 
 // 10. Collections
 
-
-tuple_inline: atom ("," atom)+ "," -> tuple_
-
-pair: atom ":" atom
-tuple: "(" [unit ("," unit)* ","?] ")" -> tuple_
-inline_tuple: unit ("," unit)+ ","? -> tuple_
-            | unit ","               -> tuple_
-list:  "[" [unit ("," unit)* ","?] "]" -> list_
+pair: (atom|sequence) ":" expr
+tuple: "(" [expr] ")" -> tuple_
+list:  "[" [expr] "]" -> list_
 
 // 11. Funzioni
 function_call: callable "(" [call_args] ")"
@@ -114,8 +100,8 @@ function_value: tuple "," dictionary "," tuple
 callable: CNAME | QUALIFIED_CNAME
 
 call_args: call_arg ("," call_arg)*
-call_arg: unit           -> arg_pos
-        | CNAME ":" unit -> arg_kw
+call_arg: expr           -> arg_pos
+        | CNAME ":" expr -> arg_kw
 
 value: SIGNED_NUMBER      -> number
      | STRING             -> string
@@ -328,6 +314,20 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     # STRUTTURE
     # -------------------------------------------------
+
+    def sequence(self, meta, items):
+        # items può contenere un elemento singolo o un'altra sequenza (ricorsione)
+        flat_items = []
+        for i in items:
+            if isinstance(i, dict) and i.get("type") == "tuple":
+                flat_items.extend(i["items"])
+            else:
+                flat_items.append(i)
+        
+        return self.with_meta({
+            "type": "tuple",
+            "items": [i for i in flat_items if i is not None]
+        }, meta)
 
     def tuple_(self, meta, items):
         print("##############################tuple_", items)
