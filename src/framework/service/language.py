@@ -38,14 +38,12 @@ dictionary: "{" item* "}" -> dictionary
 item: pair ";"? 
     | declaration ";"?
 
-declaration: expr ":=" expr 
-
-pair: expr ":" expr
+declaration: pair ("," pair)* ":=" expr
 
 key: value
    | inline_tuple
    | CNAME 
-   | QUALIFIED_CNAME
+   | QUALIFIED_CNAMEW
 
 // ==========================================
 // GERARCHIA DELLE ESPRESSIONI (PRECEDENZE)
@@ -56,7 +54,10 @@ key: value
      | unit
 
 // 3. Unità: gestisce l'operatore Pipe |>
-?unit: logic (PIPE logic)* -> pipe_node
+?unit: logic (PIPE logic)* -> pipe_node 
+     #| pair
+
+?pipe: logic (PIPE logic)* -> pipe_node
 
 // 4. Operatori Logici (and, or, not)
 ?logic: comparison
@@ -83,7 +84,8 @@ key: value
       | atom "^" power -> power
 
 // 9. Atomi: i mattoni fondamentali
-?atom: tuple
+?atom:
+     | tuple
      | list
      | dictionary
      | function_value
@@ -91,9 +93,15 @@ key: value
      | value
      | CNAME           -> identifier
      | QUALIFIED_CNAME -> identifier
+     | tuple_inline
+     | pipe
 
 // 10. Collections
 
+
+tuple_inline: atom ("," atom)+ "," -> tuple_
+
+pair: atom ":" atom
 tuple: "(" [unit ("," unit)* ","?] ")" -> tuple_
 inline_tuple: unit ("," unit)+ ","? -> tuple_
             | unit ","               -> tuple_
@@ -322,6 +330,7 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
 
     def tuple_(self, meta, items):
+        print("##############################tuple_", items)
         return self.with_meta({
             "type": "tuple",
             "items": [i for i in items if i is not None]
@@ -342,15 +351,17 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     # DICHIARAZIONI / MAPPING
     # -------------------------------------------------
-
+    
     def declaration(self, meta, a):
+        print("####################declaration",a)
         return self.with_meta({
             "type": "declaration",
-            "target": a[0],
-            "value": a[1]
+            "target": a[:-1],
+            "value": a[-1]
         }, meta)
 
     def pair(self, meta, a):
+        print("#####################################pair",a)
         return self.with_meta({
             "type": "pair",
             "key": a[0],
@@ -547,8 +558,8 @@ class Interpreter:
         env_after = {} | env
         target,_ = await self.visit(node["target"],dict())
         value, _ = await self.visit(node["value"], env)
-        print("############# declaration",target)
-        declared_type,name = target
+        #print("############# declaration",target,node["target"])
+        '''declared_type,name = target
 
         if declared_type == "type":
             CUSTOM_TYPES[name] = value
@@ -556,8 +567,9 @@ class Interpreter:
             declared_type = 'dict'
 
         value = await self._check_type(value,declared_type,node.get("meta"),name)
-        print("############# declaration",name,value)
-        return (name,value), env
+        print("############# declaration",name,value)'''
+        #return (name,value), env
+        return value, env
 
     # =========================================================
     # COLLECTIONS
@@ -569,8 +581,9 @@ class Interpreter:
             evaluation_env = env | result
             res, _ = await self.visit(item, evaluation_env)
             if item['type'] == 'pair':
-                #print(f"##### key: {res}")
+                print(f"##### res: {res}")
                 key, value = res
+                print("##### pair", key, value)
                 if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
                     for i,k in enumerate(key):
                         result[key[i]] = value[i]
@@ -585,6 +598,11 @@ class Interpreter:
         key, _ = await self.visit(node["key"], env) 
         value, _ = await self.visit(node["value"], env) 
         #print("##### pair", key, value)
+        # Validazione di sicurezza: le chiavi di un dict devono essere hashable
+        if not isinstance(key, (str, int, float, tuple)):
+            print("##### key", key,value)
+            #raise DSLRuntimeError(f"Key invalida: {type(key)}. Deve essere un tipo primitivo.", node.get("meta"))
+            return str(key), env
         return (key, value), env
 
     async def visit_tuple(self, node, env):
