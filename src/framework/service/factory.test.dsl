@@ -4,8 +4,15 @@
     //tuple:tuple_inline := 5,6,7;
 
     //x,y,z : tuple_full;
+    a,b,c:1,2,3;
+    d,e:10,20;
     int:num1,int:num2,int:num3 := 1,2,3;
-    //a,b,c:1,2,3;
+    d,e:10,20;
+    int:ccc,int:ddd := 1000,2000;
+    int:bbb := 10000;
+    //int:num4,int:num5 := 10,20;
+    //u:10;
+    //(a,b,c):(1,2,3);
     //int:num1,int:num2 := 1,2;
     //int:a:=1;
     //x,y,z : 1,2,"ciao";

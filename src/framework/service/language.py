@@ -34,22 +34,15 @@ start: dictionary
 dictionary: "{" item* "}" -> dictionary
           | item+           -> dictionary
 
-?expr: declaration | sequence | pipe | pair
+?expr: declaration | pair | atom
 
-item: declaration ";"? | pair ";"?
+item: (declaration | pair) ";"+
 
-// PRIORITÀ .2: Vince su pair e sequence. 
-// Usiamo typed_var invece di pair per evitare ambiguità sui due punti.
-declaration.2: (typed_var | identifier) ("," (typed_var | identifier))* ":=" expr
+declaration.3: sequence ":=" sequence
+pair.2: sequence ":" sequence
 
-// Definizione specifica per variabili tipizzate (es. int:num1)
-typed_var: identifier ":" identifier -> pair
+?sequence: expr ("," expr)*
 
-// La sequenza deve poter contenere pair o altri expr
-sequence: expr "," (expr | pair)*
-
-// Il pair generico viene usato per i dizionari (chiave:valore)
-pair: (identifier | value | tuple) ":" expr
 
 // ==========================================
 // GERARCHIA DELLE ESPRESSIONI (PRECEDENZE)
@@ -77,6 +70,7 @@ pair: (identifier | value | tuple) ":" expr
       | atom "^" power -> power
 
 ?atom: value
+     | typed_var
      | function_value
      | function_call
      | identifier
@@ -86,6 +80,8 @@ pair: (identifier | value | tuple) ":" expr
 
 identifier: CNAME            -> identifier
           | QUALIFIED_CNAME  -> identifier
+
+typed_var.3: identifier ":" identifier -> pair
 
 tuple: "(" [expr] ")" -> tuple_
 list:  "[" [expr] "]" -> list_
@@ -346,6 +342,7 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     
     def declaration(self, meta, a):
+        #print("##############################declaration", a)
         return self.with_meta({
             "type": "declaration",
             "target": a[:-1],
@@ -353,7 +350,7 @@ class DSLTransformer(Transformer):
         }, meta)
 
     def pair(self, meta, a):
-        print("#####################################pair",a)
+        #print("##############################pair", a)
         return self.with_meta({
             "type": "pair",
             "key": a[0],
@@ -548,9 +545,25 @@ class Interpreter:
     # =========================================================
     async def visit_declaration(self, node, env):
         env_after = {} | env
-        target,_ = await self.visit(node["target"],dict())
+        keys = []
         value, _ = await self.visit(node["value"], env)
-        print("#############!!!! declaration",target)
+        for t in node["target"]:
+            tu,_ = await self.visit(t,dict())
+            print("############# tu",tu)
+            for i in tu:
+                if isinstance(i, tuple) and len(i) == 2:
+                    keys.append(i[1])
+                else:
+                    keys = tu
+                    return (tu[1],value), env
+                print("############# declaration",i)
+        print("############# keys",keys)
+        
+        
+        '''for t in pair:
+            print("############# BOOM",t)
+            key,name = t
+            keys.append(name)'''
         '''declared_type,name = target
 
         if declared_type == "type":
@@ -560,8 +573,7 @@ class Interpreter:
 
         value = await self._check_type(value,declared_type,node.get("meta"),name)
         print("############# declaration",name,value)'''
-        #return (name,value), env
-        return value, env
+        return (tuple(keys),value), env
 
     
 
@@ -574,18 +586,19 @@ class Interpreter:
         for item in node["items"]:
             evaluation_env = env | result
             res, _ = await self.visit(item, evaluation_env)
-            if item['type'] == 'pair':
-                print(f"##### res: {res}")
-                key, value = res
-                print("##### pair", key, value)
-                if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
-                    for i,k in enumerate(key):
-                        result[key[i]] = value[i]
-                else:
-                    result[key] = value
+            #if item['type'] == 'pair':
+            print(f"##### res: {res}")
+            print(f"##### type: {type(res)}")
+            key, value = res
+            print("##### pair", key, value)
+            if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
+                for i,k in enumerate(key):
+                    result[key[i]] = value[i]
+            else:
+                result[key] = value
         print("##### dict", result)
         return result, env
-
+    
     async def visit_pair(self, node, env):
         # Utilizzato sia per i dati {k:v} che per i tipi int:x
         #print("!!!!! pair", node["key"])
