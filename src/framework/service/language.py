@@ -31,69 +31,65 @@ start: dictionary
 // ==========================================
 // STRUTTURE DATI (DIZIONARI E ITEM)
 // ==========================================
-// Il dizionario può avere le graffe o essere "implicito" (senza graffe)
 dictionary: "{" item* "}" -> dictionary
-          | item+          -> dictionary
+          | item+           -> dictionary
 
-item: pair ";"? 
-    | declaration ";"?
+?expr: declaration | sequence | pipe | pair
 
-declaration: pair ("," pair)* ":=" expr
+item: declaration ";"? | pair ";"?
 
-sequence: expr "," (expr | pair)
-    | expr ","
+// PRIORITÀ .2: Vince su pair e sequence. 
+// Usiamo typed_var invece di pair per evitare ambiguità sui due punti.
+declaration.2: (typed_var | identifier) ("," (typed_var | identifier))* ":=" expr
+
+// Definizione specifica per variabili tipizzate (es. int:num1)
+typed_var: identifier ":" identifier -> pair
+
+// La sequenza deve poter contenere pair o altri expr
+sequence: expr "," (expr | pair)*
+
+// Il pair generico viene usato per i dizionari (chiave:valore)
+pair: (identifier | value | tuple) ":" expr
 
 // ==========================================
 // GERARCHIA DELLE ESPRESSIONI (PRECEDENZE)
 // ==========================================
 
-// 1. La virgola "libera" ha la precedenza più bassa
-?expr: sequence | pair | declaration | pipe
-
-// 3. Unità: gestisce l'operatore Pipe |>
 ?pipe: logic (PIPE logic)* -> pipe_node
 
-// 4. Operatori Logici (and, or, not)
 ?logic: comparison
       | "not" logic                -> not_op
       | logic ("and" | "&") logic  -> and_op
       | logic ("or"  | "|") logic  -> or_op
 
-// 5. Comparazioni (==, !=, <, >, ecc.)
 ?comparison: sum
            | comparison COMPARISON_OP sum -> binary_op
 
-// 6. Addizione e Sottrazione (+, -)
 ?sum: term
     | sum ARITHMETIC_OP term -> binary_op
 
-// 7. Moltiplicazione, Divisione e Concatenazione (implicita)
 ?term: power
      | term "*" power -> binary_op
      | term "/" power -> binary_op
      | term "%" power -> binary_op
 
-// 8. Elevamento a Potenza (^)
 ?power: atom
       | atom "^" power -> power
 
-// 9. Atomi: i mattoni fondamentali
 ?atom: value
      | function_value
      | function_call
-     | CNAME           -> identifier
-     | QUALIFIED_CNAME -> identifier
+     | identifier
      | tuple
      | list
      | dictionary
 
-// 10. Collections
+identifier: CNAME            -> identifier
+          | QUALIFIED_CNAME  -> identifier
 
-pair: (atom|sequence) ":" expr
 tuple: "(" [expr] ")" -> tuple_
 list:  "[" [expr] "]" -> list_
 
-// 11. Funzioni
 function_call: callable "(" [call_args] ")"
 function_value: tuple "," dictionary "," tuple
 
@@ -109,7 +105,6 @@ value: SIGNED_NUMBER      -> number
      | "false"i           -> false
      | "*"                -> any_val
 
-// Definizione dei Token
 PIPE: "|>"
 COMPARISON_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
 ARITHMETIC_OP: "+" | "-" | "*" | "/" | "%"
@@ -117,14 +112,12 @@ STRING: ESCAPED_STRING | SINGLE_QUOTED_STRING
 SINGLE_QUOTED_STRING: /'[^']*'/
 QUALIFIED_CNAME: CNAME ("." CNAME)+
 
-// Importazioni standard Lark
 %import common.SIGNED_NUMBER
 %import common.ESCAPED_STRING
 %import common.CNAME
 %import common.WS
 %ignore WS
 
-// Gestione Commenti
 COMMENT: /\/\/[^\n]*/ | /\/\*[\s\S]*?\*\//
 %ignore COMMENT
 """
@@ -353,7 +346,6 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     
     def declaration(self, meta, a):
-        print("####################declaration",a)
         return self.with_meta({
             "type": "declaration",
             "target": a[:-1],
@@ -558,7 +550,7 @@ class Interpreter:
         env_after = {} | env
         target,_ = await self.visit(node["target"],dict())
         value, _ = await self.visit(node["value"], env)
-        #print("############# declaration",target,node["target"])
+        print("#############!!!! declaration",target)
         '''declared_type,name = target
 
         if declared_type == "type":
@@ -570,6 +562,8 @@ class Interpreter:
         print("############# declaration",name,value)'''
         #return (name,value), env
         return value, env
+
+    
 
     # =========================================================
     # COLLECTIONS
