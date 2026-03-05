@@ -31,22 +31,25 @@ start: dictionary
 // ==========================================
 // STRUTTURE DATI (DIZIONARI E ITEM)
 // ==========================================
-dictionary: "{" item* "}" -> dictionary
-          | item+           -> dictionary
+dictionary: "{" item (";" item)* ";"? "}" -> dictionary_node 
+    | "{" item ";" "}" -> dictionary_node 
+    |   "{" "}"        -> dictionary_node
 
-?expr: declaration | pair | atom
+item: (declaration | pair)
 
-item: (declaration | pair) ";"+
+tuple: "(" ")" -> tuple_node | "(" expr ["," expr]* ")" -> tuple_node
 
-declaration.3: sequence ":=" sequence
-pair.2: sequence ":" sequence
+list: "[" "]" -> list_node | "[" expr ["," expr]* "]" -> list_node
 
-?sequence: expr ("," expr)*
+?expr:  list | dictionary | tuple | pipe
 
+pair: sequence ":" sequence
 
-// ==========================================
-// GERARCHIA DELLE ESPRESSIONI (PRECEDENZE)
-// ==========================================
+type_pair: identifier ":" identifier -> pair
+?sequence_type: type_pair ("," type_pair)* ->tuple_node
+declaration.3: sequence_type ":=" sequence
+
+?sequence: expr ("," expr)* ->tuple_node
 
 ?pipe: logic (PIPE logic)* -> pipe_node
 
@@ -66,34 +69,13 @@ pair.2: sequence ":" sequence
      | term "/" power -> binary_op
      | term "%" power -> binary_op
 
-?power: atom
-      | atom "^" power -> power
+?power: atom | atom "^" power -> power
 
 ?atom: value
-     | typed_var
-     | function_value
-     | function_call
      | identifier
-     | tuple
-     | list
-     | dictionary
 
 identifier: CNAME            -> identifier
           | QUALIFIED_CNAME  -> identifier
-
-typed_var.3: identifier ":" identifier -> pair
-
-tuple: "(" [expr] ")" -> tuple_
-list:  "[" [expr] "]" -> list_
-
-function_call: callable "(" [call_args] ")"
-function_value: tuple "," dictionary "," tuple
-
-callable: CNAME | QUALIFIED_CNAME
-
-call_args: call_arg ("," call_arg)*
-call_arg: expr           -> arg_pos
-        | CNAME ":" expr -> arg_kw
 
 value: SIGNED_NUMBER      -> number
      | STRING             -> string
@@ -318,20 +300,20 @@ class DSLTransformer(Transformer):
             "items": [i for i in flat_items if i is not None]
         }, meta)
 
-    def tuple_(self, meta, items):
+    def tuple_node(self, meta, items):
         print("##############################tuple_", items)
         return self.with_meta({
             "type": "tuple",
             "items": [i for i in items if i is not None]
         }, meta)
 
-    def list_(self, meta, items):
+    def list_node(self, meta, items):
         return self.with_meta({
             "type": "list",
             "items": [i for i in items if i is not None]
         }, meta)
 
-    def dictionary(self, meta, items):
+    def dictionary_node(self, meta, items):
         return self.with_meta({
             "type": "dict",
             "items": [i for i in items if i is not None]
@@ -342,7 +324,7 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     
     def declaration(self, meta, a):
-        #print("##############################declaration", a)
+        print("##############################declaration", a)
         return self.with_meta({
             "type": "declaration",
             "target": a[:-1],
@@ -463,6 +445,7 @@ class DSLTransformer(Transformer):
         }, meta)
 
     def start(self, meta, items):
+        print(items)
         return items[0]
 
 class DSLRuntimeError(Exception):
@@ -588,9 +571,9 @@ class Interpreter:
             res, _ = await self.visit(item, evaluation_env)
             #if item['type'] == 'pair':
             print(f"##### res: {res}")
-            print(f"##### type: {type(res)}")
+            #print(f"##### type: {type(res)}")
             key, value = res
-            print("##### pair", key, value)
+            #print("##### pair", key, value)
             if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
                 for i,k in enumerate(key):
                     result[key[i]] = value[i]
@@ -696,7 +679,7 @@ class Interpreter:
 # ============================================================================
 
 def create_parser():
-    return Lark(GRAMMAR, parser='earley', propagate_positions=True)
+    return Lark(GRAMMAR, parser='lalr', propagate_positions=True)
 
 @flow.action()
 def parse(content: str, parser: Lark,**data):
