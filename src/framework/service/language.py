@@ -31,27 +31,18 @@ start: dictionary
 // ==========================================
 // STRUTTURE DATI (DIZIONARI E ITEM)
 // ==========================================
-dictionary: "{" item (";" item)* ";"? "}" -> dictionary_node 
-    | "{" item ";" "}" -> dictionary_node 
-    |   "{" "}"        -> dictionary_node
+dictionary: "{" [item (";" item)* ";"?] "}" -> dictionary_node
 
-item: (declaration | pair)
+item: sequence ":=" sequence -> declaration
+    | sequence
 
-tuple: "(" ")" -> tuple_node | "(" expr ["," expr]* ")" -> tuple_node
+?sequence: expr ("," expr)* -> tuple_node
 
-list: "[" "]" -> list_node | "[" expr ["," expr]* "]" -> list_node
+?expr: pipe
+     | pipe ":" expr -> pair
 
-?expr:  list | dictionary | tuple | pipe
-
-pair: sequence ":" sequence
-
-type_pair: identifier ":" identifier -> pair
-?sequence_type: type_pair ("," type_pair)* ->tuple_node
-declaration.3: sequence_type ":=" sequence
-
-?sequence: expr ("," expr)* ->tuple_node
-
-?pipe: logic (PIPE logic)* -> pipe_node
+?pipe: logic
+     | logic (PIPE logic)+ -> pipe_node
 
 ?logic: comparison
       | "not" logic                -> not_op
@@ -69,10 +60,16 @@ declaration.3: sequence_type ":=" sequence
      | term "/" power -> binary_op
      | term "%" power -> binary_op
 
-?power: atom | atom "^" power -> power
+?power.1: atom | atom "^" power -> power
 
-?atom: value
+?atom.5: value
      | identifier
+     | tuple
+     | list
+     | dictionary
+
+tuple: "(" ")" -> tuple_node | "(" sequence ")" -> tuple_node
+list: "[" "]" -> list_node | "[" sequence "]" -> list_node
 
 identifier: CNAME            -> identifier
           | QUALIFIED_CNAME  -> identifier
@@ -301,10 +298,28 @@ class DSLTransformer(Transformer):
         }, meta)
 
     def tuple_node(self, meta, items):
-        print("##############################tuple_", items)
+        items = [i for i in items if i is not None]
+        
+        if len(items) == 1:
+            return items[0]
+            
+        pairs = [i for i, x in enumerate(items) if isinstance(x, dict) and x.get("type") == "pair"]
+        
+        if len(pairs) == 1 and len(items) > 1:
+            idx = pairs[0]
+            pair_node = items[idx]
+            
+            left_part = items[:idx] + [pair_node["key"]]
+            right_part = [pair_node["value"]] + items[idx+1:]
+            
+            left = {"type": "tuple", "items": left_part} if len(left_part) > 1 else left_part[0]
+            right = {"type": "tuple", "items": right_part} if len(right_part) > 1 else right_part[0]
+            
+            return self.with_meta({"type": "pair", "key": left, "value": right}, meta)
+            
         return self.with_meta({
             "type": "tuple",
-            "items": [i for i in items if i is not None]
+            "items": items
         }, meta)
 
     def list_node(self, meta, items):
@@ -438,7 +453,6 @@ class DSLTransformer(Transformer):
         }, meta)
 
     def pipe_node(self, meta, items):
-        
         return self.with_meta({
             "type": "pipe",
             "steps": [i for i in items if not isinstance(i, Token)],
