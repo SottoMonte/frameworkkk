@@ -52,7 +52,7 @@ class tester():
         
         path = kwargs.get('path')
         parsed = kwargs.get('data') or kwargs.get('parsed')
-        path = "src/framework/service/factory.test.dsl"
+        #path = "src/framework/service/factory.test.dsl"
         print(path)
         res = await resource(path)
         ok = res.get('outputs',path)

@@ -36,7 +36,7 @@ dictionary: "{" [item (";" item)* ";"?] "}" -> dictionary_node
 item: sequence ":=" sequence -> declaration
     | sequence
 
-?sequence: expr ("," expr)* -> tuple_node
+?sequence: expr ("," expr)* ","? -> tuple_node
 
 ?expr: pipe
      | expr ":" expr -> pair
@@ -68,13 +68,15 @@ item: sequence ":=" sequence -> declaration
      | list
      | dictionary
      | function_call
+     | function_value
 
 tuple: "(" [sequence] ")" -> tuple_node
 list: "[" [sequence] "]" -> list_node
 
-identifier: CNAME -> identifier | QUALIFIED_CNAME -> identifier
-
 function_call: identifier "(" [sequence] ")"
+function_value: tuple dictionary tuple
+
+identifier: CNAME -> identifier | QUALIFIED_CNAME -> identifier
 
 value: SIGNED_NUMBER      -> number
      | STRING             -> string
@@ -261,6 +263,14 @@ class DSLTransformer(Transformer):
             "type": "any"
         }, meta)
 
+    def function_value(self, meta, a):
+        return self.with_meta({
+            "type": "function_def",
+            "params": a[0],
+            "body": a[1],
+            "return_type": a[2]
+        }, meta)
+
     # -------------------------------------------------
     # VARIABILI / NOMI
     # -------------------------------------------------
@@ -276,9 +286,6 @@ class DSLTransformer(Transformer):
         # Se arriva un Tree, estrai il token e trasformalo
         if isinstance(a[0], Token):
             return {"type": "var", "name": str(a[0]), "meta": {"line": meta.line, "column": meta.column}}
-        return a[0]
-
-    def callable(self, meta, a):
         return a[0]
 
     # -------------------------------------------------
@@ -318,14 +325,6 @@ class DSLTransformer(Transformer):
             right = {"type": "tuple", "items": right_part} if len(right_part) > 1 else right_part[0]
             
             return self.with_meta({"type": "pair", "key": left, "value": right}, meta)
-            
-        if len(items) == 3 and isinstance(items[0], dict) and items[0].get("type") == "tuple" and isinstance(items[1], dict) and items[1].get("type") == "dict" and isinstance(items[2], dict) and items[2].get("type") == "tuple":
-            return self.with_meta({
-                "type": "function_def",
-                "params": items[0].get("items", []),
-                "body": items[1],
-                "return_type": items[2]
-            }, meta)
 
         return self.with_meta({
             "type": "tuple",
@@ -349,7 +348,7 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     
     def declaration(self, meta, a):
-        print("##############################declaration", a)
+        #print("##############################declaration", a)
         return self.with_meta({
             "type": "declaration",
             "target": a[:-1],
@@ -389,7 +388,7 @@ class DSLTransformer(Transformer):
         
         return self.with_meta({
             "type": "call",
-            "name": fn,
+            "name": fn.get("name"),
             "args": args,
             "kwargs": kwargs
         }, meta)
@@ -450,7 +449,6 @@ class DSLTransformer(Transformer):
         }, meta)
 
     def start(self, meta, items):
-        print(items)
         return items[0]
 
 class DSLRuntimeError(Exception):
@@ -527,43 +525,71 @@ class Interpreter:
         name = node["name"]
         val = scheme.get(env, name, name)
         return val, env
+    async def visit_function_def(self, node, env):
+
+        # ----------------------
+        # PARAMETRI
+        # ----------------------
+        params = []
+
+        '''for p in node["params"]:
+            # se è typed_var (dopo che sistemi la grammar)
+            if p.get("type") == "typed_var":
+                params.append({
+                    "var_type": p["var_type"],
+                    "name": p["name"]
+                })
+            else:
+                # fallback temporaneo per il tuo AST attuale
+                # dict con pair(int:c)
+                pair = p["items"][0]
+                params.append(pair)'''
+
+        # ----------------------
+        # BODY
+        # ----------------------
+        body_value = node["body"]
+
+        # ----------------------
+        # RETURN TYPE
+        # ----------------------
+        '''return_types = []
+        for r in node["return_type"].get("items",node["return_type"]):
+            print(r)
+            pair = r["items"][0]
+            return_types.append(pair)'''
+        params = node["params"].get("items",[node["params"]])
+        return_type = node["return_type"].get("items",[node["return_type"]])
+
+        return (params, body_value, return_type), env
 
     # =========================================================
     # DECLARATIONS (MULTIPLE & SINGLE)
     # =========================================================
-    async def visit_declaration(self, node, env):
-        env_after = {} | env
-        keys = []
-        value, _ = await self.visit(node["value"], env)
-        for t in node["target"]:
-            tu,_ = await self.visit(t,dict())
-            print("############# tu",tu)
-            for i in tu:
-                if isinstance(i, tuple) and len(i) == 2:
-                    keys.append(i[1])
-                else:
-                    keys = tu
-                    return (tu[1],value), env
-                print("############# declaration",i)
-        print("############# keys",keys)
-        
-        
-        '''for t in pair:
-            print("############# BOOM",t)
-            key,name = t
-            keys.append(name)'''
-        '''declared_type,name = target
-
-        if declared_type == "type":
-            CUSTOM_TYPES[name] = value
-            #env_after[name] = value
-            declared_type = 'dict'
-
-        value = await self._check_type(value,declared_type,node.get("meta"),name)
-        print("############# declaration",name,value)'''
-        return (tuple(keys),value), env
-
     
+    async def visit_declaration(self, node, env):
+        val, _ = await self.visit(node["value"], env)
+        meta = node.get("meta")
+        
+        # Assumiamo che node["target"] contenga la definizione (tipo, nome)
+        for t in node["target"]:
+            tu, _ = await self.visit(t, {})
+            decl_type, name = tu[0], tu[1]
+
+            # Gestione Tipi Personalizzati
+            if decl_type == "type":
+                CUSTOM_TYPES[name] = val
+                return (name, val), env # Restituisce il nome del tipo e la sua struttura
+
+            # Gestione Destrutturazione (se tu[0] è una tupla di coppie tipo/nome)
+            if isinstance(decl_type, tuple):
+                keys = [i[1] for i in tu]
+                vals = [await self._check_type(val[idx], i[0], meta, i[1]) for idx, i in enumerate(tu)]
+                return (tuple(keys), tuple(vals)), env
+
+            # Gestione Variabile Singola Standard
+            checked_val = await self._check_type(val, decl_type, meta, name)
+            return (name, checked_val), env
 
     # =========================================================
     # COLLECTIONS
@@ -575,7 +601,7 @@ class Interpreter:
             evaluation_env = env | result
             res, _ = await self.visit(item, evaluation_env)
             #if item['type'] == 'pair':
-            print(f"##### res: {res}")
+            #print(f"##### res: {res}")
             #print(f"##### type: {type(res)}")
             key, value = res
             #print("##### pair", key, value)
@@ -584,20 +610,15 @@ class Interpreter:
                     result[key[i]] = value[i]
             else:
                 result[key] = value
-        print("##### dict", result)
+        #print("##### dict", result)
         return result, env
     
     async def visit_pair(self, node, env):
         # Utilizzato sia per i dati {k:v} che per i tipi int:x
-        #print("!!!!! pair", node["key"])
         key, _ = await self.visit(node["key"], env) 
         value, _ = await self.visit(node["value"], env) 
-        #print("##### pair", key, value)
-        # Validazione di sicurezza: le chiavi di un dict devono essere hashable
         if not isinstance(key, (str, int, float, tuple)):
-            print("##### key", key,value)
-            #raise DSLRuntimeError(f"Key invalida: {type(key)}. Deve essere un tipo primitivo.", node.get("meta"))
-            return str(key), env
+            raise DSLRuntimeError(f"Key invalida: {type(key)}. Deve essere un tipo primitivo.", node.get("meta"))
         return (key, value), env
 
     async def visit_tuple(self, node, env):
@@ -652,6 +673,7 @@ class Interpreter:
 
     async def visit_call(self, node, env, args=[], kwargs={}):
         name = node.get("name")
+
         # Risoluzione argomenti aggiuntivi dal nodo AST
         ast_args = [(await self.visit(a, env))[0] for a in node.get("args", [])]
         all_args = list(args) + ast_args
@@ -669,14 +691,20 @@ class Interpreter:
 
     async def _check_type(self, value, expected_type, meta, var_name):
         py_type = TYPE_MAP.get(expected_type)
+        
         if expected_type in CUSTOM_TYPES:
             return value # Gestione tipi custom semplificata
         
-        if py_type and not isinstance(value, py_type):
-            raise DSLRuntimeError(
-                f"Type error for '{var_name}': expected {expected_type}, got {type(value).__name__}", 
-                meta
-            )
+        if py_type:
+            # Python considera bool come una sottoclasse di int, quindi isinstance(True, int) == True. 
+            # Dobbiamo prevenire esplicitamente questa sovrapposizione.
+            is_valid = isinstance(value, py_type) and not (py_type is int and isinstance(value, bool))
+            
+            if not is_valid:
+                raise DSLRuntimeError(
+                    f"Type error for '{var_name}': expected {expected_type}, got {type(value).__name__}", 
+                    meta
+                )
         return value
 
 # ============================================================================

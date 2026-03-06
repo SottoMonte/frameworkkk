@@ -1,3 +1,4 @@
+{
 imports: {
     'flow':resource("framework/service/flow.py") |> get("outputs");
 };
@@ -49,11 +50,11 @@ type:scheme := {
     };
 };
 
-function:error_function := (str:y),{
+function:error_function := (str:y){
     x:y/2;
-},(str:x);
+}(str:x);
 
-tuple:token_print := (123);
+tuple:token_print := (123,1);
 
 tuple:test_suite := (
     {
@@ -78,3 +79,4 @@ tuple:test_suite := (
     { "target": "exports.assert"; "inputs":("10 <= 50"); "filter":"success"; "output": true;  },
     { "target": "exports.pass"; "inputs":(10); "filter":"outputs"; "output": 10;  },
 );
+}
