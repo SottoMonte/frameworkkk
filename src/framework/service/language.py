@@ -672,8 +672,31 @@ class Interpreter:
             val, env = await self.visit_call(step, env, args=[val])
         return val, env
 
+    async def _call_function(self, node, env,args=[],kwargs={}):
+        local_env = {}
+        
+        name = node["name"]
+        params_ast, body_ast, return_ast = env[name]
+        # Bind parametri
+        for param_node, arg_node in zip(params_ast, args):
+            param_type = param_node["key"]["name"]
+            param_name = param_node["value"]["name"]
+            arg_value = await self._check_type(arg_node, param_type, param_node.get("meta"), param_name)
+            local_env[param_name] = arg_value
+        # Esegui body
+        result, _ = await self.visit(body_ast, local_env)
+        out = None
+        # Controllo tipo di ritorno
+
+        for ty in return_ast:
+            pair,env = await self.visit(ty,local_env)
+            tipo,name = pair
+            if name in result:
+                out = await self._check_type(result[name], tipo, ty.get("meta"))
+        return out
+
     async def visit_call(self, node, env, args=[], kwargs={}):
-        name = node.get("name")
+        name,meta = node.get("name"),node.get("meta")
 
         # Risoluzione argomenti aggiuntivi dal nodo AST
         ast_args = [(await self.visit(a, env))[0] for a in node.get("args", [])]
@@ -685,10 +708,18 @@ class Interpreter:
         function = scheme.get(env, str(name))
         
         if callable(function):
-            action = await flow.act(flow.step(function, *all_args, **all_kwargs))
-            return action["outputs"], env
-        
-        raise DSLRuntimeError(f"Function '{name}' not found or not callable", node.get("meta"))
+            step = flow.step(function,*all_args,**all_kwargs)
+        elif isinstance(function, tuple) and len(function) == 3:
+            #params_ast, body_ast, return_ast = function
+            step = flow.step(self._call_function,node,env,all_args,all_kwargs)
+        else:
+            raise DSLRuntimeError(f"Unknown function '{name}'", meta)
+
+        action = await flow.act(step)
+        #print("####1",action)
+        output = action["outputs"]
+        #print("####2",output)
+        return output, env
 
     async def _check_type(self, value, expected_type, meta, var_name):
         py_type = TYPE_MAP.get(expected_type)

@@ -54,7 +54,11 @@ function:error_function := (str:y){
     x:y/2;
 }(str:x);
 
+function:success_function := (str:y){x:y;}(str:x);
+
 tuple:token_print := (123);
+
+bb:success_function("ciao") |> print;
 
 tuple:test_suite := (
     {
