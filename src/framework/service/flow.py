@@ -173,7 +173,7 @@ async def serial(*steps,context=dict()):
     for step in steps:
         output = await act(step, context)
         outputs.append(output)
-    return aggregate_results(outputs)
+    return aggregate_results(tuple(outputs))
 
 @action()
 async def parallel(*steps, context=dict()):

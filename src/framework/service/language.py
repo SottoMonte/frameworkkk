@@ -36,7 +36,7 @@ dictionary: "{" [item (";" item)* ";"?] "}" -> dictionary_node
 item: sequence ":=" sequence -> declaration
     | sequence
 
-?sequence: expr ("," expr)* ","? -> tuple_node
+?sequence: expr ("," expr)* ","?
 
 ?expr: pipe
      | expr ":" expr -> pair
@@ -70,8 +70,8 @@ item: sequence ":=" sequence -> declaration
      | function_call
      | function_value
 
-tuple: "(" [sequence] ")" -> tuple_node
-list: "[" [sequence] "]" -> list_node
+?tuple: "(" [sequence] ")" -> tuple_node
+?list: "[" [sequence] "]" -> list_node
 
 function_call: identifier "(" [sequence] ")"
 function_value: tuple dictionary tuple
@@ -292,7 +292,7 @@ class DSLTransformer(Transformer):
     # STRUTTURE
     # -------------------------------------------------
 
-    def sequence(self, meta, items):
+    def sequence2(self, meta, items):
         # items può contenere un elemento singolo o un'altra sequenza (ricorsione)
         flat_items = []
         for i in items:
@@ -305,36 +305,37 @@ class DSLTransformer(Transformer):
             "type": "tuple",
             "items": [i for i in flat_items if i is not None]
         }, meta)
-
-    def tuple_node(self, meta, items):
+    
+    def sequence(self, meta, items):
         items = [i for i in items if i is not None]
         
-        if len(items) == 1:
-            return items[0]
-            
-        pairs = [i for i, x in enumerate(items) if isinstance(x, dict) and x.get("type") == "pair"]
-        
-        if len(pairs) == 1 and len(items) > 1:
-            idx = pairs[0]
-            pair_node = items[idx]
-            
-            left_part = items[:idx] + [pair_node["key"]]
-            right_part = [pair_node["value"]] + items[idx+1:]
-            
-            left = {"type": "tuple", "items": left_part} if len(left_part) > 1 else left_part[0]
-            right = {"type": "tuple", "items": right_part} if len(right_part) > 1 else right_part[0]
-            
-            return self.with_meta({"type": "pair", "key": left, "value": right}, meta)
-
         return self.with_meta({
             "type": "tuple",
             "items": items
         }, meta)
 
+    def tuple_node(self, meta, items):
+        items = [i for i in items if i is not None]
+        
+        if len(items) == 1 and isinstance(items[0], dict) and items[0].get("type") == "tuple":
+            real_items = items[0]["items"]
+        else:
+            real_items = items
+        return self.with_meta({
+            "type": "tuple",
+            #"items": items
+            "items":real_items
+        }, meta)
+
     def list_node(self, meta, items):
+        if len(items) == 1 and isinstance(items[0], dict) and items[0].get("type") == "tuple":
+            real_items = items[0]["items"]
+        else:
+            real_items = items
         return self.with_meta({
             "type": "list",
-            "items": [i for i in items if i is not None]
+            #"items": [i for i in items if i is not None]
+            "items":real_items
         }, meta)
 
     def dictionary_node(self, meta, items):

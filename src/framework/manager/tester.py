@@ -117,7 +117,7 @@ class tester():
                 actual, _ = await visitor.visit_call({'type':'call','name':target}, ooout|visitor.env, args)
                 if 'filter' in test:
                     actual = actual.get(test['filter'])
-                
+                #print(actual,expected)
                 if actual == expected:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
