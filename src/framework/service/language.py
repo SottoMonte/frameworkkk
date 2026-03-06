@@ -692,7 +692,7 @@ class Interpreter:
             pair,env = await self.visit(ty,local_env)
             tipo,name = pair
             if name in result:
-                out = await self._check_type(result[name], tipo, ty.get("meta"))
+                out = await self._check_type(result[name], tipo, ty.get("meta"),name)
         return out
 
     async def visit_call(self, node, env, args=[], kwargs={}):

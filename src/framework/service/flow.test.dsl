@@ -58,7 +58,8 @@ function:success_function := (str:y){x:y;}(str:x);
 
 tuple:token_print := (123);
 
-bb:success_function("ciao") |> print;
+bb:success_function("success_function#booom") |> print;
+cc:print("BELLOOO!!!!!!!!");
 
 tuple:test_suite := (
     {
