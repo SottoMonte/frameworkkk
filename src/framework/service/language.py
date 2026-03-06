@@ -39,7 +39,7 @@ item: sequence ":=" sequence -> declaration
 ?sequence: expr ("," expr)* -> tuple_node
 
 ?expr: pipe
-     | pipe ":" expr -> pair
+     | expr ":" expr -> pair
 
 ?pipe: logic
      | logic (PIPE logic)+ -> pipe_node
@@ -60,19 +60,21 @@ item: sequence ":=" sequence -> declaration
      | term "/" power -> binary_op
      | term "%" power -> binary_op
 
-?power.1: atom | atom "^" power -> power
+?power: atom | atom "^" power -> power
 
-?atom.5: value
+?atom: value
      | identifier
      | tuple
      | list
      | dictionary
+     | function_call
 
-tuple: "(" ")" -> tuple_node | "(" sequence ")" -> tuple_node
-list: "[" "]" -> list_node | "[" sequence "]" -> list_node
+tuple: "(" [sequence] ")" -> tuple_node
+list: "[" [sequence] "]" -> list_node
 
-identifier: CNAME            -> identifier
-          | QUALIFIED_CNAME  -> identifier
+identifier: CNAME -> identifier | QUALIFIED_CNAME -> identifier
+
+function_call: identifier "(" [sequence] ")"
 
 value: SIGNED_NUMBER      -> number
      | STRING             -> string
@@ -317,6 +319,14 @@ class DSLTransformer(Transformer):
             
             return self.with_meta({"type": "pair", "key": left, "value": right}, meta)
             
+        if len(items) == 3 and isinstance(items[0], dict) and items[0].get("type") == "tuple" and isinstance(items[1], dict) and items[1].get("type") == "dict" and isinstance(items[2], dict) and items[2].get("type") == "tuple":
+            return self.with_meta({
+                "type": "function_def",
+                "params": items[0].get("items", []),
+                "body": items[1],
+                "return_type": items[2]
+            }, meta)
+
         return self.with_meta({
             "type": "tuple",
             "items": items
@@ -361,40 +371,21 @@ class DSLTransformer(Transformer):
     # FUNZIONI
     # -------------------------------------------------
 
-    def function_value(self, meta, a):
-        params_tuple = a[0]
-        body = a[1]
-        return_tuple = a[2]
-
-        params = params_tuple["items"] if params_tuple["type"] == "tuple" else []
-
-        return self.with_meta({
-            "type": "function_def",
-            "params": params,
-            "body": body,
-            "return_type": return_tuple
-        }, meta)
-
-    def call_args(self, meta, a):
-        return a
-
-    def arg_pos(self, meta, a):
-        return ("pos", a[0])
-
-    def arg_kw(self, meta, a):
-        return ("kw", str(a[0]), a[1])
-
     def function_call(self, meta, a):
         fn = a[0]
         args = []
         kwargs = {}
 
-        if len(a) > 1:
-            for kind, *data in a[1]:
-                if kind == "pos":
-                    args.append(data[0])
+        if len(a) > 1 and a[1] is not None:
+            seq = a[1]
+            items = seq.get("items", []) if isinstance(seq, dict) and seq.get("type") == "tuple" else [seq]
+            for item in items:
+                if isinstance(item, dict) and item.get("type") == "pair":
+                    key_node = item["key"]
+                    key_name = key_node["name"] if isinstance(key_node, dict) and key_node.get("type") == "var" else str(key_node)
+                    kwargs[key_name] = item["value"]
                 else:
-                    kwargs[data[0]] = data[1]
+                    args.append(item)
         
         return self.with_meta({
             "type": "call",

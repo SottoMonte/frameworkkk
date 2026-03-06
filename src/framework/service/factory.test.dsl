@@ -10,7 +10,7 @@
     ay,by,cy: true,false,true;
     az,bz,cz: *,*,*;
     int:num1,int:num2,int:num3 := 1,2,3;
-    e,f:1|>print,2;
+    e,f:"ciao"|>print,2;
     //d,e:10,20;
     //int:ccc,int:ddd := 1000,2000;
     //int:bbb := 10000;
