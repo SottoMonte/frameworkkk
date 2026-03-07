@@ -104,22 +104,28 @@ class tester():
 
         # Esecuzione della test suite definita
         tested_targets = set()
-        for test in test_suite:
+        for i,test in enumerate(test_suite):
             if not isinstance(test, dict): continue
             results["total"] += 1
             target = test.get('action')
-            tested_targets.add(target)
+            #tested_targets.add(target)
             args = test.get('inputs', ())
             expected = test.get('outputs')
             assert_ = test.get('assert')
             
             try:
-                received, _ = await visitor.visit_call({'type':'call','name':target}, ooout|visitor.env, args)
+                #received, _ = await visitor.invoke({'type':'call','name':target}, ooout|visitor.env, args)
+                if isinstance(args,list):
+                    received = await visitor.invoke(target, args)
+                elif isinstance(args,dict):
+                    received = await visitor.invoke(target, [],args)
+                else:
+                    received = await visitor.invoke(target, args)
                 check = await assert_(received=received,expected=expected)
                 if check:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
-                    framework_log("INFO", f"Test {target}: OK", emoji="✅")
+                    framework_log("INFO", f"Test N.{i}: OK", emoji="✅")
                 else:
                     results["failed"] += 1
                     results["details"].append({
@@ -128,12 +134,12 @@ class tester():
                         "expected": expected, 
                         "received": received
                     })
-                    framework_log("WARNING", f"Test {target}: FAIL", expected=expected, received=received, emoji="❌")
+                    framework_log("WARNING", f"Test N.{i}: FAIL", expected=expected, received=received, emoji="❌")
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": target, "error": str(e)})
                 results["details"].append({"target": target, "status": "ERROR", "message": str(e)})
-                framework_log("ERROR", f"Test {target}: ERROR", error=str(e), emoji="⚠️")
+                framework_log("ERROR", f"Test N.{i}: ERROR", error=str(e), emoji="⚠️")
 
         # 3. Verifica Copertura (Exports)
         exports = ooout.get('exports', {})

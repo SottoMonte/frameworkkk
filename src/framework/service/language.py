@@ -742,11 +742,11 @@ class Interpreter:
             val, env = await self.visit_call(step, env, args=[val])
         return val, env
 
-    async def _call_function(self, node, env,args=[],kwargs={}):
+    async def _call_function(self, function,args=[],kwargs={}):
         local_env = {}
         
-        name = node["name"]
-        params_ast, body_ast, return_ast = env[name]
+        #name = node["name"]
+        params_ast, body_ast, return_ast = function
         # Bind parametri
         for param_node, arg_node in zip(params_ast, args):
             param_type = param_node["key"]["name"]
@@ -785,7 +785,7 @@ class Interpreter:
             step = flow.step(function,*all_args,**all_kwargs)
         elif isinstance(function, tuple) and len(function) == 3:
             #params_ast, body_ast, return_ast = function
-            step = flow.step(self._call_function,node,env,all_args,all_kwargs)
+            step = flow.step(self._call_function,env[name],env,all_args,all_kwargs)
         else:
             raise DSLRuntimeError(f"Unknown function '{name}'", meta)
 
@@ -794,6 +794,26 @@ class Interpreter:
         output = action["outputs"]
         #print("####2",output)
         return output, env
+
+    async def invoke(self, function, args=[], kwargs={}):
+        """
+        Punto di ingresso universale per eseguire funzioni.
+        'target' può essere:
+        - Una stringa (nome della funzione nel dizionario env)
+        - Una funzione Python reale
+        - Un oggetto 'function' del DSL
+        """
+        
+        if callable(function):
+            step = flow.step(function,*args,**kwargs)
+        elif isinstance(function, tuple) and len(function) == 3:
+            step = flow.step(self._call_function,function,args,kwargs)
+        else:
+            raise DSLRuntimeError(f"Unknown function '{name}'", meta)
+
+        action = await flow.act(step)
+        return action["outputs"]
+        
 
     async def _check_type(self, value, expected_type, meta, var_name):
         py_type = TYPE_MAP.get(expected_type)

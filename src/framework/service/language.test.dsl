@@ -87,35 +87,44 @@
         "worker": "myself";
     };
 
-    tuttp:@tutto;
-    sssss:@tuttp(tutto:10)|>print("###############");
-    aaaa:@received == @expected;
-    bbbb:aaaa(received:10, expected:20)|> print("###############");
-
     tuple:test_suite := (
         { 
-            "action": "fn_double"; 
+            "action": @placeholder;
+            "inputs": {'placeholder':10};
+            "outputs": 10;
+            "assert":@received == @expected;
+            "note": "Double the input"; 
+        },
+        { 
+            "action": @left == @right;
+            "inputs": {'left':10,'right':10};
+            "outputs": True;
+            "assert":@received == @expected;
+            "note": "Double the input"; 
+        },
+        { 
+            "action": fn_double; 
             "inputs": [10];
             "outputs": 20;
             "assert":@received == @expected;
             "note": "Double the input"; 
         },
         { 
-            "action": "fn_sum"; 
+            "action": fn_sum; 
             "inputs": [10, 20]; 
             "outputs": 30;
             "assert":@received == @expected;
             "note": "Sum of two numbers"; 
         },
         { 
-            "action": "fn_increment_pair"; 
+            "action": fn_increment_pair; 
             "inputs": [10]; 
             "outputs": [11, 12];
             "assert":@received == @expected; 
             "note": "Increment pair of numbers"; 
         },
         { 
-            "action": "pass"; 
+            "action": pass;
             "inputs": [tuple_void]; 
             "outputs": (());
             "assert":@received == @expected; 
