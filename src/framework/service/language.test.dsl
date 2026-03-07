@@ -22,8 +22,13 @@
 
     boolean:bool_true := True;
     boolean:bool_false := False;
+    boolean:bool_true_alt := true;
+    boolean:bool_false_alt := false;
 
-    function:increment := (int:x), { r: x + 1; }, (int:r);
+    function:increment := (int:x){ r: x + 1; }(int:r);
+    function:fn_double := (int:n){ out: n * 2; }(int:out);
+    function:fn_sum := (int:x, int:y){ sum: x + y; }(int:sum);
+    function:fn_increment_pair := (int:val){ inc1: val + 1; inc2: val + 2; }(int:inc1, int:inc2);
 
     any:any_str := "Ciao";
     any:any_int := 10;
@@ -34,22 +39,17 @@
     any:any_fn := increment;
 
     list:collection_mixed_list := [1, 2, "tre", True];
-    dict:collection_simple_dict := { "chiave": "valore"; "num": 42; };
-    //tuple:collection_inline_tuple := 1, 2, 3;
+    list:collection_list_trailing := [1, 2];
+    list:collection_list_void := [];
+
+    tuple:collection_inline_tuple := 1, 2, 3;
+    tuple:mixed_inline_tuple := 1, "due", True, 4.0;
     tuple:collection_pair := (1, "test");
     tuple:tuple_void := ();
 
-    list:collection_list_trailing := [1, 2];
     dict:collection_dict_trailing := { "a": 1; "b": 2; };
-
-    function:fn_double := (int:n), { out: n * 2; }, (int:out);
-
-    function:fn_sum := (int:x, int:y), { sum: x + y; }, (int:sum);
-
-    function:fn_increment_pair := (int:val), { 
-        inc1: val + 1; 
-        inc2: val + 2; 
-    }, (int:inc1, int:inc2);
+    dict:collection_simple_dict := { "chiave": "valore"; "num": 42; };
+    dict:collection_dict_void := {};
 
     type:scheme := {
         "action": {
@@ -87,10 +87,39 @@
         "worker": "myself";
     };
 
+    tuttp:@tutto;
+    sssss:@tuttp(tutto:10)|>print("###############");
+    aaaa:@received == @expected;
+    bbbb:aaaa(received:10, expected:20)|> print("###############");
+
     tuple:test_suite := (
-        { "target": "fn_double"; "inputs": [10]; "output": 20; "description": "Double the input"; },
-        { "target": "fn_sum"; "inputs": [10, 20]; "output": 30; "description": "Sum of two numbers"; },
-        { "target": "fn_increment_pair"; "inputs": [10]; "output": [11, 12]; "description": "Increment pair of numbers"; },
-        { "target": "pass"; "inputs": [tuple_void]; "output": [()]; "description": "Pass void tuple"; },
+        { 
+            "action": "fn_double"; 
+            "inputs": [10];
+            "outputs": 20;
+            "assert":@received == @expected;
+            "note": "Double the input"; 
+        },
+        { 
+            "action": "fn_sum"; 
+            "inputs": [10, 20]; 
+            "outputs": 30;
+            "assert":@received == @expected;
+            "note": "Sum of two numbers"; 
+        },
+        { 
+            "action": "fn_increment_pair"; 
+            "inputs": [10]; 
+            "outputs": [11, 12];
+            "assert":@received == @expected; 
+            "note": "Increment pair of numbers"; 
+        },
+        { 
+            "action": "pass"; 
+            "inputs": [tuple_void]; 
+            "outputs": (());
+            "assert":@received == @expected; 
+            "note": "Pass void tuple"; 
+        },
     );
 }

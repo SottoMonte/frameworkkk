@@ -40,7 +40,6 @@ class tester():
                         flow.step(flow.log,"Errore: {errors[0]} "),
                     )'''
                     await self.dsl(path= module_path)
-                    exit(1)
 
 
     async def dsl(self, **kwargs):
@@ -108,17 +107,16 @@ class tester():
         for test in test_suite:
             if not isinstance(test, dict): continue
             results["total"] += 1
-            target = test.get('target')
+            target = test.get('action')
             tested_targets.add(target)
             args = test.get('inputs', ())
-            expected = test.get('output')
+            expected = test.get('outputs')
+            assert_ = test.get('assert')
             
             try:
-                actual, _ = await visitor.visit_call({'type':'call','name':target}, ooout|visitor.env, args)
-                if 'filter' in test:
-                    actual = actual.get(test['filter'])
-                #print(actual,expected)
-                if actual == expected:
+                received, _ = await visitor.visit_call({'type':'call','name':target}, ooout|visitor.env, args)
+                check = await assert_(received=received,expected=expected)
+                if check:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
                     framework_log("INFO", f"Test {target}: OK", emoji="✅")
@@ -128,9 +126,9 @@ class tester():
                         "target": target, 
                         "status": "FAIL", 
                         "expected": expected, 
-                        "actual": actual
+                        "received": received
                     })
-                    framework_log("WARNING", f"Test {target}: FAIL", expected=expected, actual=actual, emoji="❌")
+                    framework_log("WARNING", f"Test {target}: FAIL", expected=expected, received=received, emoji="❌")
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": target, "error": str(e)})

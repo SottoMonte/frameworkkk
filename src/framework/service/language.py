@@ -26,7 +26,7 @@ GRAMMAR = r"""
 // ==========================================
 // PUNTO DI INGRESSO (ROOT)
 // ==========================================
-start: dictionary
+start: dictionary | item (";" item)* ";" -> dictionary_node
 
 // ==========================================
 // STRUTTURE DATI (DIZIONARI E ITEM)
@@ -38,8 +38,7 @@ item: sequence ":=" sequence -> declaration
 
 ?sequence: expr ("," expr)* ","?
 
-?expr: pipe
-     | expr ":" expr -> pair
+?expr: expr ":" expr -> pair | pipe
 
 ?pipe: logic
      | logic (PIPE logic)+ -> pipe_node
@@ -69,14 +68,19 @@ item: sequence ":=" sequence -> declaration
      | dictionary
      | function_call
      | function_value
+     #| pair
 
 ?tuple: "(" [sequence] ")" -> tuple_node
+?pair: atom ":" atom
 ?list: "[" [sequence] "]" -> list_node
 
 function_call: identifier "(" [sequence] ")"
 function_value: tuple dictionary tuple
 
-identifier: CNAME -> identifier | QUALIFIED_CNAME -> identifier
+identifier: CNAME -> identifier 
+| QUALIFIED_CNAME -> identifier 
+| "@" CNAME -> context_var
+| "@" QUALIFIED_CNAME -> context_var
 
 value: SIGNED_NUMBER      -> number
      | STRING             -> string
@@ -282,6 +286,12 @@ class DSLTransformer(Transformer):
             "name": str(s[0])
         }, meta)
 
+    def context_var(self, meta, s):
+        return self.with_meta({
+            "type": "context_var",
+            "name": str(s[0])
+        }, meta)
+
     def key(self, meta, a):
         # Se arriva un Tree, estrai il token e trasformalo
         if isinstance(a[0], Token):
@@ -291,33 +301,19 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     # STRUTTURE
     # -------------------------------------------------
-
-    def sequence2(self, meta, items):
-        # items può contenere un elemento singolo o un'altra sequenza (ricorsione)
-        flat_items = []
-        for i in items:
-            if isinstance(i, dict) and i.get("type") == "tuple":
-                flat_items.extend(i["items"])
-            else:
-                flat_items.append(i)
-        
-        return self.with_meta({
-            "type": "tuple",
-            "items": [i for i in flat_items if i is not None]
-        }, meta)
     
     def sequence(self, meta, items):
         items = [i for i in items if i is not None]
         
         return self.with_meta({
-            "type": "tuple",
+            "type": "sequence",
             "items": items
         }, meta)
 
     def tuple_node(self, meta, items):
         items = [i for i in items if i is not None]
         
-        if len(items) == 1 and isinstance(items[0], dict) and items[0].get("type") == "tuple":
+        if len(items) == 1 and isinstance(items[0], dict) and items[0].get("type") == "sequence":
             real_items = items[0]["items"]
         else:
             real_items = items
@@ -328,7 +324,8 @@ class DSLTransformer(Transformer):
         }, meta)
 
     def list_node(self, meta, items):
-        if len(items) == 1 and isinstance(items[0], dict) and items[0].get("type") == "tuple":
+        items = [i for i in items if i is not None]
+        if len(items) == 1 and isinstance(items[0], dict) and items[0].get("type") == "sequence":
             real_items = items[0]["items"]
         else:
             real_items = items
@@ -371,22 +368,60 @@ class DSLTransformer(Transformer):
     # FUNZIONI
     # -------------------------------------------------
 
-    def function_call(self, meta, a):
+    def function_call3(self, meta, a):
         fn = a[0]
         args = []
         kwargs = {}
 
-        if len(a) > 1 and a[1] is not None:
+        '''if len(a) > 1 and a[1] is not None:
             seq = a[1]
-            items = seq.get("items", []) if isinstance(seq, dict) and seq.get("type") == "tuple" else [seq]
+            items = seq.get("items", []) if isinstance(seq, dict) and seq.get("type") == "sequence" else [seq]
             for item in items:
+                print("item",item)
                 if isinstance(item, dict) and item.get("type") == "pair":
                     key_node = item["key"]
                     key_name = key_node["name"] if isinstance(key_node, dict) and key_node.get("type") == "var" else str(key_node)
                     kwargs[key_name] = item["value"]
                 else:
+                    args.append(item)'''
+        if len(a) > 1 and a[1] is not None:
+            seq = a[1]
+            # Assicuriamoci che seq sia una lista piatta di elementi
+            items = seq.get("items", []) if isinstance(seq, dict) and seq.get("type") in ["sequence", "tuple"] else [seq]
+            
+            for item in items:
+                if isinstance(item, dict) and item.get("type") == "pair":
+                    # È un keyword argument (chiave:valore)
+                    key_name = item["key"]["name"] if isinstance(item["key"], dict) else str(item["key"])
+                    kwargs[key_name] = item["value"]
+                else:
+                    # È un positional argument
                     args.append(item)
-        
+        #print("args",args,"kwargs",kwargs)
+        return self.with_meta({
+            "type": "call",
+            "name": fn.get("name"),
+            "args": args,
+            "kwargs": kwargs
+        }, meta)
+
+    def function_call(self, meta, tree):
+        # tree[0] è l'identificatore, tree[1] è la sequenza (se presente)
+        fn = tree[0]
+        #sss = tree[1]
+        inputs = tree[1].get('items',[]) if isinstance(tree[1],dict) and tree[1]['type'] == "sequence" else [tree[1]]
+        args = []
+        kwargs = {}
+        for input in inputs:
+            #print("#ITEM#",input)
+            if isinstance(input, dict) and input.get("type") in ["pair"]:
+                key_node = input["key"]
+                #key_name = key_node["name"] if isinstance(key_node, dict) and key_node.get("type") in ["var","context_var"] else str(key_node)
+                key_name = key_node["name"]
+                kwargs[key_name] = input["value"]
+            else:
+                args.append(input)
+
         return self.with_meta({
             "type": "call",
             "name": fn.get("name"),
@@ -526,6 +561,20 @@ class Interpreter:
         name = node["name"]
         val = scheme.get(env, name, name)
         return val, env
+    async def visit_context_var(self, node, env):
+        name = node["name"]
+        
+        # Restituiamo una funzione che accetta (received, expected)
+        # Questa funzione si chiude sopra il 'name' e lo usa per la logica
+        async def closure(*data,**data_context):
+            #result, _ = await self.visit(node, data_context)
+            #print("#####>",name,type(data_context),data_context)
+            '''if not isinstance(data_context, dict):
+                return data_context'''
+            
+            return scheme.get(data_context, name)
+        
+        return closure, env
     async def visit_function_def(self, node, env):
 
         # ----------------------
@@ -629,6 +678,13 @@ class Interpreter:
             items.append(val)
         return tuple(items), env
 
+    async def visit_sequence(self, node, env):
+        items = []
+        for item in node["items"]:
+            val, env = await self.visit(item, env)
+            items.append(val)
+        return tuple(items), env
+
     async def visit_list(self, node, env):
         items = []
         for item in node["items"]:
@@ -640,20 +696,34 @@ class Interpreter:
     # LOGIC & MATH
     # =========================================================
     async def visit_binop(self, node, env):
+        ops = {
+            "+": lambda: left + right, "-": lambda: left - right,
+            "*": lambda: left * right, "/": lambda: left / right,
+            "%": lambda: left % right, "^": lambda: left ** right,
+            "==": lambda: left == right, "!=": lambda: left != right,
+            ">": lambda: left > right, "<": lambda: left < right,
+            ">=": lambda: left >= right, "<=": lambda: left <= right,
+            "and": lambda: left and right, "or": lambda: left or right
+        }
+
         left, env = await self.visit(node["left"], env)
         right, env = await self.visit(node["right"], env)
         op = node["op"]
-        
+        # 3. Verifichiamo se almeno uno dei due è lazy
+        if callable(left) or callable(right):
+            # Il binop diventa a sua volta una funzione lazy
+            async def lazy_binop(*a,**context):
+                #print(a,context)
+                l = await left(**context) if callable(left) else left
+                r = await right(**context) if callable(right) else right
+                #print(l,r)
+                #print("#####LAZY",await l(context),await r(context))
+                # Applichiamo l'operatore (es. '+', '==')
+                return OPS_FUNCTIONS[f"OP_{OPS_MAP[node['op']]}"](l, r)
+            
+            return lazy_binop, env
         try:
-            ops = {
-                "+": lambda: left + right, "-": lambda: left - right,
-                "*": lambda: left * right, "/": lambda: left / right,
-                "%": lambda: left % right, "^": lambda: left ** right,
-                "==": lambda: left == right, "!=": lambda: left != right,
-                ">": lambda: left > right, "<": lambda: left < right,
-                ">=": lambda: left >= right, "<=": lambda: left <= right,
-                "and": lambda: left and right, "or": lambda: left or right
-            }
+            
             return ops[op](), env
         except Exception as e:
             raise DSLRuntimeError(str(e), node.get("meta"))
@@ -685,14 +755,18 @@ class Interpreter:
             local_env[param_name] = arg_value
         # Esegui body
         result, _ = await self.visit(body_ast, local_env)
-        out = None
+        out = []
         # Controllo tipo di ritorno
 
         for ty in return_ast:
             pair,env = await self.visit(ty,local_env)
             tipo,name = pair
             if name in result:
-                out = await self._check_type(result[name], tipo, ty.get("meta"),name)
+                out.append(await self._check_type(result[name], tipo, ty.get("meta"),name))
+
+        if len(out) == 1:
+            return out[0]
+
         return out
 
     async def visit_call(self, node, env, args=[], kwargs={}):

@@ -1,4 +1,3 @@
-{
 imports: {
     'flow':resource("framework/service/flow.py") |> get("outputs");
 };
@@ -58,30 +57,117 @@ function:success_function := (str:y){x:y;}(str:x);
 
 tuple:token_print := (123);
 
-bb:success_function("success_function#booom") |> print;
-cc:print("BELLOOO!!!!!!!!");
-
 tuple:test_suite := (
     {
-        "target": "exports.serial";
+        "action": "exports.serial";
         "inputs":((print,[1],{}),(print,[2],{}));
-        "filter":"outputs"; "output": [(1),(2)];
-        "description": "Pass flow";
+        "outputs": [(1),(2)];
+        "assert":"received == expected"; 
+        "note": "Pass flow";
     },
-    { "target": "exports.parallel"; "inputs":((print,[1],{}),(print,[2],{})); "filter":"outputs"; "output": [(1), (2)]; "description": "Pass flow"; },
-    { "target": "exports.pipeline"; "inputs":((print,["ciao"],{}),(print,[1],{})); "filter":"outputs"; "output": [("ciao"),(1)]; "description": "Pass flow"; },
-    { "target": "exports.switch"; "inputs":({"True":(print,["ciao"],{});"1!=1":(print,[123],{});}); "filter":"outputs"; "output": ("ciao"); "description": "Pass flow"; },
-    { "target": "exports.switch"; "inputs":({"True":(print,["ciao"],{});"1==1":(print,[123],{});}); "filter":"outputs"; "output": token_print; "description": "Pass flow"; },
-    { "target": "exports.foreach"; "inputs":([1,2],(print,[3],{})); "filter":"outputs"; "output": [(1, 3), (2, 3)]; "description": "Pass flow"; },
-    { "target": "exports.foreach"; "inputs":((1,2),(print,(3),{})); "filter":"outputs"; "output": [(1, 3), (2, 3)]; "description": "Pass flow"; },
-    { "target": "exports.catch"; "inputs":((error_function,[10],{}),(print,[123],{})); "filter":"outputs"; "output": token_print; "description": "Pass flow"; },
-    { "target": "exports.pass"; "inputs":(10); "filter":"outputs"; "output": 10;  },
-    { "target": "exports.sentry"; "inputs":("1 == 1"); "filter":"success"; "output": true; "description": "Pass flow"; },
-    { "target": "exports.sentry"; "inputs":("1 != 1"); "filter":"success"; "output": false; "description": "Pass flow"; },
-    { "target": "exports.when"; "inputs":("1 != 1",(print,[123],{}),{inputs:["test"]}); "filter":"success"; "output": false; "description": "Pass flow"; },
-    { "target": "exports.when"; "inputs":("1 == 1",(print,[123],{}),{inputs:["test"]}); "filter":"outputs"; "output": token_print; "description": "Pass flow"; },
-    { "target": "exports.assert"; "inputs":("10 >= 50"); "filter":"success"; "output": false;  },
-    { "target": "exports.assert"; "inputs":("10 <= 50"); "filter":"success"; "output": true;  },
-    { "target": "exports.pass"; "inputs":(10); "filter":"outputs"; "output": 10;  },
+    { 
+        "action": "exports.parallel"; 
+        "inputs":((print,[1],{}),(print,[2],{})); 
+        "outputs": [(1), (2)]; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.pipeline"; 
+        "inputs":((print,["ciao"],{}),(print,[1],{})); 
+        "outputs": [("ciao"),(1)]; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.switch"; 
+        "inputs":({"True":(print,["ciao"],{});"1!=1":(print,[123],{});}); 
+        "outputs": ("ciao"); 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.switch"; 
+        "inputs":({"True":(print,["ciao"],{});"1==1":(print,[123],{});}); 
+        "outputs": token_print; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.foreach"; 
+        "inputs":([1,2],(print,[3],{})); 
+        "outputs": [(1, 3), (2, 3)]; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.foreach"; 
+        "inputs":((1,2),(print,(3),{})); 
+        "outputs": [(1, 3), (2, 3)]; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.catch"; 
+        "inputs":((error_function,[10],{}),(print,[123],{})); 
+        "outputs": token_print; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.pass"; 
+        "inputs":(10); 
+        "outputs": 10; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.sentry"; 
+        "inputs":("1 == 1"); 
+        "outputs": true; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.sentry"; 
+        "inputs":("1 != 1"); 
+        "outputs": false; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.when"; 
+        "inputs":("1 != 1",(print,[123],{}),{inputs:["test"]}); 
+        "outputs": false; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.when"; 
+        "inputs":("1 == 1",(print,[123],{}),{inputs:["test"]}); 
+        "outputs": token_print; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.assert"; 
+        "inputs":("10 >= 50"); 
+        "outputs": false; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.assert"; 
+        "inputs":("10 <= 50"); 
+        "outputs": true; 
+        "assert":"received == expected"; 
+        "note": "Pass flow"; 
+    },
+    { 
+        "action": "exports.pass"; 
+        "inputs":(10); 
+        "outputs": 10; 
+        "assert":"received.outputs == expected"; 
+        "note": "Pass flow"; 
+    },
 );
-}
