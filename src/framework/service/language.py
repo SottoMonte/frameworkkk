@@ -785,7 +785,8 @@ class Interpreter:
             step = flow.step(function,*all_args,**all_kwargs)
         elif isinstance(function, tuple) and len(function) == 3:
             #params_ast, body_ast, return_ast = function
-            step = flow.step(self._call_function,env[name],env,all_args,all_kwargs)
+            fn = scheme.get(env,name)
+            step = flow.step(self._call_function,fn,all_args,all_kwargs)
         else:
             raise DSLRuntimeError(f"Unknown function '{name}'", meta)
 
@@ -809,7 +810,7 @@ class Interpreter:
         elif isinstance(function, tuple) and len(function) == 3:
             step = flow.step(self._call_function,function,args,kwargs)
         else:
-            raise DSLRuntimeError(f"Unknown function '{name}'", meta)
+            raise DSLRuntimeError(f"Unknown function ")
 
         action = await flow.act(step)
         return action["outputs"]

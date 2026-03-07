@@ -51,6 +51,31 @@
     dict:collection_simple_dict := { "chiave": "valore"; "num": 42; };
     dict:collection_dict_void := {};
 
+    int:calc_precedence := 2 + 3 * 4;         
+    int:calc_div_sub := 10 / 2 - 1;          
+    int:calc_mod := 10 % 3;                  
+    int:calc_power := 2 ^ 3;
+
+    //boolean:logic_and_or := True & (10 > 5) or False;
+    //boolean:logic_not := not (5 == 5) or (1 != 2);
+    //boolean:logic_comparison_chain := (10 >= 10) & (5 <= 6) & (2 < 3) & (4 > 1);
+    
+    /* ============================================================
+        10. DOT NOTATION / OGGETTI
+    ============================================================ */
+
+    dict:service := {
+        "config": { "timeout": 30; };
+        "action": (int:x){ r: x + 1; }(int:r);
+    };
+
+    int:res_service_timeout := service.config.timeout;  
+    int:res_service_action := service.action(9);
+
+    /* ============================================================
+        10. PIPE
+    ============================================================ */
+
     type:scheme := {
         "action": {
             "type": "string";
@@ -97,7 +122,7 @@
         },
         { 
             "action": @left == @right;
-            "inputs": {'left':10,'right':10};
+            "inputs": {"left":10; "right":10};
             "outputs": True;
             "assert":@received == @expected;
             "note": "Double the input"; 
