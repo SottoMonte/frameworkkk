@@ -467,7 +467,7 @@ class DSLTransformer(Transformer):
             "type": "binop",
             "op": "and",
             "left": a[0],
-            "right": a[2]
+            "right": a[1]
         }, meta)
 
     def or_op(self, meta, a):
@@ -475,7 +475,7 @@ class DSLTransformer(Transformer):
             "type": "binop",
             "op": "or",
             "left": a[0],
-            "right": a[2]
+            "right": a[1]
         }, meta)
 
     def pipe_node(self, meta, items):
@@ -695,7 +695,7 @@ class Interpreter:
     # =========================================================
     # LOGIC & MATH
     # =========================================================
-    async def visit_binop(self, node, env):
+    async def visit_binop2(self, node, env):
         ops = {
             "+": lambda: left + right, "-": lambda: left - right,
             "*": lambda: left * right, "/": lambda: left / right,
@@ -727,6 +727,59 @@ class Interpreter:
             return ops[op](), env
         except Exception as e:
             raise DSLRuntimeError(str(e), node.get("meta"))
+
+    async def visit_binop(self, node, env):
+        # 1. Risolviamo i valori dei due rami
+        left, env = await self.visit(node["left"], env)
+        right, env = await self.visit(node["right"], env)
+        op = node["op"]
+        if isinstance(left, tuple):
+            left = left[0]
+        
+        if isinstance(right, tuple):
+            right = right[0]
+
+        # 2. Gestione Lazy (se uno dei due è una closure/context_var)
+        if callable(left) or callable(right):
+            async def lazy_binop(*a, **context):
+                l = await left(**context) if callable(left) else left
+                r = await right(**context) if callable(right) else right
+                # Usiamo OPS_FUNCTIONS che hai già definito in alto nel file
+                # Mappando l'operatore DSL alla chiave corretta (es. "and" -> "OP_AND")
+                op_key = f"OP_{OPS_MAP.get(op, op.upper())}"
+                return OPS_FUNCTIONS[op_key](l, r)
+            return lazy_binop, env
+
+        # 3. Valutazione immediata (Standard)
+        # Mappa pulita per evitare KeyError
+        logic_ops = {
+            "and": lambda: left and right,
+            "or":  lambda: left or right,
+            "==":  lambda: left == right,
+            "!=":  lambda: left != right,
+            ">":   lambda: left > right,
+            "<":   lambda: left < right,
+            ">=":  lambda: left >= right,
+            "<=":  lambda: left <= right,
+            "+":   lambda: left + right,
+            "-":   lambda: left - right,
+            "*":   lambda: left * right,
+            "/":   lambda: left / right,
+            "%":   lambda: left % right,
+            "^":   lambda: left ** right,
+        }
+
+        try:
+            # Se l'operatore non è in logic_ops, prova a cercarlo in OPS_MAP
+            operation = logic_ops.get(op)
+            if not operation:
+                # Fallback su OPS_FUNCTIONS usando la tua OPS_MAP
+                op_key = f"OP_{OPS_MAP.get(op)}"
+                return OPS_FUNCTIONS[op_key](left, right), env
+                
+            return operation(), env
+        except Exception as e:
+            raise DSLRuntimeError(f"Errore nell'operazione '{op}': {str(e)}", node.get("meta"))
 
     async def visit_not(self, node, env):
         val, env = await self.visit(node["value"], env)

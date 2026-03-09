@@ -59,115 +59,115 @@ tuple:token_print := (123);
 
 tuple:test_suite := (
     {
-        "action": "exports.serial";
-        "inputs":((print,[1],{}),(print,[2],{}));
+        "action": exports.serial;
+        "inputs":((pass,[1],{}),(pass,[2],{}));
         "outputs": [(1),(2)];
-        "assert":"received == expected"; 
+        "assert":@received.outputs == @expected; 
         "note": "Pass flow";
     },
     { 
-        "action": "exports.parallel"; 
-        "inputs":((print,[1],{}),(print,[2],{})); 
+        "action": exports.parallel; 
+        "inputs":((pass,[1],{}),(pass,[2],{})); 
         "outputs": [(1), (2)]; 
-        "assert":"received == expected"; 
+        "assert": @received.outputs == @expected & @received.success == true;
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.pipeline"; 
+        "action": exports.pipeline; 
         "inputs":((print,["ciao"],{}),(print,[1],{})); 
         "outputs": [("ciao"),(1)]; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.switch"; 
+        "action": exports.switch;
         "inputs":({"True":(print,["ciao"],{});"1!=1":(print,[123],{});}); 
         "outputs": ("ciao"); 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.switch"; 
+        "action": exports.switch;
         "inputs":({"True":(print,["ciao"],{});"1==1":(print,[123],{});}); 
         "outputs": token_print; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.foreach"; 
+        "action": exports.foreach; 
         "inputs":([1,2],(print,[3],{})); 
         "outputs": [(1, 3), (2, 3)]; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.foreach"; 
+        "action": exports.foreach;
         "inputs":((1,2),(print,(3),{})); 
         "outputs": [(1, 3), (2, 3)]; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.catch"; 
+        "action": exports.catch; 
         "inputs":((error_function,[10],{}),(print,[123],{})); 
         "outputs": token_print; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.pass"; 
+        "action": exports.pass;
         "inputs":(10); 
         "outputs": 10; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.sentry"; 
+        "action": exports.sentry;
         "inputs":("1 == 1"); 
         "outputs": true; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.sentry"; 
+        "action": exports.sentry;
         "inputs":("1 != 1"); 
         "outputs": false; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.when"; 
+        "action": exports.when;
         "inputs":("1 != 1",(print,[123],{}),{inputs:["test"]}); 
         "outputs": false; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.when"; 
+        "action": exports.when;
         "inputs":("1 == 1",(print,[123],{}),{inputs:["test"]}); 
         "outputs": token_print; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.assert"; 
+        "action": exports.assert;
         "inputs":("10 >= 50"); 
         "outputs": false; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.assert"; 
+        "action": exports.assert;
         "inputs":("10 <= 50"); 
         "outputs": true; 
-        "assert":"received == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
     { 
-        "action": "exports.pass"; 
+        "action": exports.pass;
         "inputs":(10); 
         "outputs": 10; 
-        "assert":"received.outputs == expected"; 
+        "assert":@received == @expected; 
         "note": "Pass flow"; 
     },
 );
