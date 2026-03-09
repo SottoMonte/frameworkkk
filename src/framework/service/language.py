@@ -17,6 +17,7 @@ import framework.service.scheme as scheme
 import framework.service.flow as flow
 import framework.service.load as load
 
+from dataclasses import dataclass, field
 
 # ============================================================================
 # GRAMMAR
@@ -182,7 +183,7 @@ DSL_FUNCTIONS = {
     'assert': flow.assertt,
     'sentry': flow.sentry,
     'when': flow.when,
-}|TYPE_MAP
+}|TYPE_MAP|{'extension':'py'}
 
 
 # ============================================================================
@@ -487,11 +488,13 @@ class DSLTransformer(Transformer):
     def start(self, meta, items):
         return items[0]
 
-
+@dataclass(frozen=True)
 class LazyBinOp:
-    def __init__(self, fn, description):
+    '''def __init__(self, fn, description):
         self.fn = fn
-        self.description = description
+        self.description = description'''
+    fn: callable = field(repr=False, compare=False)
+    description: str
         
     async def __call__(self, *args, **kwargs):
         return await self.fn(*args, **kwargs)
@@ -499,9 +502,19 @@ class LazyBinOp:
     def __repr__(self):
         return self.description
 
+    '''def __eq__(self, other):
+        if not isinstance(other, LazyBinOp):
+            return False
+        return self.description == other.description
+
+    # 2. Definisci l'hash in base agli stessi campi usati in __eq__
+    def __hash__(self):
+        return hash(self.description)'''
+@dataclass(frozen=True)
 class ContextVar:
-    def __init__(self, name):
-        self.name = name
+    name:str
+    '''def __init__(self, name):
+        self.name = name'''
     async def __call__(self, *data, **data_context):
         return scheme.get(data_context, self.name)
     def __repr__(self):
@@ -688,7 +701,7 @@ class Interpreter:
         # Utilizzato sia per i dati {k:v} che per i tipi int:x
         key, _ = await self.visit(node["key"], env) 
         value, _ = await self.visit(node["value"], env) 
-        if not isinstance(key, (str, int, float, tuple)):
+        if not isinstance(key, (str, int, float, tuple, LazyBinOp)):
             raise DSLRuntimeError(f"Key invalida: {type(key)}. Deve essere un tipo primitivo.", node.get("meta"))
         return (key, value), env
 

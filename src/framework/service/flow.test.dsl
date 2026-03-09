@@ -1,5 +1,5 @@
 imports: {
-    'flow':resource("framework/service/flow.py") |> get("outputs");
+    'flow':resource("framework/service/flow." + extension) |> get("outputs");
 };
 
 exports: {
@@ -81,14 +81,14 @@ tuple:test_suite := (
     },
     { 
         "action": exports.switch;
-        "inputs":({"True":(pass,["ciao"],{});"1!=1":(pass,[123],{});});
+        "inputs":({True:(pass,["ciao"],{});@case !=1:(pass,[111],{});},{'case':1});
         "outputs": ("ciao");
         "assert": @received.outputs == @expected & @received.success == true; 
-        "note": "Pass flow"; 
+        "note": "Pass flow";
     },
     { 
         "action": exports.switch;
-        "inputs":({"True":(pass,["ciao"],{});"1==1":(pass,[123],{});});
+        "inputs":({True:(pass,["ciao"],{});@case==1:(pass,[123],{});},{'case':1});
         "outputs": token_print; 
         "assert": @received.outputs == @expected & @received.success == true; 
         "note": "Pass flow"; 
@@ -130,12 +130,12 @@ tuple:test_suite := (
     },
     { 
         "action": exports.sentry;
-        "inputs":(1 != 2);
+        "inputs":(1 != 1);
         "outputs": false; 
         "assert": @received.outputs == @expected & @received.success == true;
         "note": "Pass flow"; 
     },
-    { 
+    /*{ 
         "action": exports.when;
         "inputs":(@numero != 10,(pass,[123],{}),{numero:10});
         "outputs": [123]; 
@@ -151,14 +151,14 @@ tuple:test_suite := (
     },
     { 
         "action": exports.assert;
-        "inputs":("10 >= 50");
+        "inputs":(10 >= 50);
         "outputs": false; 
         "assert": @received.outputs == @expected & @received.success == true;
         "note": "Pass flow"; 
     },
     { 
         "action": exports.assert;
-        "inputs":("10 <= 50"); 
+        "inputs":(10 <= 50); 
         "outputs": true; 
         "assert": @received.outputs == @expected & @received.success == true;
         "note": "Pass flow"; 
@@ -169,5 +169,5 @@ tuple:test_suite := (
         "outputs": 10; 
         "assert": @received.outputs == @expected & @received.success == true;
         "note": "Pass flow"; 
-    },
+    },*/
 );

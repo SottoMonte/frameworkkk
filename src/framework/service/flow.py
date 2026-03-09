@@ -238,7 +238,7 @@ async def sentry(condition, context=dict()):
         check = condition
     
     return {
-        'success': check,
+        'success': True,
         'inputs': condition,
         'outputs': check,
         'errors': [f"Condition not met: {format_string(str(condition), context)}"],
@@ -248,24 +248,24 @@ async def sentry(condition, context=dict()):
 async def when(condition, step, context=dict()):
     # Se la condizione (funzione o booleano) è vera, esegue lo step
     should_run = await sentry(condition, context)
-    if should_run.get('success', False):
+    if should_run.get('outputs', False):
         return await act(step, context)
     else:
         return should_run
 
 @action()
-async def switch(cases: dict, context=None):
+async def switch(cases: dict, context={}):
     """
     Seleziona ed esegue uno step tra molti in base al risultato di condition_fn.
     cases = {'valore1': step1, 'valore2': step2, 'default': step_default}
     """
     default = None
     for case in cases:
-        if case.lower() == 'true':
+        if case == True:
             default = cases[case]
             continue
         pas = await when(case, cases[case], context)
-
+        print("===>",pas)
         if pas.get('success', False):
             return pas
     
