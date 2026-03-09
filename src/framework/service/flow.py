@@ -189,18 +189,60 @@ async def assertt(condition, context=dict()):
         raise AssertionError(f"Assertion failed: {condition}")
     return condition
 
+import re
+def resolve_template(template_str, env):
+    
+    """
+    Sostituisce le chiavi presenti in env che appaiono come parole 
+    all'interno della stringa (es. 'numero' -> 10).
+    """
+    if not env:
+        return template_str
+        
+    # Ordiniamo le chiavi per lunghezza decrescente per evitare sostituzioni parziali
+    # (es. se hai 'nome' e 'nome_utente', sostituisce prima 'nome_utente')
+    keys = sorted(env.keys(), key=len, reverse=True)
+    
+    # Crea un pattern che identifica le parole intere
+    # \b assicura che 'nome' venga sostituito ma non dentro 'fenomeno'
+    pattern = re.compile(r'\b(' + '|'.join(re.escape(k) for k in keys) + r')\b')
+    
+    def replacer(match):
+        return str(env[match.group(0)])
+    
+    return pattern.sub(replacer, template_str)
+
+def format_string(template, context):
+    if not context:
+        return template
+        
+    # Ordiniamo le chiavi per lunghezza decrescente per evitare match parziali
+    # (es. se ho 'num' e 'numero', sostituisce prima 'numero')
+    keys = sorted(context.keys(), key=len, reverse=True)
+    
+    # Costruiamo il pattern
+    pattern = re.compile(r'\b(' + '|'.join(re.escape(k) for k in keys) + r')\b')
+    
+    # Sostituzione con controllo di sicurezza
+    def replace_logic(match):
+        key = match.group(0)
+        return key+":"+str(context.get(key, key)) # Se la chiave sparisce, tiene il testo originale
+        
+    return pattern.sub(replace_logic, template)
+
 @action()
 async def sentry(condition, context=dict()):
-    if not eval(condition,context):
-        #raise Exception(f"Condition not met: {condition}")
-        return {
-            'success': False,
-            'inputs': condition,
-            'outputs': condition,
-            'errors': [f"Condition not met: {condition}"],
-        }
+    if callable(condition):
+        check = await condition(**context)
     else:
-        return condition
+        check = condition
+    
+    return {
+        'success': check,
+        'inputs': condition,
+        'outputs': check,
+        'errors': [f"Condition not met: {format_string(str(condition), context)}"],
+    }
 
 @action()
 async def when(condition, step, context=dict()):

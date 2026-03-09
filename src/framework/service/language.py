@@ -487,6 +487,26 @@ class DSLTransformer(Transformer):
     def start(self, meta, items):
         return items[0]
 
+
+class LazyBinOp:
+    def __init__(self, fn, description):
+        self.fn = fn
+        self.description = description
+        
+    async def __call__(self, *args, **kwargs):
+        return await self.fn(*args, **kwargs)
+        
+    def __repr__(self):
+        return self.description
+
+class ContextVar:
+    def __init__(self, name):
+        self.name = name
+    async def __call__(self, *data, **data_context):
+        return scheme.get(data_context, self.name)
+    def __repr__(self):
+        return self.name
+
 class DSLRuntimeError(Exception):
     def __init__(self, message, meta=None):
         if meta:
@@ -574,7 +594,8 @@ class Interpreter:
             
             return scheme.get(data_context, name)
         
-        return closure, env
+        #return closure, env
+        return ContextVar(name), env
     async def visit_function_def(self, node, env):
 
         # ----------------------
@@ -695,38 +716,6 @@ class Interpreter:
     # =========================================================
     # LOGIC & MATH
     # =========================================================
-    async def visit_binop2(self, node, env):
-        ops = {
-            "+": lambda: left + right, "-": lambda: left - right,
-            "*": lambda: left * right, "/": lambda: left / right,
-            "%": lambda: left % right, "^": lambda: left ** right,
-            "==": lambda: left == right, "!=": lambda: left != right,
-            ">": lambda: left > right, "<": lambda: left < right,
-            ">=": lambda: left >= right, "<=": lambda: left <= right,
-            "and": lambda: left and right, "or": lambda: left or right
-        }
-
-        left, env = await self.visit(node["left"], env)
-        right, env = await self.visit(node["right"], env)
-        op = node["op"]
-        # 3. Verifichiamo se almeno uno dei due è lazy
-        if callable(left) or callable(right):
-            # Il binop diventa a sua volta una funzione lazy
-            async def lazy_binop(*a,**context):
-                #print(a,context)
-                l = await left(**context) if callable(left) else left
-                r = await right(**context) if callable(right) else right
-                #print(l,r)
-                #print("#####LAZY",await l(context),await r(context))
-                # Applichiamo l'operatore (es. '+', '==')
-                return OPS_FUNCTIONS[f"OP_{OPS_MAP[node['op']]}"](l, r)
-            
-            return lazy_binop, env
-        try:
-            
-            return ops[op](), env
-        except Exception as e:
-            raise DSLRuntimeError(str(e), node.get("meta"))
 
     async def visit_binop(self, node, env):
         # 1. Risolviamo i valori dei due rami
@@ -739,6 +728,10 @@ class Interpreter:
         if isinstance(right, tuple):
             right = right[0]
 
+        l_desc = repr(left)
+        r_desc = repr(right)
+        espressione_totale = f"{l_desc} {op} {r_desc}"
+
         # 2. Gestione Lazy (se uno dei due è una closure/context_var)
         if callable(left) or callable(right):
             async def lazy_binop(*a, **context):
@@ -748,7 +741,8 @@ class Interpreter:
                 # Mappando l'operatore DSL alla chiave corretta (es. "and" -> "OP_AND")
                 op_key = f"OP_{OPS_MAP.get(op, op.upper())}"
                 return OPS_FUNCTIONS[op_key](l, r)
-            return lazy_binop, env
+            return LazyBinOp(lazy_binop, espressione_totale), env
+            #return lazy_binop, env
 
         # 3. Valutazione immediata (Standard)
         # Mappa pulita per evitare KeyError
