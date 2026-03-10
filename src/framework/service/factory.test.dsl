@@ -2,8 +2,9 @@
     //tuple:tuple_void := (1,2);
     //tuple:tuple_full := (1,2,3);
     //tuple:tuple_inline := 5,6,7;
-    //a,b,c: 1,2,3;
-    imports:{
+    a,b,c: 1,2,3;
+    
+    dict:imports := {
         'a':1;
         'b':2;
         'c':3;
@@ -11,6 +12,8 @@
     function:error_function := (str:y){
         x:y/2;
     }(str:x);
+    int:num1,int:num2,int:num3 := 1,2,3;
+    /*
     ciao: "ciao";
     str:marco := "nome";
     //ciao2: 100;
@@ -28,5 +31,5 @@
     //a,b,c : x,y,z;
     //aa:print(a,b,c);
     //bbb:print(x,y,z);
-    //cc: 1,2,3 |> print("ciaone");
+    //cc: 1,2,3 |> print("ciaone");*/
 }

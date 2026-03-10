@@ -34,10 +34,12 @@ start: dictionary | [item (item)*] -> dictionary_node
 // ==========================================
 dictionary: "{" [item (item)*] "}" -> dictionary_node
 
-item: (atom|pairr|sequence|type_sequence) (ASSIGN_OP sequence ";"? | COLON_OP sequence ";"?)
-type: atom
-pairr.5: atom ":" atom -> pair
-?type_sequence: pairr ("," pairr)* ","? -> sequence
+#item: (atom|sequence|type_sequence) (ASSIGN_OP sequence ";"? | COLON_OP sequence ";"?)
+
+item: (pair|type_sequence) ASSIGN_OP sequence ";"? | (atom|sequence) COLON_OP sequence ";"?
+
+#item: (atom|sequence|type_sequence) ";"
+?type_sequence: pair ("," pair)* ","? -> sequence
 ?sequence: expr ("," expr)* ","?
 
 ?expr: pipe
@@ -62,17 +64,17 @@ pairr.5: atom ":" atom -> pair
 
 ?power: atom | atom "^" power -> power
 
-?atom: value
+?atom.7: value
      | identifier
      | tuple
      | list
      | dictionary
      | function_call
      | function_value
-     #| pair_atom
 
-?tuple: "(" [sequence] ")" -> tuple_node
-pair_atom: identifier ":" identifier -> pair
+?tuple: "(" [sequence] ")" -> tuple_node | "(" [type_sequence] ")" -> tuple_node
+pair.6: atom ":" atom
+declaration.5: atom ":=" atom
 ?list: "[" [sequence] "]" -> list_node
 
 function_call: identifier "(" [sequence] ")"
@@ -349,11 +351,11 @@ class DSLTransformer(Transformer):
     # -------------------------------------------------
     
     def declaration(self, meta, a):
-        #print("##############################declaration", a)
+        #print("##############################declaration", a[0])
         return self.with_meta({
             "type": "declaration",
-            "target": a[:-1],
-            "value": a[-1]
+            "target": a[0],
+            "value": a[1]
         }, meta)
 
     def pair(self, meta, a):
@@ -368,13 +370,14 @@ class DSLTransformer(Transformer):
         # tree[0] è il lato sinistro (atom, sequence, ecc.)
         # tree[1] è il token (il separatore ':=' o ':')
         # tree[2] è il lato destro (la sequence dopo il separatore)
-        
+        #print("\n#######",tree)
+        #return tree[0]
         left_side = tree[0]
         separator = str(tree[1]) # ":=" o ":"
         right_side = tree[2]
         
         if separator == ":=":
-            print("\n#######",left_side)
+            #print("\n#######",left_side)
             return self.with_meta({
                 "type": "declaration",
                 "target": left_side,
@@ -675,8 +678,10 @@ class Interpreter:
     
     async def visit_declaration(self, node, env):
         val, _ = await self.visit(node["value"], env)
+        key, _ = await self.visit(node["target"], env)
         meta = node.get("meta")
-        
+        #print("BOOOOOOOOOOOOM",key,val,node["target"])
+
         # Assumiamo che node["target"] contenga la definizione (tipo, nome)
         for t in node["target"]:
             tu, _ = await self.visit(t, {})
@@ -695,7 +700,7 @@ class Interpreter:
 
             # Gestione Variabile Singola Standard
             checked_val = await self._check_type(val, decl_type, meta, name)
-            return (name, checked_val), env
+            return (key, checked_val), env
 
     # =========================================================
     # COLLECTIONS
@@ -709,7 +714,7 @@ class Interpreter:
             #if item['type'] == 'pair':
             #print(f"##### res: {res}")
             #print(f"##### type: {type(res)}")
-            print(res)
+            print("DICT!!!!!!!!!",res)
             key, value = res
             #print("##### pair", key, value)
             if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
@@ -717,15 +722,15 @@ class Interpreter:
                     result[key[i]] = value[i]
             else:
                 result[key] = value
-        #print("##### dict", result)
+        print("##### dict", result)
         return result, env
     
     async def visit_pair(self, node, env):
         # Utilizzato sia per i dati {k:v} che per i tipi int:x
         key, _ = await self.visit(node["key"], env) 
-        value, _ = await self.visit(node["value"], env) 
-        if not isinstance(key, (str, int, float, tuple, LazyBinOp)):
-            raise DSLRuntimeError(f"Key invalida: {type(key)}. Deve essere un tipo primitivo.", node.get("meta"))
+        value, _ = await self.visit(node["value"], env)
+        if not isinstance(key, (str, int, float, tuple, LazyBinOp,type)):
+            raise DSLRuntimeError(f"Key invalida: {key}. Deve essere un tipo primitivo.", node.get("meta"))
         return (key, value), env
 
     async def visit_tuple(self, node, env):
