@@ -12,7 +12,7 @@ exports: {
 test_suite: (
     { 
         "action": exports.resource;
-        "inputs": {'path':"framework/service/load.py"};
+        "inputs": {'path':"framework/service/load.py";};
         "outputs": 10;
         "assert":@received == @expected;
         "note": "test resource"; 

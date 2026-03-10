@@ -95,25 +95,139 @@ dict:user_schema := {
 
 // Test suite
 tuple:test_suite := (
-    { target: "exports.get"; inputs: [data, "nome"]; output: "Progetto A"; },
-    { target: "exports.get"; inputs: [data, "config.timeout"]; output: 30; },
-    { target: "exports.get"; inputs: [data, "versioni.0.status"]; output: "completo"; },
-    { target: "exports.get"; inputs: [data, "versioni.1.dettagli.tester"]; output: "Mario"; },
-    { target: "exports.get"; inputs: [data, "versioni.*.status"]; output: ["completo", "in_corso", "fallito"]; },
-    { target: "exports.get"; inputs: [data, "versioni.*.id"]; output: [1, 2, 3]; },
-    { target: "exports.format"; inputs: ["Ciao {{nome}}", nome: "Progetto A"]; output: "Ciao Progetto A"; },
-    { target: "exports.convert"; inputs: ["10", int]; output: 10; },
-    { target: "exports.convert"; inputs: [10, str]; output: "10"; },
-    { target: "exports.convert"; inputs: ["true", bool]; output: True; },
-    { target: "exports.convert"; inputs: ["false", bool]; output: False; },
-    { target: "exports.convert"; inputs: [true, str]; output: "True"; },
-    { target: "exports.convert"; inputs: [false, str]; output: "False"; },
-    //{ target: "exports.put"; inputs: [data, "nome", "Progetto B"]; "filter":"nome"; output: "Progetto B"; },
-    //{ target: "exports.put"; inputs: [data, "config.timeout", 60]; "filter":"config.timeout"; output: 60; },
-    //{ target: "exports.put"; inputs: [data, "versioni.0.status", "completo"]; "filter":"versioni.0.status"; output: "completo"; },
-    //{ target: "exports.put"; inputs: [data, "versioni.1.dettagli.tester", "Mario"]; "filter":"versioni.1.dettagli.tester"; output: "Mario"; },
-    //{ target: "exports.put"; inputs: [data, "versioni.*.status", "completo"]; "filter":"versioni.*.status"; output: ["completo", "completo", "completo"]; },
-    //{ target: "exports.put"; inputs: [data, "versioni.*.id", 1]; "filter":"versioni.*.id"; output: [1, 1, 1]; },
+    {
+        "action": exports.get;
+        "inputs":(data, "nome");
+        "outputs": "Progetto A";
+        "assert": @received == @expected;
+        "note": "get";
+    },
+    {
+        "action": exports.get;
+        "inputs":(data, "config.timeout");
+        "outputs": 30;
+        "assert": @received == @expected;
+        "note": "get";
+    },
+    {
+        "action": exports.get;
+        "inputs":(data, "versioni.0.status");
+        "outputs": "completo";
+        "assert": @received == @expected;
+        "note": "get";
+    },
+    {
+        "action": exports.get;
+        "inputs":(data, "versioni.1.dettagli.tester");
+        "outputs": "Mario";
+        "assert": @received == @expected;
+        "note": "get";
+    },
+    {
+        "action": exports.get;
+        "inputs":(data, "versioni.*.status");
+        "outputs": ["completo", "in_corso", "fallito"]; 
+        "assert": @received == @expected;
+        "note": "get";
+    },
+    {
+        "action": exports.get;
+        "inputs":(data, "versioni.*.id");
+        "outputs": [1, 2, 3]; 
+        "assert": @received == @expected;
+        "note": "get";
+    },
+    {
+        "action": exports.format;
+        "inputs":{"target":"Ciao {{nome}}";"nome":"Progetto A"};
+        "outputs": "Ciao Progetto A";
+        "assert": @received == @expected;
+        "note": "format";
+    },
+    {
+        "action": exports.convert;
+        "inputs":("10", int);
+        "outputs": 10;
+        "assert": @received == @expected;
+        "note": "convert";
+    },
+    {
+        "action": exports.convert;
+        "inputs":(10, str);
+        "outputs": "10";
+        "assert": @received == @expected;
+        "note": "convert";
+    },
+    {
+        "action": exports.convert;
+        "inputs":("true", bool);
+        "outputs": True;
+        "assert": @received == @expected;
+        "note": "convert";
+    },
+    {
+        "action": exports.convert;
+        "inputs":("false", bool);
+        "outputs": False;
+        "assert": @received == @expected;
+        "note": "convert";
+    },
+    {
+        "action": exports.convert;
+        "inputs":(true, str);
+        "outputs": "True";
+        "assert": @received == @expected;
+        "note": "convert";
+    },
+    {
+        "action": exports.convert;
+        "inputs":(false, str);
+        "outputs": "False";
+        "assert": @received == @expected;
+        "note": "convert";
+    },
+    {
+        "action": exports.put;
+        "inputs":(data, "nome", "Progetto B");
+        "outputs": "Progetto B";
+        "assert": @received.nome == @expected;
+        "note": "put";
+    },
+    {
+        "action": exports.put;
+        "inputs":(data, "config.timeout", 60);
+        "outputs": 60;
+        "assert": @received.config.timeout == @expected;
+        "note": "put";
+    },
+    {
+        "action": exports.put;
+        "inputs":(data, "versioni.0.status", "completo");
+        "outputs": "completo";
+        "assert": @received == @expected;
+        "note": "put";
+    },
+    {
+        "action": exports.put;
+        "inputs":(data, "versioni.1.dettagli.tester", "Mario");
+        "outputs": "Mario";
+        "assert": @received == @expected;
+        "note": "put";
+    },
+    {
+        "action": exports.put;
+        "inputs":(data, "versioni.*.status", "completo");
+        "outputs": ["completo", "completo", "completo"]; 
+        "assert": @received == @expected;
+        "note": "put";
+    },
+    {
+        "action": exports.put;
+        "inputs":(data, "versioni.*.id", 1);
+        "outputs": [1, 1, 1]; 
+        "assert": @received == @expected;
+        "note": "put";
+    },
     //{ target: "exports.normalize"; inputs: [{"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}, user_schema]; output: {"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}; },
     
 );

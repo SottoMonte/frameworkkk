@@ -27,20 +27,20 @@ GRAMMAR = r"""
 // ==========================================
 // PUNTO DI INGRESSO (ROOT)
 // ==========================================
-start: dictionary | item (";" item)* ";" -> dictionary_node
+start: dictionary | [item (item)*] -> dictionary_node
 
 // ==========================================
 // STRUTTURE DATI (DIZIONARI E ITEM)
 // ==========================================
-dictionary: "{" [item (";" item)* ";"?] "}" -> dictionary_node
+dictionary: "{" [item (item)*] "}" -> dictionary_node
 
-item: sequence ":=" sequence -> declaration
-    | sequence
-
+item: (atom|pairr|sequence|type_sequence) (ASSIGN_OP sequence ";"? | COLON_OP sequence ";"?)
+type: atom
+pairr.5: atom ":" atom -> pair
+?type_sequence: pairr ("," pairr)* ","? -> sequence
 ?sequence: expr ("," expr)* ","?
 
-?expr: expr ":" expr -> pair | pipe
-
+?expr: pipe
 ?pipe: logic
      | logic (PIPE logic)+ -> pipe_node
 
@@ -69,14 +69,14 @@ item: sequence ":=" sequence -> declaration
      | dictionary
      | function_call
      | function_value
-     #| pair
+     #| pair_atom
 
 ?tuple: "(" [sequence] ")" -> tuple_node
-?pair: atom ":" atom
+pair_atom: identifier ":" identifier -> pair
 ?list: "[" [sequence] "]" -> list_node
 
 function_call: identifier "(" [sequence] ")"
-function_value: tuple dictionary tuple
+function_value.10: tuple dictionary tuple
 
 identifier: CNAME -> identifier 
 | QUALIFIED_CNAME -> identifier 
@@ -90,6 +90,8 @@ value: SIGNED_NUMBER      -> number
      | "*"                -> any_val
 
 PIPE: "|>"
+ASSIGN_OP: ":="
+COLON_OP: ":"
 COMPARISON_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
 ARITHMETIC_OP: "+" | "-" | "*" | "/" | "%"
 STRING: ESCAPED_STRING | SINGLE_QUOTED_STRING
@@ -362,8 +364,28 @@ class DSLTransformer(Transformer):
             "value": a[1]
         }, meta)
 
-    def item(self, meta, a):
-        return a[0]
+    def item(self, meta, tree):
+        # tree[0] è il lato sinistro (atom, sequence, ecc.)
+        # tree[1] è il token (il separatore ':=' o ':')
+        # tree[2] è il lato destro (la sequence dopo il separatore)
+        
+        left_side = tree[0]
+        separator = str(tree[1]) # ":=" o ":"
+        right_side = tree[2]
+        
+        if separator == ":=":
+            print("\n#######",left_side)
+            return self.with_meta({
+                "type": "declaration",
+                "target": left_side,
+                "value": right_side
+            }, meta)
+        else:
+            return self.with_meta({
+                "type": "pair",
+                "key": left_side,
+                "value": right_side
+            }, meta)
 
     # -------------------------------------------------
     # FUNZIONI
@@ -687,6 +709,7 @@ class Interpreter:
             #if item['type'] == 'pair':
             #print(f"##### res: {res}")
             #print(f"##### type: {type(res)}")
+            print(res)
             key, value = res
             #print("##### pair", key, value)
             if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
