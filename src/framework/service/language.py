@@ -681,9 +681,21 @@ class Interpreter:
         key, _ = await self.visit(node["target"], env)
         meta = node.get("meta")
         #print("BOOOOOOOOOOOOM",key,val,node["target"])
-
+        items = key if isinstance(key[0],tuple) else [key]
+        keys = []
+        values = []
+        for i,t in enumerate(items):
+            decl_type, name = t
+            
+            checked_val = await self._check_type(val, decl_type, meta, name)
+            keys.append(name)
+            if isinstance(val,tuple):
+                values.append(val[i])
+            else:
+                values.append(val)
+        return (tuple(keys), tuple(values)), env
         # Assumiamo che node["target"] contenga la definizione (tipo, nome)
-        for t in node["target"]:
+        '''for t in node["target"]:
             tu, _ = await self.visit(t, {})
             decl_type, name = tu[0], tu[1]
 
@@ -694,13 +706,13 @@ class Interpreter:
 
             # Gestione Destrutturazione (se tu[0] è una tupla di coppie tipo/nome)
             if isinstance(decl_type, tuple):
-                keys = [i[1] for i in tu]
+                keys = [i[0] for i in tu]
                 vals = [await self._check_type(val[idx], i[0], meta, i[1]) for idx, i in enumerate(tu)]
                 return (tuple(keys), tuple(vals)), env
 
             # Gestione Variabile Singola Standard
             checked_val = await self._check_type(val, decl_type, meta, name)
-            return (key, checked_val), env
+            return (key, checked_val), env'''
 
     # =========================================================
     # COLLECTIONS
@@ -714,7 +726,6 @@ class Interpreter:
             #if item['type'] == 'pair':
             #print(f"##### res: {res}")
             #print(f"##### type: {type(res)}")
-            print("DICT!!!!!!!!!",res)
             key, value = res
             #print("##### pair", key, value)
             if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
