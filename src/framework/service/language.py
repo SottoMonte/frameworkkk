@@ -181,7 +181,7 @@ DSL_FUNCTIONS = {
     'print': lambda *inputs: (print(*inputs), inputs)[1],
     'pass': lambda *inputs: inputs,
     'assert': flow.assertt,
-    'sentry': flow.sentry,
+    'guard': flow.guard,
     'when': flow.when,
 }|TYPE_MAP|{'extension':'py'}
 

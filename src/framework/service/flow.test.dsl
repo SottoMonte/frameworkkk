@@ -11,7 +11,7 @@ exports: {
     'parallel': imports.flow.parallel;
     'retry': imports.flow.retry;
     'pipeline': imports.flow.pipeline;
-    'sentry': imports.flow.sentry;
+    'guard': imports.flow.guard;
     'switch': imports.flow.switch;
     'when': imports.flow.when;
     'timeout': imports.flow.timeout;
@@ -63,56 +63,70 @@ tuple:test_suite := (
         "inputs":((pass,[1],{}),(pass,[2],{}));
         "outputs": [(1),(2)];
         "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow";
+        "note": "serial";
     },
     { 
         "action": exports.parallel; 
         "inputs":((pass,[1],{}),(pass,[2],{})); 
         "outputs": [(1), (2)]; 
         "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow"; 
+        "note": "parallel"; 
     },
     { 
         "action": exports.pipeline; 
         "inputs":((pass,["ciao"],{}),(pass,[1],{}));
         "outputs": [("ciao"),(1)]; 
         "assert": @received.outputs == @expected & @received.success == true; 
-        "note": "Pass flow"; 
+        "note": "pipeline"; 
+    },
+    { 
+        "action": exports.pipeline; 
+        "inputs":((error_function,["ciao"],{}),(pass,[1],{}));
+        "outputs": *;
+        "assert": @received.outputs == @expected & @received.success == false; 
+        "note": "pipeline"; 
+    },
+    { 
+        "action": exports.pipeline; 
+        "inputs":((pass,[1],{}),(error_function,["ciao"],{}));
+        "outputs": *;
+        "assert": @received.outputs == @expected & @received.success == false; 
+        "note": "pipeline"; 
     },
     { 
         "action": exports.switch;
         "inputs":({True:(pass,["ciao"],{});@case !=1:(pass,[111],{});},{'case':1});
         "outputs": ("ciao");
         "assert": @received.outputs == @expected & @received.success == true; 
-        "note": "Pass flow";
+        "note": "switch";
     },
     { 
         "action": exports.switch;
         "inputs":({True:(pass,["ciao"],{});@case==1:(pass,[123],{});},{'case':1});
         "outputs": token_print; 
         "assert": @received.outputs == @expected & @received.success == true; 
-        "note": "Pass flow"; 
+        "note": "switch"; 
     },
     { 
         "action": exports.foreach; 
         "inputs":([1,2],(pass,[3],{})); 
         "outputs": [(1, 3), (2, 3)]; 
         "assert": @received.outputs == @expected & @received.success == true; 
-        "note": "Pass flow"; 
+        "note": "foreach"; 
     },
     { 
         "action": exports.foreach;
         "inputs":((1,2),(pass,(3),{})); 
         "outputs": [(1, 3), (2, 3)]; 
         "assert": @received.outputs == @expected & @received.success == true; 
-        "note": "Pass flow"; 
+        "note": "foreach"; 
     },
     { 
         "action": exports.catch; 
         "inputs":((error_function,[10],{}),(pass,[123],{})); 
         "outputs": token_print; 
         "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow"; 
+        "note": "catch"; 
     },
     { 
         "action": exports.pass;
@@ -122,52 +136,66 @@ tuple:test_suite := (
         "note": "Pass flow"; 
     },
     { 
-        "action": exports.sentry;
+        "action": exports.guard;
         "inputs":(1==1); 
         "outputs": true; 
         "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow";
+        "note": "guard true";
     },
     { 
-        "action": exports.sentry;
+        "action": exports.guard;
         "inputs":(1 != 1);
         "outputs": false; 
-        "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow"; 
-    },
-    /*{ 
-        "action": exports.when;
-        "inputs":(@numero != 10,(pass,[123],{}),{numero:10});
-        "outputs": [123]; 
-        "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow"; 
+        "assert": @received.outputs == @expected & @received.success == false;
+        "note": "guard false";
     },
     { 
         "action": exports.when;
-        "inputs":("1 == 1",(pass,[123],{}),{inputs:["test"]}); 
+        "inputs":(@numero != 10,(pass,[123],{}),{numero:10});
+        "outputs": *; 
+        "assert": @received.outputs == @expected & @received.success == false;
+        "note": "when false";
+    },
+    { 
+        "action": exports.when;
+        "inputs":(1 == 1,(pass,[123],{}),{inputs:["test"]}); 
         "outputs": token_print; 
         "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow"; 
+        "note": "when true";
     },
     { 
         "action": exports.assert;
         "inputs":(10 >= 50);
-        "outputs": false; 
-        "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow"; 
+        "outputs": *;
+        "assert": @received.outputs == @expected & @received.success == false;
+        "note": "assert false";
     },
     { 
         "action": exports.assert;
         "inputs":(10 <= 50); 
         "outputs": true; 
         "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow"; 
+        "note": "assert true";
+    },
+    { 
+        "action": exports.assert;
+        "inputs":(@numero <= 50, {numero:60});
+        "outputs": *; 
+        "assert": @received.outputs == @expected & @received.success == false;
+        "note": "assert false + context"; 
+    },
+    { 
+        "action": exports.assert;
+        "inputs":(@numero <= 50, {numero:50});
+        "outputs": true; 
+        "assert": @received.outputs == @expected & @received.success == true;
+        "note": "assert true + context";
     },
     { 
         "action": exports.pass;
         "inputs":(10); 
         "outputs": 10; 
         "assert": @received.outputs == @expected & @received.success == true;
-        "note": "Pass flow"; 
-    },*/
+        "note": "pass";
+    },
 );

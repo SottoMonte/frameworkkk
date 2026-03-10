@@ -185,9 +185,10 @@ async def parallel(*steps, context=dict()):
 
 @action()
 async def assertt(condition, context=dict()):
-    if not eval(condition, context):
-        raise AssertionError(f"Assertion failed: {condition}")
-    return condition
+    result = await guard(condition, context)
+    if not result.get('success'):
+        raise AssertionError(f"Assertion failed: {format_string(str(condition), context)}")
+    return result.get('outputs')
 
 import re
 def resolve_template(template_str, env):
@@ -231,27 +232,29 @@ def format_string(template, context):
     return pattern.sub(replace_logic, template)
 
 @action()
-async def sentry(condition, context=dict()):
+async def guard(condition, context=dict()):
     if callable(condition):
         check = await condition(**context)
+        error = format_string(str(condition), context)
     else:
         check = condition
+        error = check
     
     return {
-        'success': True,
+        'success': check,
         'inputs': condition,
         'outputs': check,
-        'errors': [f"Condition not met: {format_string(str(condition), context)}"],
+        'errors': [f"Condition not met: {error}"] if not check else [],
     }
 
 @action()
 async def when(condition, step, context=dict()):
     # Se la condizione (funzione o booleano) è vera, esegue lo step
-    should_run = await sentry(condition, context)
-    if should_run.get('outputs', False):
+    should_run = await guard(condition, context)
+    if should_run.get('success', False):
         return await act(step, context)
     else:
-        return should_run
+        return {"success": False, "outputs": None, "errors": should_run.get('errors')}
 
 @action()
 async def switch(cases: dict, context={}):
@@ -265,13 +268,15 @@ async def switch(cases: dict, context={}):
             default = cases[case]
             continue
         pas = await when(case, cases[case], context)
-        print("===>",pas)
+        #print("===>",pas)
         if pas.get('success', False):
             return pas
     
-    ok = await when('1==1', default, context)
-
-    return ok
+    ok = await when(True, default, context)
+    if ok.get('success', False):
+        return ok.get('outputs')
+    else:
+        return {"success": False, "outputs": None, "errors": ok.get('errors')}
 
 # ------------ Sequenza ------------
 

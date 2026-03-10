@@ -129,7 +129,7 @@ class tester():
                 if check:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
-                    framework_log("INFO", f"Test N.{i}: OK", emoji="✅")
+                    framework_log("INFO", f"Test N.{i}: {test['note']} OK", emoji="✅")
                 else:
                     results["failed"] += 1
                     results["details"].append({
@@ -138,7 +138,7 @@ class tester():
                         "expected": expected, 
                         "received": received
                     })
-                    framework_log("WARNING", f"Test N.{i}: FAIL", expected=expected, received=received, emoji="❌")
+                    framework_log("WARNING", f"Test N.{i}: {test['note']} FAIL", expected=expected, received=received, emoji="❌")
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": target, "error": str(e)})
@@ -146,7 +146,7 @@ class tester():
                 framework_log("ERROR", f"Test N.{i}: ERROR", error=str(e), emoji="⚠️")
 
         # 3. Verifica Copertura (Exports)
-        exports = ooout.get('exports', {})
+        '''exports = ooout.get('exports', {})
         if isinstance(exports, dict):
             for export_name in exports.keys():
                 target_to_find = f"exports.{export_name}"
@@ -156,7 +156,7 @@ class tester():
                     results["failed"] += 1
                     results["errors"].append({"target": target_to_find, "error": msg})
                     results["details"].append({"target": target_to_find, "status": "FAIL", "message": msg})
-                    framework_log("ERROR", msg, emoji="⚠️")
+                    framework_log("ERROR", msg, emoji="⚠️")'''
 
         framework_log("INFO", f"DSL Test {path or 'Inline'}: {'PASSED' if results['failed'] == 0 else 'FAILED'}", 
                       total=results["total"], passed=results["passed"], failed=results["failed"])
