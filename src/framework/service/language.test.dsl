@@ -166,7 +166,7 @@ tuple:test_suite := (
         "action": pass;
         "inputs": [tuple_void]; 
         "outputs": (());
-        "assert":@received == @expected; 
-        "note": "Pass void tuple"; 
+        "assert":@received == @expected;
+        "note": "Pass void tuple";
     },
 );

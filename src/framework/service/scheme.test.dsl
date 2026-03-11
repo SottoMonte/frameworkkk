@@ -9,11 +9,11 @@ exports: {
 
 data: {
     "nome": "Progetto A";
-    "versioni": (
+    "versioni": [
         {"id": 1; "status": "completo";},
         {"id": 2; "status": "in_corso"; "dettagli": {"tester": "Mario";};},
         {"id": 3; "status": "fallito";}
-    );
+    ];
     "config": {
         "timeout": 30;
         "log_livello": "DEBUG";
@@ -200,32 +200,32 @@ tuple:test_suite := (
         "assert": @received.config.timeout == @expected;
         "note": "put";
     },
-    /*{
+    {
         "action": exports.put;
         "inputs":(data, "versioni.0.status", "completo");
         "outputs": "completo";
         "assert": @received.versioni.0.status == @expected;
         "note": "put";
-    },*/
+    },
     {
         "action": exports.put;
         "inputs":(data, "versioni.1.dettagli.tester", "Mario");
         "outputs": "Mario";
-        "assert": @received == @expected;
+        "assert": @received.versioni.1.dettagli.tester == @expected;
         "note": "put";
     },
     {
         "action": exports.put;
-        "inputs":(data, "versioni.*.status", "completo");
-        "outputs": ["completo", "completo", "completo"]; 
-        "assert": @received.versioni.0.status == @expected;
+        "inputs":(data, "versioni.2.status", "completo");
+        "outputs": ["completo", "in_corso", "completo"]; 
+        "assert": @received.versioni.*.status == @expected;
         "note": "put";
     },
     {
         "action": exports.put;
-        "inputs":(data, "versioni.*.id", 1);
-        "outputs": [1, 1, 1]; 
-        "assert": @received == @expected;
+        "inputs":(data, "versioni.3.id", 4);
+        "outputs": [1, 2, 3, 4];
+        "assert": @received.versioni.*.id == @expected;
         "note": "put";
     },
     //{ target: "exports.normalize"; inputs: [{"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}, user_schema]; output: {"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}; },

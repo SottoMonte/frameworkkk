@@ -82,14 +82,14 @@ tuple:test_suite := (
     { 
         "action": exports.pipeline; 
         "inputs":((error_function,["ciao"],{}),(pass,[1],{}));
-        "outputs": *;
+        "outputs": None;
         "assert": @received.outputs == @expected & @received.success == false; 
         "note": "pipeline"; 
     },
     { 
         "action": exports.pipeline; 
         "inputs":((pass,[1],{}),(error_function,["ciao"],{}));
-        "outputs": *;
+        "outputs": None;
         "assert": @received.outputs == @expected & @received.success == false; 
         "note": "pipeline"; 
     },
@@ -152,7 +152,7 @@ tuple:test_suite := (
     { 
         "action": exports.when;
         "inputs":(@numero != 10,(pass,[123],{}),{numero:10});
-        "outputs": *; 
+        "outputs": None;
         "assert": @received.outputs == @expected & @received.success == false;
         "note": "when false";
     },
@@ -166,7 +166,7 @@ tuple:test_suite := (
     { 
         "action": exports.assert;
         "inputs":(10 >= 50);
-        "outputs": *;
+        "outputs": None;
         "assert": @received.outputs == @expected & @received.success == false;
         "note": "assert false";
     },
@@ -180,7 +180,7 @@ tuple:test_suite := (
     { 
         "action": exports.assert;
         "inputs":(@numero <= 50, {numero:60});
-        "outputs": *; 
+        "outputs": None;
         "assert": @received.outputs == @expected & @received.success == false;
         "note": "assert false + context"; 
     },

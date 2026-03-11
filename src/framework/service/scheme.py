@@ -39,7 +39,7 @@ async def convert(target, output,input=''):
     except Exception as e:
         raise ValueError(f"Errore conversione: {e}")
 
-def get(data, path, default=None):
+def get2(data, path, default=None):
     result = default
 
     if path:
@@ -72,6 +72,35 @@ def get(data, path, default=None):
         result = data
 
     return result
+
+def get(data, path, default=None):
+    if not path:
+        return data
+    
+    key, _, rest = path.partition(".")
+    
+    try:
+        # Gestione Wildcard
+        if key == "*":
+            if isinstance(data, (list, tuple)):
+                # Se c'è un rest, continua la navigazione su ogni elemento
+                # Se non c'è, restituisce l'elemento stesso
+                return [get(x, rest, default) if rest else x for x in data]
+            return default
+        
+        # Gestione Accesso Standard (Dict, List, Object)
+        if isinstance(data, dict):
+            value = data.get(key, default)
+        elif isinstance(data, (list, tuple)):
+            value = data[int(key)] if key.lstrip("-").isdigit() else default
+        else:
+            value = getattr(data, key, default)
+            
+        # Ricorsione
+        return get(value, rest, default) if rest else value
+
+    except (IndexError, TypeError, ValueError, KeyError):
+        return default
 
 async def format(target ,**constants):
     try:

@@ -89,7 +89,7 @@ value: SIGNED_NUMBER      -> number
      | STRING             -> string
      | "true"i            -> true
      | "false"i           -> false
-     | "*"                -> any_val
+     | "none"i              -> any_val
 
 PIPE: "|>"
 ASSIGN_OP: ":="
@@ -98,7 +98,8 @@ COMPARISON_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
 ARITHMETIC_OP: "+" | "-" | "*" | "/" | "%"
 STRING: ESCAPED_STRING | SINGLE_QUOTED_STRING
 SINGLE_QUOTED_STRING: /'[^']*'/
-QUALIFIED_CNAME: CNAME ("." CNAME)+
+QUALIFIED_CNAME: CNAME ("." (CNAME|INT|"*"))+
+INT : /[0-9]+/
 
 %import common.SIGNED_NUMBER
 %import common.ESCAPED_STRING
