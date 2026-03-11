@@ -234,7 +234,7 @@ def format_string(template, context):
 @action()
 async def guard(condition, context=dict()):
     if callable(condition):
-        check = await condition(**context)
+        check = condition(**context)
         error = format_string(str(condition), context)
     else:
         check = condition
