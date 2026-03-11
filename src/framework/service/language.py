@@ -939,7 +939,7 @@ class Interpreter:
             raise DSLRuntimeError(f"Unknown function ")
 
         action = await flow.act(step)
-        return action["outputs"]
+        return action.get("outputs",action)
         
 
     async def _check_type(self, value, expected_type, meta, var_name):

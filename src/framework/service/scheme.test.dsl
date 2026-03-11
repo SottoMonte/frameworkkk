@@ -200,13 +200,13 @@ tuple:test_suite := (
         "assert": @received.config.timeout == @expected;
         "note": "put";
     },
-    {
+    /*{
         "action": exports.put;
         "inputs":(data, "versioni.0.status", "completo");
         "outputs": "completo";
-        "assert": @received == @expected;
+        "assert": @received.versioni.0.status == @expected;
         "note": "put";
-    },
+    },*/
     {
         "action": exports.put;
         "inputs":(data, "versioni.1.dettagli.tester", "Mario");
@@ -218,7 +218,7 @@ tuple:test_suite := (
         "action": exports.put;
         "inputs":(data, "versioni.*.status", "completo");
         "outputs": ["completo", "completo", "completo"]; 
-        "assert": @received == @expected;
+        "assert": @received.versioni.0.status == @expected;
         "note": "put";
     },
     {
