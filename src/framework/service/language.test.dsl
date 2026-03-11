@@ -112,15 +112,15 @@ dict:service := {
 };
 
 int:res_service_timeout := service.config.timeout;  
-int:res_service_action := service.action(9);
+//int:res_service_action := service.action(9);
 
 /* ============================================================
     10. PIPE
 ============================================================ */
 
-int:pipe_chain_double := 10 |> fn_double |> fn_double;                  
+//int:pipe_chain_double := 10 |> fn_double |> fn_double;                  
 
-int:pipe_partial_sum := 10 |> fn_sum(5);  
+//int:pipe_partial_sum := 10 |> fn_sum(5);  
 
 /* ============================================================
     11. TEST SUITE

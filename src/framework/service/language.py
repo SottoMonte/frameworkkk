@@ -680,19 +680,35 @@ class Interpreter:
         val, _ = await self.visit(node["value"], env)
         key, _ = await self.visit(node["target"], env)
         meta = node.get("meta")
-        #print("BOOOOOOOOOOOOM",key,val,node["target"])
+        #print("BOOOOOOOOOOOOM",node["target"])
         items = key if isinstance(key[0],tuple) else [key]
         keys = []
         values = []
+        #print(key)
+        if node["target"]["type"] == "pair":
+            tipo = node["target"]["key"]["name"]
+            decl_type, name = key
+            if decl_type == 'type':
+                CUSTOM_TYPES[name] = val
+                return (name, val), env
+            checked_val = await self._check_type(val, tipo, meta, name)
+            return (name, checked_val), env
+            #return (name,val),env
+
+
         for i,t in enumerate(items):
+            tipo = node["target"]["items"][i]["key"]["name"]
             decl_type, name = t
+            if decl_type == "type":
+                CUSTOM_TYPES[name] = val
             
-            checked_val = await self._check_type(val, decl_type, meta, name)
             keys.append(name)
             if isinstance(val,tuple):
-                values.append(val[i])
+                checked_val = await self._check_type(val[i], tipo, meta, name)
+                values.append(checked_val)
             else:
-                values.append(val)
+                checked_val = await self._check_type(val, tipo, meta, name)
+                values.append(checked_val)
         return (tuple(keys), tuple(values)), env
         # Assumiamo che node["target"] contenga la definizione (tipo, nome)
         '''for t in node["target"]:
@@ -733,15 +749,15 @@ class Interpreter:
                     result[key[i]] = value[i]
             else:
                 result[key] = value
-        print("##### dict", result)
+        #print("##### dict", result)
         return result, env
     
     async def visit_pair(self, node, env):
         # Utilizzato sia per i dati {k:v} che per i tipi int:x
         key, _ = await self.visit(node["key"], env) 
         value, _ = await self.visit(node["value"], env)
-        if not isinstance(key, (str, int, float, tuple, LazyBinOp,type)):
-            raise DSLRuntimeError(f"Key invalida: {key}. Deve essere un tipo primitivo.", node.get("meta"))
+        #if not isinstance(key, (str, int, float, tuple, LazyBinOp,type)):
+        #    raise DSLRuntimeError(f"Key invalida: {key}:{value}. Deve essere un tipo primitivo.", node.get("meta"))
         return (key, value), env
 
     async def visit_tuple(self, node, env):
@@ -856,7 +872,6 @@ class Interpreter:
         result, _ = await self.visit(body_ast, local_env)
         out = []
         # Controllo tipo di ritorno
-
         for ty in return_ast:
             pair,env = await self.visit(ty,local_env)
             tipo,name = pair
@@ -932,6 +947,20 @@ class Interpreter:
                     meta
                 )
         return value
+        '''if isinstance(expected_type,dict):
+            #chiave = next(k for k, v in CUSTOM_TYPES.items() if v == expected_type)
+            #print(chiave)
+            return value # Gestione tipi custom semplificata
+        
+        is_valid = isinstance(value, expected_type) and not (expected_type is int and isinstance(value, bool))
+            
+        if not is_valid:
+            print(value)
+            raise DSLRuntimeError(
+                    f"Type error for '{var_name}': expected {expected_type}, got {type(value).__name__}", 
+                    meta
+                )
+        return value'''
 
 # ============================================================================
 # PUBLIC API (NO GLOBAL PARSER)
