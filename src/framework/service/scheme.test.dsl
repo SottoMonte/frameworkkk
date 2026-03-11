@@ -152,6 +152,13 @@ tuple:test_suite := (
         "note": "Get filtrata: nessuna corrispondenza (lista vuota)";
     },
     {
+        "action": exports.get;
+        "inputs": (data, "versioni.*[status='fallito'].id");
+        "outputs": data.versioni.*[status="fallito"].id;
+        "assert": @received == @expected;
+        "note": "Get Recupero ID delle versioni con stato 'fallito' tramite filtraggio condizionale su lista";
+    },
+    {
         "action": exports.format;
         "inputs":{"target":"Ciao {{nome}}";"nome":"Progetto A"};
         "outputs": "Ciao Progetto A";
@@ -283,13 +290,6 @@ tuple:test_suite := (
         "outputs": 2;
         "assert": @received.a == @expected;
         "note": "Sovrascrittura valore primitivo";
-    },
-    {
-        "action": exports.get;
-        "inputs": (data, "versioni.*[status='fallito'].id");
-        "outputs": data.versioni.*[status="fallito"].id;
-        "assert": @received == @expected;
-        "note": "Get Recupero ID delle versioni con stato 'fallito' tramite filtraggio condizionale su lista";
     },
     //{ target: "exports.normalize"; inputs: [{"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}, user_schema]; output: {"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}; },
     
