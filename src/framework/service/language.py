@@ -521,8 +521,8 @@ class LazyBinOp:
     fn: callable = field(repr=False, compare=False)
     description: str
         
-    async def __call__(self, *args, **kwargs):
-        return await self.fn(*args, **kwargs)
+    def __call__(self, *args, **kwargs):
+        return self.fn(*args, **kwargs)
         
     def __repr__(self):
         return self.description
@@ -540,7 +540,7 @@ class ContextVar:
     name:str
     '''def __init__(self, name):
         self.name = name'''
-    async def __call__(self, *data, **data_context):
+    def __call__(self, *data, **data_context):
         return scheme.get(data_context, self.name)
     def __repr__(self):
         return self.name
@@ -606,6 +606,18 @@ class Interpreter:
             raise
         finally:
             self._node_stack.pop()
+
+    async def resolve(self, val, env):
+        # Se è un'istanza di LazyBinOp o ContextVar, le eseguiamo
+        while callable(val):
+            # Invochiamo il callable passando l'ambiente come contesto
+            res = val(**env)
+            # Se il risultato è una coroutine, la attendiamo
+            if inspect.isawaitable(res):
+                val = await res
+            else:
+                val = res
+        return val
 
     # =========================================================
     # PRIMITIVES & IDENTIFIERS
@@ -802,9 +814,9 @@ class Interpreter:
 
         # 2. Gestione Lazy (se uno dei due è una closure/context_var)
         if callable(left) or callable(right):
-            async def lazy_binop(*a, **context):
-                l = await left(**context) if callable(left) else left
-                r = await right(**context) if callable(right) else right
+            def lazy_binop(*a, **context):
+                l = left(**context) if callable(left) else left
+                r = right(**context) if callable(right) else right
                 # Usiamo OPS_FUNCTIONS che hai già definito in alto nel file
                 # Mappando l'operatore DSL alla chiave corretta (es. "and" -> "OP_AND")
                 op_key = f"OP_{OPS_MAP.get(op, op.upper())}"

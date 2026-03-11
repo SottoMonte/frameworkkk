@@ -121,11 +121,8 @@ class tester():
                     received = await visitor.invoke(target, [],args)
                 else:
                     received = await visitor.invoke(target, args)
-
-                if callable(received):
-                    print(received)
-
-                check = await assert_(received=received,expected=expected)
+                
+                check = assert_(received=received,expected=expected)
                 if check:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
