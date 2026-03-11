@@ -1,4 +1,4 @@
-
+import re
 import json
 import tomli
 import hashlib
@@ -40,40 +40,6 @@ async def convert(target, output,input=''):
         raise ValueError(f"Errore conversione: {e}")
 
 def get2(data, path, default=None):
-    result = default
-
-    if path:
-        key, _, rest = path.partition(".")
-
-        if key == "*" and isinstance(data, (list, tuple)):
-            result = [get(x, rest, default) for x in data]
-
-        else:
-            try:
-                if isinstance(data, (list, tuple)):
-                    if key.lstrip("-").isdigit():
-                        value = data[int(key)]
-                    else:
-                        value = default
-                elif isinstance(data, dict):
-                    value = data.get(key, default)
-                else:
-                    value = getattr(data, key, default)
-
-                if rest and value is not default:
-                    result = get(value, rest, default)
-                else:
-                    result = value
-
-            except (IndexError, TypeError, ValueError):
-                result = default
-
-    else:
-        result = data
-
-    return result
-
-def get(data, path, default=None):
     if not path:
         return data
     
@@ -326,56 +292,175 @@ def route(url: dict, new_part: str) -> str:
 
     return base_url
 
-def put(data: dict, path: str, value) -> dict:
-    if not isinstance(data, dict):
-        raise TypeError("data deve essere un dict")
-    if not path or not isinstance(path, str):
-        raise ValueError("path non valido")
+def put2(data, path, value):
+    # Se il path è vuoto, il valore diventa il nuovo dato
+    if not path:
+        return value
 
-    res = copy.deepcopy(data)
-    node = res
-    parts = path.split(".")
+    # Crea una copia per non mutare l'originale
+    res = copy.deepcopy(data) if data is not None else {}
+    
+    key, _, rest = path.partition(".")
+    
+    # GESTIONE BULK PUT (WILDCARD)
+    if key == "*":
+        if not isinstance(res, list):
+            raise TypeError(f"Wildcard '*' utilizzata su tipo {type(res).__name__}, attesa lista.")
+        return [put(item, rest, value) for item in res]
 
-    for i, part in enumerate(parts):
-        last = i == len(parts) - 1
-        is_idx = part.lstrip("-").isdigit()
-        key = int(part) if is_idx else part
+    # Identificazione chiave
+    is_idx = key.lstrip("-").isdigit()
+    idx = int(key) if is_idx else key
 
-        if isinstance(node, dict):
-            if is_idx:
-                raise IndexError(f"indice '{part}' su dict")
-
-            if last:
-                node[key] = value
-            else:
-                nxt = node.get(key)
-                if not isinstance(nxt, (dict, list)):
-                    nxt = {} if not is_idx else []
-                    node[key] = nxt
-                node = nxt
-
-        elif isinstance(node, list):
-            if not is_idx:
-                raise IndexError(f"chiave '{part}' su lista")
-
-            if key == -1:
-                node.append({})
-                key = len(node) - 1
-
-            if key < 0:
-                raise IndexError("indice negativo")
-
-            while len(node) <= key:
-                node.append({})
-
-            if last:
-                node[key] = value
-            else:
-                if not isinstance(node[key], (dict, list)):
-                    node[key] = {}
-                node = node[key]
-
+    # Se il nodo è vuoto o non è compatibile con la chiave, inizializzalo
+    if res is None or (isinstance(res, dict) and key not in res) or (isinstance(res, list) and idx >= len(res)):
+        # LOOK-AHEAD: guarda avanti per decidere se serve una lista o un dict
+        next_key, _, _ = rest.partition(".")
+        is_next_idx = next_key.lstrip("-").isdigit()
+        
+        # Se siamo in un dizionario e la prossima chiave è un numero, dobbiamo creare una lista
+        # Se invece siamo in una lista, dobbiamo garantire che sia una lista
+        new_node = [] if (is_next_idx or (not rest and is_idx)) else {}
+        
+        if isinstance(res, dict):
+            res[key] = new_node
+        elif isinstance(res, list):
+            if idx >= len(res):
+                res.extend([None] * (idx - len(res)))
+            res.append(new_node)
         else:
-            raise IndexError(f"nodo non indicizzabile: {type(node).__name__}")
+            res = new_node
 
+    # Esecuzione PUT
+    if isinstance(res, list):
+        if not is_idx:
+            raise TypeError(f"Errore: tentativo di accedere a una lista con chiave stringa '{key}'")
+        
+        if idx >= 999:
+            raise IndexError(f"Indice {idx} fuori limite consentito (999)")
+            
+        if idx >= len(res):
+            res.extend([None] * (idx - len(res) + 1))
+            
+        res[idx] = put(res[idx], rest, value)
+        
+    elif isinstance(res, dict):
+        res[key] = put(res.get(key), rest, value)
+        
+    else:
+        raise TypeError(f"Nodo non indicizzabile: {type(res).__name__}")
+
+    return res
+
+def get(data, path, default=None):
+    if not path:
+        return data
+    
+    # Partition del path per separare la prima chiave dal resto
+    key, _, rest = path.partition(".")
+    
+    # Regex per catturare pattern del tipo: nome[attr=valore] o *[attr=valore]
+    # Gestisce opzionalmente apici singoli o doppi attorno al valore
+    filter_match = re.match(r"([^\[]+)\[([^=]+)=[\"']?([^\"']+)[\"']?\]", key)
+    
+    if filter_match:
+        key_base, attr, expected = filter_match.groups()
+        
+        # Identifica la sorgente del filtro
+        if key_base == "*":
+            target = data if isinstance(data, (list, tuple)) else []
+        else:
+            target = data.get(key_base, []) if isinstance(data, dict) else []
+            
+        # Filtra gli elementi: cast a stringa per confronto robusto
+        filtered = [x for x in target if isinstance(x, dict) and str(x.get(attr)) == expected]
+        
+        # Ricorsione: applica il 'rest' su ogni elemento filtrato
+        results = [get(item, rest, default) for item in filtered]
+        
+        # Ritorna il risultato (o None/default se la lista è vuota)
+        return results if results else default
+
+    # Gestione Wildcard pura
+    if key == "*":
+        if isinstance(data, (list, tuple)):
+            return [get(x, rest, default) for x in data]
+        return default
+        
+    # Navigazione standard (Dict, List, Attribute)
+    try:
+        if isinstance(data, dict):
+            value = data.get(key, default)
+        elif isinstance(data, (list, tuple)) and key.lstrip("-").isdigit():
+            idx = int(key)
+            value = data[idx] if 0 <= idx < len(data) else default
+        else:
+            value = getattr(data, key, default)
+            
+        return get(value, rest, default) if rest else value
+    except (IndexError, TypeError, ValueError, KeyError):
+        return default
+
+def put(data, path, value):
+    if not path:
+        return value
+    
+    res = copy.deepcopy(data)
+    key, _, rest = path.partition(".")
+    
+    # --- GESTIONE BULK / FILTRO CON REGEX ---
+    # La regex cattura: key_base, attr, expected
+    # Supporta: key[attr=valore], key[attr='valore'], key[attr="valore"]
+    filter_match = re.match(r"([^\[]+)\[([^=]+)=[\"']?([^\"']+)[\"']?\]", key)
+    
+    if key == "*" or filter_match:
+        if not isinstance(res, list):
+            # Se la struttura non è una lista, non possiamo filtrare: restituiamo il dato originale
+            return data
+        
+        if key == "*":
+            return [put(item, rest, value) for item in res]
+        
+        # Estrazione dati dalla regex
+        key_base, attr, expected = filter_match.groups()
+        
+        # Applicazione filtro: aggiorna solo gli elementi che corrispondono
+        return [
+            put(item, rest, value) if str(item.get(attr)) == expected else item 
+            for item in res
+        ]
+
+    # --- IDENTIFICAZIONE CHIAVE ---
+    is_idx = key.lstrip("-").isdigit()
+    idx = int(key) if is_idx else key
+
+    # --- PROTEZIONE ACCESSO A LISTA CON STRINGA ---
+    if isinstance(res, list) and not is_idx:
+        return data
+
+    # --- LOOK-AHEAD: CREAZIONE DINAMICA ---
+    # Creazione nodo se la chiave non esiste
+    if isinstance(res, dict) and key not in res:
+        next_key, _, _ = rest.partition(".")
+        is_next_idx = next_key.lstrip("-").isdigit()
+        res[key] = [] if is_next_idx else {}
+    
+    elif isinstance(res, list):
+        if not is_idx or idx >= 999: return data
+        if idx >= len(res):
+            res.extend([None] * (idx - len(res) + 1))
+            # Decidiamo se creare un dizionario o una lista per il nuovo slot
+            next_key, _, _ = rest.partition(".")
+            res[idx] = [] if next_key.lstrip("-").isdigit() else {}
+
+    # --- ESECUZIONE PUT RICORSIVA ---
+    if isinstance(res, list):
+        if idx >= len(res): return data
+        res[idx] = put(res[idx], rest, value)
+    elif isinstance(res, dict):
+        res[key] = put(res.get(key), rest, value)
+    else:
+        # Se res è un tipo primitivo che non può contenere chiavi
+        return data
+        
     return res

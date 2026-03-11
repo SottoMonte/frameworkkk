@@ -138,6 +138,20 @@ tuple:test_suite := (
         "note": "get";
     },
     {
+        "action": exports.get;
+        "inputs": (data, "versioni.*[status=completo].id");
+        "outputs": [1];
+        "assert": @received == @expected;
+        "note": "Get filtrata: estrazione ID versioni completate";
+    },
+    {
+        "action": exports.get;
+        "inputs": (data, "versioni.*[status=non_esistente].id");
+        "outputs": None;
+        "assert": @received == @expected;
+        "note": "Get filtrata: nessuna corrispondenza (lista vuota)";
+    },
+    {
         "action": exports.format;
         "inputs":{"target":"Ciao {{nome}}";"nome":"Progetto A"};
         "outputs": "Ciao Progetto A";
@@ -227,6 +241,55 @@ tuple:test_suite := (
         "outputs": [1, 2, 3, 4];
         "assert": @received.versioni.*.id == @expected;
         "note": "put";
+    },
+    {
+        "action": exports.put;
+        "inputs": (data, "nome.invalid", "valore");
+        "outputs": data;
+        "assert": @received == @expected;
+        "note": "Put su tipo atomico (stringa)";
+    },
+    {
+        "action": exports.put;
+        "inputs": (data, "versioni.999.status", "test");
+        "outputs": data;
+        "assert": @received == @expected;
+        "note": "Put su indice lista fuori range";
+    },
+    {
+        "action": exports.put;
+        "inputs": (data, "versioni.*.status", "reset");
+        "outputs": ["reset", "reset", "reset"];
+        "assert": @received.versioni.*.status == @expected;
+        "note": "Put massivo con wildcard";
+    },
+    {
+        "action": exports.put;
+        "inputs": ({}, "a.b.c.0", "test");
+        "outputs": {"a": {"b": {"c": ["test"]}}};
+        "assert": @received == @expected;
+        "note": "Creazione dinamica albero profondo";
+    },
+    {
+        "action": exports.put;
+        "inputs": ({"lista": [10]}, "lista.chiave", 20);
+        "outputs": {"lista": [10]};
+        "assert": @received == @expected;
+        "note": "Errore: Accesso a lista con stringa";
+    },
+    {
+        "action": exports.put;
+        "inputs": ({"a": 1}, "a", 2);
+        "outputs": 2;
+        "assert": @received.a == @expected;
+        "note": "Sovrascrittura valore primitivo";
+    },
+    {
+        "action": exports.get;
+        "inputs": (data, "versioni.*[status='fallito'].id");
+        "outputs": data.versioni.*[status="fallito"].id;
+        "assert": @received == @expected;
+        "note": "Get Recupero ID delle versioni con stato 'fallito' tramite filtraggio condizionale su lista";
     },
     //{ target: "exports.normalize"; inputs: [{"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}, user_schema]; output: {"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"}; },
     

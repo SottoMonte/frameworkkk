@@ -98,7 +98,9 @@ COMPARISON_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
 ARITHMETIC_OP: "+" | "-" | "*" | "/" | "%"
 STRING: ESCAPED_STRING | SINGLE_QUOTED_STRING
 SINGLE_QUOTED_STRING: /'[^']*'/
-QUALIFIED_CNAME: CNAME ("." (CNAME|INT|"*"))+
+#QUALIFIED_CNAME: CNAME ("." (CNAME|INT|"*"))+
+FILTER_PATTERN: "*[" CNAME "=" STRING "]"
+QUALIFIED_CNAME: CNAME ("." (CNAME|INT|FILTER_PATTERN|"*"))+
 INT : /[0-9]+/
 
 %import common.SIGNED_NUMBER
