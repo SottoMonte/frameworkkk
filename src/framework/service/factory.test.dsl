@@ -20,20 +20,20 @@ type:schema := {
 
 dict:location := {
     "GITHUB": [
-        "repos/{owner}/{name}/git/trees/{sha}?recursive=1",
-        "repos/{owner}/{name}/branches/{branch}",
-        "repos/{owner}/{name}",
-        "repos/{filter.eq.owner}/{filter.eq.name}",
-        "orgs/{filter.eq.owner}/repos",
-        "orgs/{owner}/repos",
-        "users/{filter.eq.owner}/repos",
-        "users/{owner}/repos",
-        //"user/repos?per_page={perPage}&page={currentPage}",
+        "repos/{{ owner }}/{{ name }}/git/trees/{{ sha }}?recursive=1",
+        "repos/{{ owner }}/{{ name }}/branches/{{ branch }}",
+        "repos/{{ owner }}/{{ name }}",
+        "repos/{{ filter.eq.owner }}/{{ filter.eq.name }}",
+        "orgs/{{ filter.eq.owner }}/repos",
+        "orgs/{{ owner }}/repos",
+        "users/{{ filter.eq.owner }}/repos",
+        "users/{{ owner }}/repos",
+        "user/repos?per_page={{ perPage }}&page={{ currentPage }}",
         "user/repos",
     ];
 };
 
-values : {
+dict:values := {
     "tree": { "MODEL": "build_tree_dict" };
 };
 
@@ -76,7 +76,7 @@ repository : imports.factory.repository(
 tuple:test_suite := (
     { 
         "action": repository.can_format;
-        "inputs": {"template": "repos/{owner}/{name}"; "data": {"owner": "SottoMonte"; "name": "framework"}};
+        "inputs": {"template": "repos/{{owner}}/{{name}}"; "data": {"owner": "SottoMonte"; "name": "framework"}};
         "outputs": (true, 2);
         "assert": @received == @expected;
         "note": "Verifica se il template con 2 placeholder è risolvibile"; 
@@ -91,10 +91,10 @@ tuple:test_suite := (
     { 
         "action": repository.find_best_template;
         "inputs": {
-            "templates": ["user/repos", "repos/{owner}/{name}"];
+            "templates": ["user/repos", "repos/{{owner}}/{{name}}"];
             "data": {"owner": "SottoMonte"; "name": "framework"}
         };
-        "outputs": "repos/{owner}/{name}";
+        "outputs": "repos/{{owner}}/{{name}}";
         "assert": @received == @expected;
         "note": "Selezione del template più specifico in base ai dati disponibili"; 
     },

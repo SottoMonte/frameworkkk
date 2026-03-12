@@ -6,13 +6,13 @@ class repository:
     def __init__(self, **constants):
         self.location = constants.get('location', {})
         self.mapper = constants.get('mapper', {})
-        print("VALUES:",constants.get('values', {}))
         self.values = constants.get('values', {})
+        print("values", self.values)
         self.actions = constants.get('actions', {})
         self.schema = constants.get('model')
 
     def _get_placeholders(self, template):
-        return re.findall(r'\{([\w\.]+)\}', template)
+        return re.findall(r'\{\{\s*([\w\.]+)\s*\}\}', template)
 
     def can_format(self, template, data):
         placeholders = self._get_placeholders(template)
@@ -21,12 +21,10 @@ class repository:
         return all(results), len(placeholders)
 
     def do_format(self, template, data):
-        # Sostituisce i placeholder nel template con i valori estratti da 'data'
-        for key in self._get_placeholders(template):
-            val = scheme.get(key, data)
-            if val:
-                template = template.replace(f'{{{key}}}', str(val))
-        return template
+        try:
+            return template.format_map(data)
+        except KeyError:
+            return template
 
     def find_best_template(self, templates, data):
         # Trova il template con il maggior numero di placeholder risolvibili
@@ -60,20 +58,24 @@ class repository:
         
         # 2. Trasformazione dati via self.values
         processed_values = {}
-        print(self.values)
-        for key, transformer in self.values:
+        for key, transformer in self.values.items():
             if key in inputs:
-                processed_values[key] = await transformer.get('MODEL', lambda x: x)(inputs[key])
-
+                #processed_values[key] = await transformer.get('MODEL', lambda x: x)(inputs[key])
+                pass
+        
         # 3. Risoluzione template
         combined = {**inputs, **payload, **processed_values}
+        print(combined)
         templates = self.location.get(profile, [])
+        print(templates)
         template = self.find_best_template(templates, combined)
-        '''
+        print(template)
+        
         if not template:
             raise ValueError(f"Nessun template valido per: {profile}")
 
         # 4. Formattazione finale del percorso
         path = await scheme.format(template, **combined)
+        #path = self.do_format(template, combined)
         
-        return process | {**inputs, 'location': path, 'provider': profile, 'payload': payload}'''
+        return process | {**inputs, 'location': path, 'provider': profile, 'payload': payload}

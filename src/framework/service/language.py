@@ -718,7 +718,8 @@ class Interpreter:
         #print(key)
         if node["target"]["type"] == "pair":
             tipo = node["target"]["key"]["name"]
-            decl_type, name = key
+            name = node["target"]["value"]["name"]
+            decl_type, _ = key
             if decl_type == 'type':
                 CUSTOM_TYPES[name] = val
                 return (name, val), env
@@ -729,7 +730,8 @@ class Interpreter:
 
         for i,t in enumerate(items):
             tipo = node["target"]["items"][i]["key"]["name"]
-            decl_type, name = t
+            name = node["target"]["items"][i]["value"]["name"]
+            decl_type, _ = t
             if decl_type == "type":
                 CUSTOM_TYPES[name] = val
             
