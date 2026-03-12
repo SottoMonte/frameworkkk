@@ -125,7 +125,7 @@ async def act(step, context={}):
         **status
     }
     #if status["success"] else res
-    return sss(res,status.get('outputs')) 
+    return sss(res,status.get('outputs'))
 
 from collections import defaultdict
 

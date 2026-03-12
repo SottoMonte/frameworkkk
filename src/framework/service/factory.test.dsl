@@ -1,35 +1,123 @@
-{
-    //tuple:tuple_void := (1,2);
-    //tuple:tuple_full := (1,2,3);
-    //tuple:tuple_inline := 5,6,7;
-    a,b,c: 1,2,3;
-    
-    dict:imports := {
-        'a':1;
-        'b':2;
-        'c':3;
+imports: {
+    'factory':resource("framework/service/factory." + extension) |> get("outputs");
+};
+
+type:schema := {
+    "id":          { "type": "integer"; "default": 0; "force_type": "string"; };
+    "name":        { "type": "string"; "required": true; "regex": "^[\\w\\-]+$"; };
+    "branch":      { "type": "string"; "default": "main"; "regex": "^[\\w\\-]+$"; };
+    "description": { "type": "string"; "default": ""; "regex": "^[\\w\\s\\-]+$"; };
+    "visibility":  { "type": "boolean"; "default": false; };
+    "owner":       { "type": "string"; "default": ""; "regex": "^[\\w\\-]+$"; };
+    "location":    { "type": "string"; "default": "0000"; "regex": "^[a-zA-Z0-9_-]+$"; };
+    "updated":     { "type": "string"; "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?$"; };
+    "created":     { "type": "string"; "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?$"; };
+    "stars":       { "type": "integer"; "default": 0; };
+    "forks":       { "type": "integer"; "default": 0; };
+    "tree":        { "type": "list"; "default": []; };
+    "sha":         { "type": "string"; "default": ""; };
+};
+
+dict:location := {
+    "GITHUB": [
+        "repos/{owner}/{name}/git/trees/{sha}?recursive=1",
+        "repos/{owner}/{name}/branches/{branch}",
+        "repos/{owner}/{name}",
+        "repos/{filter.eq.owner}/{filter.eq.name}",
+        "orgs/{filter.eq.owner}/repos",
+        "orgs/{owner}/repos",
+        "users/{filter.eq.owner}/repos",
+        "users/{owner}/repos",
+        //"user/repos?per_page={perPage}&page={currentPage}",
+        "user/repos",
+    ];
+};
+
+values : {
+    "tree": { "MODEL": "build_tree_dict" };
+};
+
+dict:mapper := {
+    "sha":{"GITHUB":"commit.commit.tree.sha"};
+    "name":{"GITHUB":"name"};
+    "branch":{"GITHUB":"default_branch"};
+    "owner":{"GITHUB":"owner.login"};
+    "type":{"REPOSITORY":"type"};
+    //"content":{"REPOSITORY":"content"};
+    "created":{"GITHUB":"created_at"};
+    "updated":{"GITHUB":"updated_at"};
+    "language":{"REPOSITORY":"language"};
+    //"description":{"REPOSITORY":"description"},
+    "visibility":{"GITHUB":"private"};
+    "tree":{"GITHUB":"tree"};
+    "stars":{"GITHUB":"stargazers_count"};
+    "forks":{"GITHUB":"forks_count"};
+};
+
+actions: {
+    "view": {
+        "payload": view_payload_func;
+        "logic": view_logic_func;
     };
-    function:error_function := (str:y){
-        x:y/2;
-    }(str:x);
-    int:num1,int:num2,int:num3 := 1,2,3;
-    /*
-    ciao: "ciao";
-    str:marco := "nome";
-    //ciao2: 100;
-    //x,y,z : tuple_full;
-    ax,bx,cx:1,2,3;
-    //ay,by,cy: true,false,true;
-    //az,bz,cz: *,*,*;
-    int:num1,int:num2,int:num3 := 1,2,3;
-    //e,f:"ciao"|>print,2;
-    //aaaa:print("ciao");
-    //d,e:10,20;
-    //int:ccc,int:ddd := 1000,2000;
-    //int:bbb := 10000;
-    //a,b,c:1,2,3;
-    //a,b,c : x,y,z;
-    //aa:print(a,b,c);
-    //bbb:print(x,y,z);
-    //cc: 1,2,3 |> print("ciaone");*/
-}
+};
+
+repository : imports.factory.repository(
+    location: location,
+    mapper: mapper,
+    values: values,
+    actions: actions,
+    model: schema,
+);
+
+/* ============================================================
+    TEST SUITE
+============================================================ */
+
+tuple:test_suite := (
+    { 
+        "action": repository.can_format;
+        "inputs": {"template": "repos/{owner}/{name}"; "data": {"owner": "SottoMonte"; "name": "framework"}};
+        "outputs": (true, 2);
+        "assert": @received == @expected;
+        "note": "Verifica se il template con 2 placeholder è risolvibile"; 
+    },
+    { 
+        "action": repository.do_format;
+        "inputs": {"template": "repos/{owner}"; "data": {"owner": "SottoMonte"}};
+        "outputs": "repos/SottoMonte";
+        "assert": @received == @expected;
+        "note": "Sostituzione corretta del placeholder"; 
+    },
+    { 
+        "action": repository.find_best_template;
+        "inputs": {
+            "templates": ["user/repos", "repos/{owner}/{name}"];
+            "data": {"owner": "SottoMonte"; "name": "framework"}
+        };
+        "outputs": "repos/{owner}/{name}";
+        "assert": @received == @expected;
+        "note": "Selezione del template più specifico in base ai dati disponibili"; 
+    },
+    { 
+        "action": repository.results;
+        "inputs": {"transaction": {"result": [{"id": 1}, "invalid", {"id": 2}]}};
+        "outputs": {"result": [{"id": 1}, {"id": 2}]};
+        "assert": @received.result == @expected.result;
+        "note": "Normalizzazione transazione: filtro di elementi non dizionari";
+    },
+    { 
+        "action": repository.parameters;
+        "inputs": {
+            "ops": "view";
+            "profile": "GITHUB";
+            "owner": "SottoMonte";
+            "name": "framework"
+        };
+        "outputs": {
+            "location": "repos/SottoMonte/framework";
+            "provider": "GITHUB"
+        };
+        "assert": @received.location == @expected.location;
+        "note": "Orchestratore: generazione path finale e provider corretto"; 
+    }
+);

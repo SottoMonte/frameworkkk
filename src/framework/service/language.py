@@ -77,7 +77,7 @@ pair.6: atom ":" atom
 declaration.5: atom ":=" atom
 ?list: "[" [sequence] "]" -> list_node
 
-function_call: identifier "(" [sequence] ")"
+function_call: identifier "(" [sequence|type_sequence] ")"
 function_value.10: tuple dictionary tuple
 
 identifier: CNAME -> identifier 
@@ -442,7 +442,6 @@ class DSLTransformer(Transformer):
         args = []
         kwargs = {}
         for input in inputs:
-            #print("#ITEM#",input)
             if isinstance(input, dict) and input.get("type") in ["pair"]:
                 key_node = input["key"]
                 #key_name = key_node["name"] if isinstance(key_node, dict) and key_node.get("type") in ["var","context_var"] else str(key_node)
@@ -450,7 +449,6 @@ class DSLTransformer(Transformer):
                 kwargs[key_name] = input["value"]
             else:
                 args.append(input)
-
         return self.with_meta({
             "type": "call",
             "name": fn.get("name"),
@@ -549,19 +547,36 @@ class ContextVar:
         return self.name
 
 class DSLRuntimeError(Exception):
-    def __init__(self, message, meta=None):
+    def __init__(self, message, meta=None, source_code=None):
+        """
+        source_code: stringa completa del DSL file (o lista di righe)
+        """
+        error_msg = message
+
         if meta:
-            start_line = meta.get("line", None)
-            start_col = meta.get("column", None)
-            end_line = meta.get("end_line", None)
-            end_col = meta.get("end_column", None)
+            start_line = meta.get("line")
+            start_col  = meta.get("column")
+            end_line   = meta.get("end_line")
+            end_col    = meta.get("end_column")
 
             if start_line is not None and start_col is not None:
                 if end_line is not None and end_col is not None:
-                    message = f"{message} (line {start_line}:{start_col} - {end_line}:{end_col})"
+                    loc = f"line {start_line}:{start_col} - {end_line}:{end_col}"
                 else:
-                    message = f"{message} (line {start_line}, col {start_col})"
-        super().__init__(message)
+                    loc = f"line {start_line}, col {start_col}"
+                
+                error_msg += f" ({loc})"
+
+                # aggiungi la riga del file DSL, se fornita
+                if source_code:
+                    # source_code può essere stringa o lista di righe
+                    lines = source_code.splitlines() if isinstance(source_code, str) else source_code
+                    if 1 <= start_line <= len(lines):
+                        code_line = lines[start_line - 1]
+                        pointer = " " * (start_col - 1) + "^"
+                        error_msg += f"\n  {code_line}\n  {pointer}"
+
+        super().__init__(error_msg)
 
 class Interpreter:
     def __init__(self, env=None):
@@ -632,6 +647,7 @@ class Interpreter:
     async def visit_identifier(self, node, env):return node["name"], env
     async def visit_var(self, node, env):
         name = node["name"]
+        
         val = scheme.get(env, name, name)
         return val, env
     async def visit_context_var(self, node, env):
@@ -754,23 +770,38 @@ class Interpreter:
         for item in node["items"]:
             evaluation_env = env | result
             res, _ = await self.visit(item, evaluation_env)
-            #if item['type'] == 'pair':
-            #print(f"##### res: {res}")
-            #print(f"##### type: {type(res)}")
+
             key, value = res
-            #print("##### pair", key, value)
+            meta = item.get("meta")
+
+            # gestione destructuring
             if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
-                for i,k in enumerate(key):
-                    result[key[i]] = value[i]
+                for k, v in zip(key, value):
+                    if k in result:
+                        raise DSLRuntimeError(
+                            f"Duplicate key in dict: {k}",
+                            meta
+                        )
+                    result[k] = v
             else:
+                if key in result:
+                    raise DSLRuntimeError(
+                        f"Duplicate key in dict: {key}",
+                        meta
+                    )
+
                 result[key] = value
-        #print("##### dict", result)
+
         return result, env
     
     async def visit_pair(self, node, env):
         # Utilizzato sia per i dati {k:v} che per i tipi int:x
-        key, _ = await self.visit(node["key"], env) 
+        #key, _ = await self.visit(node["key"], env) 
         value, _ = await self.visit(node["value"], env)
+        if node["key"]["type"] == "var":
+            key = node["key"]["name"]
+        else:
+            key, _ = await self.visit(node["key"], env)
         #if not isinstance(key, (str, int, float, tuple, LazyBinOp,type)):
         #    raise DSLRuntimeError(f"Key invalida: {key}:{value}. Deve essere un tipo primitivo.", node.get("meta"))
         return (key, value), env
@@ -905,11 +936,15 @@ class Interpreter:
         ast_args = [(await self.visit(a, env))[0] for a in node.get("args", [])]
         all_args = list(args) + ast_args
         
+        #aaa = [(await self.visit(v, {}))[0] for k, v in node.get("kwargs", {}).items()]
+        #env_filtered = {k: v for k, v in env.items() if k in aaa and k not in node.get("kwargs", {}).keys()}
+        #print("@@@@@@@@@@@@@@@@env_filtered",node.get("kwargs", {}).keys(),aaa,env_filtered)
         ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
         all_kwargs = {**kwargs, **ast_kwargs}
         
         function = scheme.get(env, str(name))
-        
+        #print("##########VALUES",env.get('values'))
+        #print("############visitcall",ast_kwargs)
         if callable(function):
             step = flow.step(function,*all_args,**all_kwargs)
         elif isinstance(function, tuple) and len(function) == 3:
@@ -933,7 +968,6 @@ class Interpreter:
         - Una funzione Python reale
         - Un oggetto 'function' del DSL
         """
-        
         if callable(function):
             step = flow.step(function,*args,**kwargs)
         elif isinstance(function, tuple) and len(function) == 3:
