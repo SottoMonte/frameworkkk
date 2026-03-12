@@ -39,35 +39,6 @@ async def convert(target, output,input=''):
     except Exception as e:
         raise ValueError(f"Errore conversione: {e}")
 
-def get2(data, path, default=None):
-    if not path:
-        return data
-    
-    key, _, rest = path.partition(".")
-    
-    try:
-        # Gestione Wildcard
-        if key == "*":
-            if isinstance(data, (list, tuple)):
-                # Se c'è un rest, continua la navigazione su ogni elemento
-                # Se non c'è, restituisce l'elemento stesso
-                return [get(x, rest, default) if rest else x for x in data]
-            return default
-        
-        # Gestione Accesso Standard (Dict, List, Object)
-        if isinstance(data, dict):
-            value = data.get(key, default)
-        elif isinstance(data, (list, tuple)):
-            value = data[int(key)] if key.lstrip("-").isdigit() else default
-        else:
-            value = getattr(data, key, default)
-            
-        # Ricorsione
-        return get(value, rest, default) if rest else value
-
-    except (IndexError, TypeError, ValueError, KeyError):
-        return default
-
 async def format(target ,**constants):
     try:
         jinjaEnv = Environment()
@@ -183,74 +154,6 @@ def _get_next_schema(schema, key):
         return schema.get(key)
     return None
 
-def put2(data: dict, path: str, value: any, schema: dict) -> dict:
-    if not isinstance(data, dict): raise TypeError("Il dizionario iniziale deve essere di tipo dict.")
-    if not isinstance(path, str) or not path: raise ValueError("Il dominio deve essere una stringa non vuota.")
-    if not isinstance(schema, dict) or not schema: raise ValueError("Lo schema deve essere un dizionario valido.")
-
-    result = copy.deepcopy(data)
-    node, sch = result, schema
-    chunks = path.split('.')
-
-    for i, chunk in enumerate(chunks):
-        is_last = i == len(chunks) - 1
-        is_index = chunk.lstrip('-').isdigit()
-        key = int(chunk) if is_index else chunk
-        next_sch = _get_next_schema(sch, chunk)
-
-        if isinstance(node, dict):
-            if is_index:
-                raise IndexError(f"Indice numerico '{chunk}' usato in un dizionario a livello {i}.")
-            if is_last:
-                if next_sch is None:
-                    raise IndexError(f"Campo '{chunk}' non definito nello schema.")
-                if not Validator({chunk: next_sch}, allow_unknown=False).validate({chunk: value}):
-                    raise ValueError(f"Valore non valido per '{chunk}': {value}")
-                node[key] = value
-            else:
-                node.setdefault(key, {} if next_sch and next_sch.get('type') == 'dict'
-                                     else [] if next_sch and next_sch.get('type') == 'list'
-                                     else None)
-                if node[key] is None:
-                    raise IndexError(f"Nodo intermedio '{chunk}' non valido nello schema.")
-                node, sch = node[key], next_sch
-
-        elif isinstance(node, list):
-            if not is_index:
-                raise IndexError(f"Chiave '{chunk}' non numerica usata in una lista a livello {i}.")
-            if not isinstance(next_sch, dict) or 'type' not in next_sch:
-                raise IndexError(f"Schema non valido per lista a livello {i}.")
-
-            if key == -1:  # Append mode
-                t = next_sch['type']
-                new_elem = {} if t == 'dict' else [] if t == 'list' else None
-                node.append(new_elem)
-                key = len(node) - 1
-
-            if key < 0:
-                raise IndexError(f"Indice negativo '{chunk}' non valido in lista.")
-
-            while len(node) <= key:
-                t = next_sch['type']
-                node.append({} if t == 'dict' else [] if t == 'list' else None)
-
-            if is_last:
-                if not Validator({chunk: next_sch}, allow_unknown=False).validate({chunk: value}):
-                    raise ValueError(f"Valore non valido per indice '{chunk}': {value}")
-                node[key] = value
-            else:
-                if node[key] is None or not isinstance(node[key], (dict, list)):
-                    t = next_sch['type']
-                    if t == 'dict': node[key] = {}
-                    elif t == 'list': node[key] = []
-                    else: raise IndexError(f"Tipo non contenitore '{t}' per nodo '{chunk}' in lista.")
-                node, sch = node[key], next_sch
-
-        else:
-            raise IndexError(f"Nodo non indicizzabile al passo '{chunk}' (tipo: {type(node).__name__})")
-
-    return result
-
 def route(url: dict, new_part: str) -> str:
     """
     Updates the URL's path and/or adds query parameters based on the input string.
@@ -291,66 +194,6 @@ def route(url: dict, new_part: str) -> str:
         base_url += f"#{fragment}"
 
     return base_url
-
-def put2(data, path, value):
-    # Se il path è vuoto, il valore diventa il nuovo dato
-    if not path:
-        return value
-
-    # Crea una copia per non mutare l'originale
-    res = copy.deepcopy(data) if data is not None else {}
-    
-    key, _, rest = path.partition(".")
-    
-    # GESTIONE BULK PUT (WILDCARD)
-    if key == "*":
-        if not isinstance(res, list):
-            raise TypeError(f"Wildcard '*' utilizzata su tipo {type(res).__name__}, attesa lista.")
-        return [put(item, rest, value) for item in res]
-
-    # Identificazione chiave
-    is_idx = key.lstrip("-").isdigit()
-    idx = int(key) if is_idx else key
-
-    # Se il nodo è vuoto o non è compatibile con la chiave, inizializzalo
-    if res is None or (isinstance(res, dict) and key not in res) or (isinstance(res, list) and idx >= len(res)):
-        # LOOK-AHEAD: guarda avanti per decidere se serve una lista o un dict
-        next_key, _, _ = rest.partition(".")
-        is_next_idx = next_key.lstrip("-").isdigit()
-        
-        # Se siamo in un dizionario e la prossima chiave è un numero, dobbiamo creare una lista
-        # Se invece siamo in una lista, dobbiamo garantire che sia una lista
-        new_node = [] if (is_next_idx or (not rest and is_idx)) else {}
-        
-        if isinstance(res, dict):
-            res[key] = new_node
-        elif isinstance(res, list):
-            if idx >= len(res):
-                res.extend([None] * (idx - len(res)))
-            res.append(new_node)
-        else:
-            res = new_node
-
-    # Esecuzione PUT
-    if isinstance(res, list):
-        if not is_idx:
-            raise TypeError(f"Errore: tentativo di accedere a una lista con chiave stringa '{key}'")
-        
-        if idx >= 999:
-            raise IndexError(f"Indice {idx} fuori limite consentito (999)")
-            
-        if idx >= len(res):
-            res.extend([None] * (idx - len(res) + 1))
-            
-        res[idx] = put(res[idx], rest, value)
-        
-    elif isinstance(res, dict):
-        res[key] = put(res.get(key), rest, value)
-        
-    else:
-        raise TypeError(f"Nodo non indicizzabile: {type(res).__name__}")
-
-    return res
 
 def get(data, path, default=None):
     if not path:

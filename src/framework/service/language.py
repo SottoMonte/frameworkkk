@@ -185,6 +185,7 @@ DSL_FUNCTIONS = {
     'convert': scheme.convert,
     'keys': lambda d: list(d.keys()) if isinstance(d, dict) else [],
     'values': lambda d: list(d.values()) if isinstance(d, dict) else [],
+    'union': lambda a,b: {**a,**b},
     'print': lambda *inputs: (print(*inputs), inputs)[1],
     'pass': lambda *inputs: inputs,
     'assert': flow.assertt,
@@ -720,7 +721,7 @@ class Interpreter:
             tipo = node["target"]["key"]["name"]
             name = node["target"]["value"]["name"]
             decl_type, _ = key
-            if decl_type == 'type':
+            if tipo == 'type':
                 CUSTOM_TYPES[name] = val
                 return (name, val), env
             checked_val = await self._check_type(val, tipo, meta, name)
@@ -732,7 +733,7 @@ class Interpreter:
             tipo = node["target"]["items"][i]["key"]["name"]
             name = node["target"]["items"][i]["value"]["name"]
             decl_type, _ = t
-            if decl_type == "type":
+            if tipo == "type":
                 CUSTOM_TYPES[name] = val
             
             keys.append(name)
@@ -938,15 +939,10 @@ class Interpreter:
         ast_args = [(await self.visit(a, env))[0] for a in node.get("args", [])]
         all_args = list(args) + ast_args
         
-        #aaa = [(await self.visit(v, {}))[0] for k, v in node.get("kwargs", {}).items()]
-        #env_filtered = {k: v for k, v in env.items() if k in aaa and k not in node.get("kwargs", {}).keys()}
-        #print("@@@@@@@@@@@@@@@@env_filtered",node.get("kwargs", {}).keys(),aaa,env_filtered)
         ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
         all_kwargs = {**kwargs, **ast_kwargs}
         
         function = scheme.get(env, str(name))
-        #print("##########VALUES",env.get('values'))
-        #print("############visitcall",ast_kwargs)
         if callable(function):
             step = flow.step(function,*all_args,**all_kwargs)
         elif isinstance(function, tuple) and len(function) == 3:
@@ -957,10 +953,8 @@ class Interpreter:
             raise DSLRuntimeError(f"Unknown function '{name}'", meta)
 
         action = await flow.act(step)
-        #print("####1",action)
-        output = action["outputs"]
-        #print("####2",output)
-        return output, env
+        return action.get("outputs",action),env
+
 
     async def invoke(self, function, args=[], kwargs={}):
         """
@@ -985,7 +979,8 @@ class Interpreter:
         py_type = TYPE_MAP.get(expected_type)
         
         if expected_type in CUSTOM_TYPES:
-            return value # Gestione tipi custom semplificata
+            return await scheme.normalize(value, CUSTOM_TYPES[expected_type])
+            #return value # Gestione tipi custom semplificata
         
         if py_type:
             # Python considera bool come una sottoclasse di int, quindi isinstance(True, int) == True. 

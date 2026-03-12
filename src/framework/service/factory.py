@@ -7,7 +7,6 @@ class repository:
         self.location = constants.get('location', {})
         self.mapper = constants.get('mapper', {})
         self.values = constants.get('values', {})
-        print("values", self.values)
         self.actions = constants.get('actions', {})
         self.schema = constants.get('model')
 
@@ -47,14 +46,16 @@ class repository:
         return transaction
 
     @flow.action()
-    async def parameters(self, ops, profile, **inputs):
+    async def parameters(self, **inputs):
         # 1. Recupera l'action (payload + logica)
+        ops = inputs.get('operation')
+        profile = inputs.get('provider')
         action = self.actions.get(ops, {})
         
         payload = action.get('payload')
-        payload = payload(**inputs) if callable(payload) else {}
+        payload = payload(**inputs.get('payload', {})) if callable(payload) else inputs.get('payload', {})
         process = action.get('logic')
-        process = process(**inputs) if callable(process) else {}
+        process = process(**inputs) if callable(process) else inputs
         
         # 2. Trasformazione dati via self.values
         processed_values = {}
@@ -65,17 +66,16 @@ class repository:
         
         # 3. Risoluzione template
         combined = {**inputs, **payload, **processed_values}
-        print(combined)
+        #print(combined)
         templates = self.location.get(profile, [])
-        print(templates)
+        #print(templates)
         template = self.find_best_template(templates, combined)
-        print(template)
+        #print(template)
         
         if not template:
             raise ValueError(f"Nessun template valido per: {profile}")
 
         # 4. Formattazione finale del percorso
         path = await scheme.format(template, **combined)
-        #path = self.do_format(template, combined)
         
-        return process | {**inputs, 'location': path, 'provider': profile, 'payload': payload}
+        return process | {'location': path, 'provider': profile, 'payload': payload, 'filter': inputs.get('filter', {})}

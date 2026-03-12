@@ -18,6 +18,15 @@ type:schema := {
     "sha":         { "type": "string"; "default": ""; };
 };
 
+type:request := {
+    "provider":    { 'type': 'string'; 'default': 'unknown'; };
+    "location":    { 'type': 'string'; 'default': ''; };
+    "operation":   { 'type': 'string'; 'default': 'read'; 'regex': '^(create|read|update|delete|view)$' };
+    "repository":  { 'type': 'string'; 'default': ''; };
+    "filter":      { 'type': 'dict'; 'default': {}; };
+    "payload":     { 'type': 'dict'; 'default': {}; };
+};
+
 dict:location := {
     "GITHUB": [
         "repos/{{ owner }}/{{ name }}/git/trees/{{ sha }}?recursive=1",
@@ -69,6 +78,21 @@ repository : imports.factory.repository(
     model: schema,
 );
 
+request:richiesta := {
+    "provider": "GITHUB";
+    //"operation": "view";
+    "repository": "repository";
+    /*"filter": {
+        "eq": {
+            "owner": "SottoMonte"
+        }
+    };*/
+    "payload": {
+        "owner": "SottoMonte";
+        "name": "framework"
+    }
+};
+
 /* ============================================================
     TEST SUITE
 ============================================================ */
@@ -107,17 +131,9 @@ tuple:test_suite := (
     },
     { 
         "action": repository.parameters;
-        "inputs": {
-            "ops": "view";
-            "profile": "GITHUB";
-            "owner": "SottoMonte";
-            "name": "framework"
-        };
-        "outputs": {
-            "location": "repos/SottoMonte/framework";
-            "provider": "GITHUB"
-        };
-        "assert": @received.location == @expected.location;
+        "inputs": richiesta;
+        "outputs": richiesta |> union({'location':"repos/SottoMonte/framework"});
+        "assert": @received.outputs == @expected;
         "note": "Orchestratore: generazione path finale e provider corretto"; 
     }
 );
