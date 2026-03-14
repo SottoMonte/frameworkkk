@@ -42,7 +42,9 @@ class tester():
                     #await self.dsl(path= module_path)
                     async def add_one(x): return x+1
                     async def double(x): return x*2
-                    async def sum_list(lst): return sum(lst)
+                    async def sum_list(lst): 
+                        print("###################",lst) 
+                        return sum(lst)
 
                     def odd_trigger(): return int(time.time()) % 2 == 1
 
