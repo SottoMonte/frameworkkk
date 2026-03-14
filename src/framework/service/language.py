@@ -175,22 +175,23 @@ CUSTOM_TYPES = {}
 
 DSL_FUNCTIONS = {
     'resource': load.resource,
+    #'transaction': flow.transaction,
     'transform': scheme.transform,
     'get': scheme.get,
     'normalize': scheme.normalize,
     'put': scheme.put,
     'format': scheme.format,
-    'foreach': flow.foreach,
-    'retry': flow.retry,
+    #'foreach': flow.foreach,
+    #'retry': flow.retry,
     'convert': scheme.convert,
     'keys': lambda d: list(d.keys()) if isinstance(d, dict) else [],
     'values': lambda d: list(d.values()) if isinstance(d, dict) else [],
     'union': lambda a,b: {**a,**b},
     'print': lambda *inputs: (print(*inputs), inputs)[1],
     'pass': lambda *inputs: inputs,
-    'assert': flow.assertt,
-    'guard': flow.guard,
-    'when': flow.when,
+    #'assert': flow.assertt,
+    #'guard': flow.guard,
+    #'when': flow.when,
 }|TYPE_MAP|{'extension':'py'}
 
 
@@ -587,7 +588,7 @@ class Interpreter:
     # =========================================================
     # ENTRY POINT
     # =========================================================
-    @flow.action()
+    
     async def run(self, ast, **c):
         value, _ = await self.visit(ast, self.env)
         return value
@@ -953,8 +954,7 @@ class Interpreter:
             raise DSLRuntimeError(f"Unknown function '{name}'", meta)
 
         action = await flow.act(step)
-        return action.get("outputs",action),env
-
+        return action.get("output",action),env
 
     async def invoke(self, function, args=[], kwargs={}):
         """
@@ -972,7 +972,8 @@ class Interpreter:
             raise DSLRuntimeError(f"Unknown function ")
 
         action = await flow.act(step)
-        return action.get("outputs",action)
+        return action
+        #return action.get("outputs",action)
         
 
     async def _check_type(self, value, expected_type, meta, var_name):
@@ -1015,11 +1016,9 @@ class Interpreter:
 def create_parser():
     return Lark(GRAMMAR, parser='lalr', propagate_positions=True)
 
-@flow.action()
 def parse(content: str, parser: Lark,**data):
     return DSLTransformer().transform(parser.parse(content))
 
-@flow.action()
 async def execute(content_or_ast, parser, functions):
     ast = parse(content_or_ast, parser) if isinstance(content_or_ast, str) else content_or_ast
     return await Interpreter(functions).run(ast)

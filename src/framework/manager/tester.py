@@ -39,7 +39,25 @@ class tester():
                         ),
                         flow.step(flow.log,"Errore: {errors[0]} "),
                     )'''
-                    await self.dsl(path= module_path)
+                    #await self.dsl(path= module_path)
+                    async def add_one(x): return x+1
+                    async def double(x): return x*2
+                    async def sum_list(lst): return sum(lst)
+
+                    def odd_trigger(): return int(time.time()) % 2 == 1
+
+                    nodes = [
+                        flow.node("start", lambda: [1,2,3]),
+                        flow.foreach("inc_numbers", add_one, data_dep="start",),
+                        flow.pipeline("process_numbers", [double], deps=["inc_numbers"]),
+                        flow.node("sum", sum_list, deps=["process_numbers"]),
+                        flow.retry(flow.node("fail_example", lambda: 1/0), retries=3)
+                    ]
+
+                    context = await flow.run(nodes)
+                    for k,v in context.items():
+                        print("\n",k, v)
+                    exit(1)
 
 
     async def dsl(self, **kwargs):
@@ -54,7 +72,7 @@ class tester():
         #path = "src/framework/service/factory.test.dsl"
         print(path)
         res = await resource(path)
-        ok = res.get('outputs',path)
+        ok = res.get('output',path)
         #print(res)
 
         '''# 1. Verifica Integrità (Hash) se possibile
@@ -81,7 +99,7 @@ class tester():
             framework_log("ERROR", f"Errore di esecuzione DSL in {path}: {parsed.get('errors')}", emoji="❌")
             ooout = {}
         else:
-            ooout = parsed.get('outputs')
+            ooout = parsed.get('output')
             if isinstance(ooout, Exception):
                 framework_log("ERROR", f"Errore nel runtime DSL (ritorno) per {path}: {ooout}", emoji="❌")
                 ooout = {}
@@ -114,7 +132,6 @@ class tester():
             assert_ = test.get('assert')
             
             try:
-                #received, _ = await visitor.invoke({'type':'call','name':target}, ooout|visitor.env, args)
                 if isinstance(args,list):
                     received = await visitor.invoke(target, args)
                 elif isinstance(args,dict):
@@ -126,7 +143,7 @@ class tester():
                 if check:
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
-                    framework_log("INFO", f"Test N.{i}: {test['note']} OK", emoji="✅")
+                    framework_log("INFO", f"OK - Test N.{i}: {test['note']} ", emoji="✅")
                 else:
                     results["failed"] += 1
                     results["details"].append({
@@ -135,7 +152,7 @@ class tester():
                         "expected": expected, 
                         "received": received
                     })
-                    framework_log("WARNING", f"Test N.{i}: {test['note']} FAIL", expected=expected, received=received, emoji="❌")
+                    framework_log("WARNING", f"FAIL - Test N.{i}: {test['note']}", affirmed=assert_,expected=expected, received=received, emoji="❌")
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": target, "error": str(e)})

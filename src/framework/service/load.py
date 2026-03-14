@@ -49,7 +49,7 @@ async def _register_dependency_in_container(module, path, name, services, payloa
     # Placeholder for more complex logic
     return {"success": True}
 
-@flow.action()
+#@flow.action()
 async def resource(path: str):
     """Carica una risorsa (file, modulo, config)."""
     try:
@@ -67,9 +67,10 @@ async def resource(path: str):
             return module
         return content
     except Exception as e:
-        return {"success": False, "errors": [str(e)]}
+        raise e
+        #return {"success": False, "errors": [str(e)]}
 
-@flow.action()
+#@flow.action()
 async def register(payload: dict):
     """Registra un servizio o un manager nel container."""
     path = payload.get('path')

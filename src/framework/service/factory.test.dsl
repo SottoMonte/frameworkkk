@@ -1,5 +1,5 @@
 imports: {
-    'factory':resource("framework/service/factory." + extension) |> get("outputs");
+    'factory':resource("framework/service/factory." + extension) |> transaction |> get("outputs");
 };
 
 type:schema := {
@@ -102,14 +102,14 @@ tuple:test_suite := (
         "action": repository.can_format;
         "inputs": {"template": "repos/{{owner}}/{{name}}"; "data": {"owner": "SottoMonte"; "name": "framework"}};
         "outputs": (true, 2);
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Verifica se il template con 2 placeholder è risolvibile"; 
     },
     { 
         "action": repository.do_format;
         "inputs": {"template": "repos/{owner}"; "data": {"owner": "SottoMonte"}};
         "outputs": "repos/SottoMonte";
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Sostituzione corretta del placeholder"; 
     },
     { 
@@ -119,17 +119,17 @@ tuple:test_suite := (
             "data": {"owner": "SottoMonte"; "name": "framework"}
         };
         "outputs": "repos/{{owner}}/{{name}}";
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Selezione del template più specifico in base ai dati disponibili"; 
     },
-    { 
+    {
         "action": repository.results;
         "inputs": {"transaction": {"result": [{"id": 1}, "invalid", {"id": 2}]}};
         "outputs": {"result": [{"id": 1}, {"id": 2}]};
-        "assert": @received.result == @expected.result;
+        "assert": @received.outputs.result == @expected.result;
         "note": "Normalizzazione transazione: filtro di elementi non dizionari";
     },
-    { 
+    {
         "action": repository.parameters;
         "inputs": richiesta;
         "outputs": richiesta |> union({'location':"repos/SottoMonte/framework"});
@@ -137,3 +137,19 @@ tuple:test_suite := (
         "note": "Orchestratore: generazione path finale e provider corretto"; 
     }
 );
+
+{
+    validate: repository.validate_schema;
+    build(retries: 3)->validate: repository.build_template;
+    fetch(timeout: 5)->build: repository.fetch_data;
+    map->fetch:   repository.map_values;
+    action->map: repository.run_action;
+};
+
+{
+    validate: repository.validate_schema;
+    build(retries: 3)->validate: repository.build_template;
+    fetch(timeout: 5)->build: repository.fetch_data;
+    map->fetch|catch:   repository.map_values;
+    action->map: repository.run_action;
+};

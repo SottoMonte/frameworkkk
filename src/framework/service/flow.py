@@ -1,360 +1,183 @@
-import uuid
 import asyncio
-import functools
-import traceback
-import inspect
+import networkx as nx
 import time
-from typing import Any, Callable, Dict, List, Optional
-from framework.service.context import container
-from framework.service.diagnostic import framework_log, log_block, _load_resource, buffered_log, analyze_exception, _get_system_info
-import framework.service.scheme as scheme
+from typing import List, Dict, Any, Callable
 
-def merge_foreach_structure(data):
-    # Verifichiamo se l'output contiene la struttura del figlio
-    child = data.get('outputs')
-    
-    if isinstance(child, dict) and 'outputs' in child:
-        # 1. 'outputs' del padre diventa la lista piatta dei risultati del figlio
-        new_outputs = child.get('outputs', [])
-        
-        # 2. 'errors' del padre riceve anche gli errori del figlio (appiattiti)
-        new_errors = data.get('errors', []) + child.get('errors', [])
-        
-        # 3. 'success' è True solo se entrambi sono True
-        new_success = data.get('success', False) and child.get('success', False)
-        
-        # Aggiorniamo il dizionario originale mantenendo le chiavi intatte
-        data['success'] = new_success
-        data['outputs'] = new_outputs
-        data['errors'] = new_errors
-        data['kwargs'] = data.get('kwargs', {})
-        
-    return data
+# ------------------ Funzioni di supporto ------------------
 
-def sss(new,old):
-    if not isinstance(new,dict) or not isinstance(old,dict):
-        return new
-    if all(k in new for k in old):
-        new['outputs'] = old
-        return new
-    else:
-        return merge_foreach_structure(old)
-
-def action(custom_filename: str = __file__, app_context = None, **constants):
-    
-    def decorator(function):
-        if asyncio.iscoroutinefunction(function):
-            @functools.wraps(function)
-            async def wrapper(*args, **kwargs):
-                start_time = time.perf_counter()
-                try:
-                    result = await function(*args, **kwargs)
-                    end_time = time.perf_counter()
-                    ok = {
-                        'action': function.__name__,
-                        'success': True,
-                        'inputs': args,
-                        'outputs': result,
-                        'errors': [],
-                        'time': str(end_time - start_time)
-                    }
-                    #print(result,"<-----------result")
-                    return merge_foreach_structure(ok)
-                except Exception as e:
-                    end_time = time.perf_counter()
-                    return {
-                        'action': function.__name__,
-                        'success': False,
-                        'inputs': args,
-                        'outputs': None,
-                        'errors': [str(e)],
-                        'time': str(end_time - start_time)
-                    }
-                finally:
-                    pass
-            return wrapper
-        else:
-            @functools.wraps(function)
-            def wrapper(*args, **kwargs):
-                try:
-                    return function(*args, **kwargs)
-                except Exception as e:
-                    return e
-                finally:
-                    pass
-            return wrapper
-    return decorator    
-
-def step(fn,*args, **kwargs) -> tuple: return (fn,args,kwargs)
-
-async def act(step, context={}):
-    start_time = time.perf_counter()
-    if not isinstance(step,tuple):
-        raise Exception("Step must be a tuple",step)
-    
-    function, args, kwargs = step
-    
-    try:
-        
-        # 3. Esecuzione (Unificata)
-        if asyncio.iscoroutinefunction(function):
-            result = await function(*args, **kwargs)
-        else:
-            if isinstance(kwargs,list):
-                print(kwargs,"<-----------kwargs")
-                exit()
-            result = function(*args, **kwargs)
-
-        status = {"success": True, "outputs": result, "errors": []}
-
-    except Exception as e:
-        tb = traceback.extract_tb(e.__traceback__)[-1]
-        status = {
-            "success": False,
-            "outputs": None,
-            "errors": [f"{e} (line {tb.lineno}: {tb.line})"],
-            "error_details": {"line": tb.lineno, "code": tb.line, "traceback": traceback.format_exc()}
-        }
-
-    # 4. Ritorno unico (Don't Repeat Yourself)
-    res = {
-        'action': getattr(function, "__name__", str(function)),
-        'inputs': args,
-        'kwargs': kwargs,
-        'time': f"{time.perf_counter() - start_time:.8f}",
-        **status
-    }
-    #if status["success"] else res
-    return sss(res,status.get('outputs'))
-
-from collections import defaultdict
-
-def aggregate_results(dict_list):
-    aggregated = defaultdict(list)
-    
-    for entry in dict_list:
-        for key, value in entry.items():
-            aggregated[key].append(value)
-            
-    # Opzionale: Pulizia dei dati (es. se 'action' è sempre uguale, prendi solo il primo)
-    final_data = dict(aggregated)
-    
-    # Esempio di post-elaborazione: 
-    # Trasforma in valore singolo se tutti gli elementi sono identici (come 'action')
-    for key in final_data:
-        if all(x == final_data[key][0] for x in final_data[key]):
-            final_data[key] = final_data[key][0]
-            
-    return final_data
-
-# ------------ Iterazione ------------
-
-@action()
-async def foreach(data, step, context=dict()):
-    outputs = []
-    errors = []
-    function, args, kwargs = step
-
-    for item in data:
-        item_step = (function, [item]+list(args), kwargs)
-        result = await act(item_step, context)
-        outputs.append(result.get('outputs'))
-        errors.extend(result.get('errors', []))
-
+def success(outputs, start_time=None):
     return {
-        'outputs': outputs,
-        'errors': errors,
-        'success': all(e is None for e in errors)
+        "success": True,
+        "outputs": outputs,
+        "errors": [],
+        "time": (time.perf_counter() - start_time) if start_time else None
     }
 
-@action()
-async def serial(*steps,context=dict()):
-    outputs = []
-    for step in steps:
-        output = await act(step, context)
-        outputs.append(output)
-    return aggregate_results(tuple(outputs))
-
-@action()
-async def parallel(*steps, context=dict()):
-    tasks = [act(step, context) for step in steps]
-    results = await asyncio.gather(*tasks)
-    return aggregate_results(results)
-
-# ------------ Decisione ------------
-
-@action()
-async def assertt(condition, context=dict()):
-    result = await guard(condition, context)
-    if not result.get('success'):
-        raise AssertionError(f"Assertion failed: {format_string(str(condition), context)}")
-    return result.get('outputs')
-
-import re
-def resolve_template(template_str, env):
-    
-    """
-    Sostituisce le chiavi presenti in env che appaiono come parole 
-    all'interno della stringa (es. 'numero' -> 10).
-    """
-    if not env:
-        return template_str
-        
-    # Ordiniamo le chiavi per lunghezza decrescente per evitare sostituzioni parziali
-    # (es. se hai 'nome' e 'nome_utente', sostituisce prima 'nome_utente')
-    keys = sorted(env.keys(), key=len, reverse=True)
-    
-    # Crea un pattern che identifica le parole intere
-    # \b assicura che 'nome' venga sostituito ma non dentro 'fenomeno'
-    pattern = re.compile(r'\b(' + '|'.join(re.escape(k) for k in keys) + r')\b')
-    
-    def replacer(match):
-        return str(env[match.group(0)])
-    
-    return pattern.sub(replacer, template_str)
-
-def format_string(template, context):
-    if not context:
-        return template
-        
-    # Ordiniamo le chiavi per lunghezza decrescente per evitare match parziali
-    # (es. se ho 'num' e 'numero', sostituisce prima 'numero')
-    keys = sorted(context.keys(), key=len, reverse=True)
-    
-    # Costruiamo il pattern
-    pattern = re.compile(r'\b(' + '|'.join(re.escape(k) for k in keys) + r')\b')
-    
-    # Sostituzione con controllo di sicurezza
-    def replace_logic(match):
-        key = match.group(0)
-        return key+":"+str(context.get(key, key)) # Se la chiave sparisce, tiene il testo originale
-        
-    return pattern.sub(replace_logic, template)
-
-@action()
-async def guard(condition, context=dict()):
-    if callable(condition):
-        check = condition(**context)
-        error = format_string(str(condition), context)
-    else:
-        check = condition
-        error = check
-    
+def error(err, start_time=None):
     return {
-        'success': check,
-        'inputs': condition,
-        'outputs': check,
-        'errors': [f"Condition not met: {error}"] if not check else [],
+        "success": False,
+        "outputs": None,
+        "errors": [str(err)] if not isinstance(err, list) else err,
+        "time": (time.perf_counter() - start_time) if start_time else None
     }
 
-@action()
-async def when(condition, step, context=dict()):
-    # Se la condizione (funzione o booleano) è vera, esegue lo step
-    should_run = await guard(condition, context)
-    if should_run.get('success', False):
-        return await act(step, context)
+def output(value):
+    """Normalizza l'output di un nodo, coerente con success/error"""
+    if isinstance(value, dict) and "outputs" in value and "errors" in value:
+        return value.get("outputs")
     else:
-        return {"success": False, "outputs": None, "errors": should_run.get('errors')}
+        return value
 
-@action()
-async def switch(cases: dict, context={}):
-    """
-    Seleziona ed esegue uno step tra molti in base al risultato di condition_fn.
-    cases = {'valore1': step1, 'valore2': step2, 'default': step_default}
-    """
-    default = None
-    for case in cases:
-        if case == True:
-            default = cases[case]
-            continue
-        pas = await when(case, cases[case], context)
-        #print("===>",pas)
-        if pas.get('success', False):
-            return pas
-    
-    ok = await when(True, default, context)
-    if ok.get('success', False):
-        return ok.get('outputs')
-    else:
-        return {"success": False, "outputs": None, "errors": ok.get('errors')}
+# ------------------ Nodo DAG ------------------
 
-# ------------ Sequenza ------------
+def node(
+    name: str,
+    fn: Callable,
+    deps: List[str] = None,
+    params: dict = None,
+    schedule: float = None,        # seconds
+    event_trigger: Callable = None # funzione che restituisce booleano
+):
+    """Crea un nodo DAG come dizionario"""
+    return {
+        "name": name,
+        "fn": fn,
+        "deps": deps or [],
+        "params": params or {},
+        "schedule": schedule,
+        "event_trigger": event_trigger
+    }
 
-@action()
-async def passs(value=None, context=dict()):
-    return value
+# ------------------ Nodo wrapper come nodo ------------------
 
-@action()
-async def pipeline(*acts, context={}):
-    """
-    Esegue una serie di azioni in sequenza, passando l'output 
-    di una come input alla successiva.
-    """
-    last_output = None
-    ctx = context if context is not None else {}
-    pipeline_results = []
+def retry(fn_node, retries=3, delay=1):
+    async def node_fn(**kwargs):
+        for i in range(retries):
+            try:
+                return await fn_node["fn"](**kwargs) if asyncio.iscoroutinefunction(fn_node["fn"]) else fn_node["fn"](**kwargs)
+            except Exception as e:
+                if i == retries-1:
+                    raise
+                await asyncio.sleep(delay)
+    return node(f"retry({fn_node['name']})", node_fn, deps=fn_node["deps"])
 
-    for i, action in enumerate(acts):
-        # Per il primo step usiamo il contesto originale.
-        # Per i successivi, l'input è l'output dello step precedente.
-        current_ctx = ctx if i == 0 else {**ctx, 'outputs':pipeline_results,'inputs': last_output}
+def timeout(fn_node, seconds=5):
+    async def node_fn(**kwargs):
+        return await asyncio.wait_for(fn_node["fn"](**kwargs) if asyncio.iscoroutinefunction(fn_node["fn"]) else fn_node["fn"](**kwargs), timeout=seconds)
+    return node(f"timeout({fn_node['name']})", node_fn, deps=fn_node["deps"])
+
+def catch(fn_node, recovery_fn=lambda x=None: None):
+    async def node_fn(**kwargs):
+        try:
+            return await fn_node["fn"](**kwargs) if asyncio.iscoroutinefunction(fn_node["fn"]) else fn_node["fn"](**kwargs)
+        except Exception:
+            return await recovery_fn(**kwargs) if asyncio.iscoroutinefunction(recovery_fn) else recovery_fn(**kwargs)
+    return node(f"catch({fn_node['name']})", node_fn, deps=fn_node["deps"])
+
+# ------------------ Costrutti avanzati come nodi ------------------
+
+def pipeline(name, fns: List[Callable], deps=None):
+    deps = deps or []
+    async def node_fn(**kwargs):
+        print("@@@@@@@@@@@@", kwargs)
+        # Prendiamo solo il primo risultato della prima dipendenza
+        # assicurandoci di estrarre il valore pulito
+        first_dep = deps[0]
+        last = kwargs.get(first_dep)
         
-        # Eseguiamo l'azione
-        result = await act(action, current_ctx)
-        pipeline_results.append(result)
+        # Se last è già il risultato normalizzato, usalo, altrimenti estrai
+        data = output(last)
+        
+        for fn in fns:
+            data = await fn(data) if asyncio.iscoroutinefunction(fn) else fn(data)
+            data = output(data)
+        return data
+    return node(name, node_fn, deps)
 
-        # Se uno step fallisce, fermiamo la pipeline
-        if not result.get('success', False):
-            #raise Exception(result.get('errors'))
-            return result
+def foreach(name, fn, data_dep=None):
+    deps = [data_dep] if data_dep else []
+    async def node_fn(**kwargs):
+        print("@@@@@@@@@@@@", kwargs)
+        data = kwargs.get(data_dep) if data_dep else []
+        outputs, errors = [], []
+        for item in data:
+            try:
+                res = await fn(item) if asyncio.iscoroutinefunction(fn) else fn(item)
+                outputs.append(res)
+            except Exception as e:
+                outputs.append(None)
+                errors.append(str(e))
+        return output({"outputs": outputs, "errors": errors, "success": len(errors) == 0})
+    return node(name, node_fn, deps)
+
+def switch(name, cases: List, deps=None):
+    deps = deps or []
+    async def node_fn(**kwargs):
+        for cond, act in cases:
+            check = cond(**kwargs) if callable(cond) else cond
+            if check:
+                return await act(**kwargs) if asyncio.iscoroutinefunction(act) else act(**kwargs)
+        return None
+    return node(name, node_fn, deps)
+
+# ------------------ Motore di Esecuzione ------------------
+
+async def worker(queue: asyncio.Queue, context: Dict, nodes_map: Dict, locks: Dict):
+    """Worker che esegue i nodi prelevati dalla coda."""
+    while True:
+        node_name = await queue.get()
+        node = nodes_map[node_name]
+        
+        async with locks[node_name]:
+            # Controllo di memorizzazione
+            if node_name not in context:
+                start = time.perf_counter()
+                
+                # Risoluzione dipendenze dal context
+                deps = node.get("deps", [])
+                dep_results = {dep: context[dep]["outputs"] for dep in deps if dep in context}
+                kwargs = {**node.get("params", {}), **dep_results}
+                
+                try:
+                    fn = node["fn"]
+                    res = await fn(**kwargs) if asyncio.iscoroutinefunction(fn) else fn(**kwargs)
+                    context[node_name] = success(res, start_time=start)
+                except Exception as e:
+                    context[node_name] = error(e, start_time=start)
+        
+        queue.task_done()
+
+async def run(nodes: List[Dict[str, Any]], num_workers: int = 3):
+    # 1. Analisi del Grafo con NetworkX
+    G = nx.DiGraph()
+    nodes_map = {n["name"]: n for n in nodes}
+    for n in nodes:
+        G.add_node(n["name"])
+        for dep in n.get("deps", []):
+            G.add_edge(dep, n["name"])
             
-        # Aggiorniamo l'output per il prossimo step
-        last_output = result.get('outputs')
+    if not nx.is_directed_acyclic_graph(G):
+        raise ValueError("Errore: Il grafo contiene cicli!")
 
-    # Usiamo la tua funzione per aggregare la storia della pipeline
-    #print(pipeline_results)
-    return aggregate_results(pipeline_results)
-
-# ------------ Resilienza ------------
-
-@action()
-async def retry(action, *,retries=3, delay=1, context=dict()):
-    last_result = None
-    for i in range(retries):
-        last_result = await act(action, context)
-        if last_result.get('success', False):
-            return last_result
-        if i < retries - 1:
-            await asyncio.sleep(delay * (i + 1)) # Backoff lineare
-    return last_result
-
-@action()
-async def timeout(action, seconds: float, context=dict()):
-    try:
-        # Avviamo l'azione con un limite di tempo
-        return await asyncio.wait_for(act(action, context), timeout=seconds)
-    except asyncio.TimeoutError:
-        return {
-            'action': 'timeout',
-            'success': False,
-            'errors': [f"Action timed out after {seconds}s"],
-            'outputs': None
-        }
-
-@action()
-async def catch(action, catch_act=passs,context=dict()):
-    # action = (action, inputs, options) - fn, inputs, options
+    context = {}
+    locks = {n["name"]: asyncio.Lock() for n in nodes}
+    queue = asyncio.Queue()
     
-    n1 = await act(action, context)
+    # 2. Avvio del pool di Worker
+    workers = [asyncio.create_task(worker(queue, context, nodes_map, locks)) 
+               for _ in range(num_workers)]
     
-    if n1.get('success',False):
-        return n1
+    # 
     
-    recovery = await act(catch_act, context|n1)
-
-    # Uniamo gli errori precedenti a quelli nuovi (se presenti)
-    all_errors = n1.get('errors', []) + recovery.get('errors', [])
-
-    return recovery | {'errors': all_errors}
-
+    # 3. Esecuzione per Generazioni (Livelli)
+    # NetworkX garantisce che i nodi in 'generation' abbiano le dipendenze soddisfatte
+    for generation in nx.topological_generations(G):
+        for node_name in generation:
+            await queue.put(node_name)
+        await queue.join() 
+        
+    # 
     
+    # Pulizia
+    for w in workers: w.cancel()
+    return context

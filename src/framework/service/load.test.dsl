@@ -1,6 +1,8 @@
 imports: {
-    'load':resource("framework/service/load.py") |> get("outputs");
+    'load':resource("framework/service/load.py");
 };
+
+aaa:imports.load |> print("############");
 
 exports: {
     //"bootstrap": imports.load.bootstrap;

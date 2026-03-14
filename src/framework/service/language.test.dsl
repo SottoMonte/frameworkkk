@@ -131,42 +131,42 @@ tuple:test_suite := (
         "action": @placeholder;
         "inputs": {'placeholder':10};
         "outputs": 10;
-        "assert":@received == @expected;
+        "assert":@received.outputs == @expected;
         "note": "Placeholder"; 
     },
     { 
         "action": @left == @right;
         "inputs": {"left":10; "right":10};
         "outputs": True;
-        "assert":@received == @expected;
+        "assert":@received.outputs == @expected;
         "note": "Comparison operator with variables placeholder"; 
     },
     { 
         "action": fn_double; 
         "inputs": [10];
         "outputs": 20;
-        "assert":@received == @expected;
+        "assert":@received.outputs == @expected;
         "note": "Double the input"; 
     },
     { 
         "action": fn_sum; 
         "inputs": [10, 20]; 
         "outputs": 30;
-        "assert":@received == @expected;
+        "assert":@received.outputs == @expected;
         "note": "Sum of two numbers"; 
     },
     { 
-        "action": fn_increment_pair; 
+        "action": fn_increment_pair;
         "inputs": [10]; 
         "outputs": [11, 12];
-        "assert":@received == @expected; 
+        "assert":@received.outputs == @expected; 
         "note": "Increment pair of numbers"; 
     },
     { 
         "action": pass;
         "inputs": [tuple_void]; 
         "outputs": (());
-        "assert":@received == @expected;
+        "assert":@received.outputs == @expected;
         "note": "Pass void tuple";
     },
 );
