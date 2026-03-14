@@ -111,32 +111,6 @@ def pipeline(name, fns: List[Callable], deps=None):
         
     return node(name, node_fn, deps)
 
-def foreach2(name, fn, data_dep):
-    async def node_fn(**data):
-        # Recupera la lista dalla dipendenza
-        print("###################@",data)
-        data_list = data.get('data', [])
-        if data_list is None:
-            return {"success": False, "errors": [f"Dati da {data_dep} sono None"]}
-            
-        results = []
-        sig = inspect.signature(fn)
-        param_name = list(sig.parameters.keys())[0] # Prende il nome del primo parametro (es. 'x')
-
-        for item in data_list:
-            # Passa l'item con il nome corretto alla funzione
-            call_kwargs = {param_name: item}
-            res = await fn(**call_kwargs) if asyncio.iscoroutinefunction(fn) else fn(**call_kwargs)
-            
-            if isinstance(res, dict) and res.get("success") is False:
-                return res # Interrompi se c'è un errore logico
-            results.append(res)
-            
-        return results
-        
-    # Importante: il foreach deve dichiarare data_dep come dipendenza
-    return node(name, node_fn, deps=[data_dep])
-
 def foreach(name, fn, data_dep=None):
     deps = [data_dep] if data_dep else []
     async def node_fn(**kwargs):
@@ -241,8 +215,6 @@ async def run(nodes: List[Dict[str, Any]], num_workers: int = 3):
     # 2. Avvio del pool di Worker
     workers = [asyncio.create_task(worker(queue, context, nodes_map, locks)) 
                for _ in range(num_workers)]
-    
-    # 
     
     # 3. Esecuzione per Generazioni (Livelli)
     # NetworkX garantisce che i nodi in 'generation' abbiano le dipendenze soddisfatte
