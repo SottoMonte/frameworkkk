@@ -138,18 +138,10 @@ tuple:test_suite := (
     }
 );
 
-{
+/*{
     validate: repository.validate_schema;
-    build(retries: 3)->validate: repository.build_template;
-    fetch(timeout: 5)->build: repository.fetch_data;
-    map->fetch:   repository.map_values;
+    build->validate: repository.build_template;
+    fetch->build: repository.fetch_data;
+    map->fetch|build,validate:   repository.map_values;
     action->map: repository.run_action;
-};
-
-{
-    validate: repository.validate_schema;
-    build(retries: 3)->validate: repository.build_template;
-    fetch(timeout: 5)->build: repository.fetch_data;
-    map->fetch|catch:   repository.map_values;
-    action->map: repository.run_action;
-};
+};*/

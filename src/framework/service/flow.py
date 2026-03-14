@@ -228,3 +228,39 @@ async def run(nodes: List[Dict[str, Any]], num_workers: int = 3):
     # Pulizia
     for w in workers: w.cancel()
     return context
+
+# ============================================================
+# DSL COMPATIBILITY LAYER
+# ============================================================
+
+def step(fn: Callable, *args, **kwargs):
+    """
+    Compatibilità con il vecchio interpreter DSL.
+    Restituisce uno step eseguibile da act().
+    """
+    return (fn, args, kwargs)
+
+
+async def act(step):
+    """
+    Esegue uno step usando il nuovo runtime.
+    """
+    start = time.perf_counter()
+
+    if not isinstance(step, tuple):
+        return error("invalid step", start)
+
+    fn, args, kwargs = step
+
+    try:
+
+        if asyncio.iscoroutinefunction(fn):
+            result = await fn(*args, **kwargs)
+        else:
+            result = fn(*args, **kwargs)
+
+        return success(result, start)
+
+    except Exception as e:
+
+        return error(e, start)
