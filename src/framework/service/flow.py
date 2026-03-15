@@ -1,280 +1,162 @@
-import asyncio
+import asyncio, inspect, time
 import networkx as nx
-import time
-from typing import List, Dict, Any, Callable
-import inspect
-# ------------------ Funzioni di supporto ------------------
+from typing import Any, Callable, List, Dict
+
+# ---------------------------------------------------------------------------
+# Risultato di un nodo — dict puro con sentinel privato
+#
+# _FLOW è un object() singleton: mai esposto, impossibile da produrre
+# accidentalmente nei dati utente. is_result() usa `is`, non ==.
+# ---------------------------------------------------------------------------
+
+_FLOW = object()
 
 def success(outputs, start_time=None):
-    return {
-        "success": True,
-        "outputs": outputs,
-        "errors": [],
-        "time": (time.perf_counter() - start_time) if start_time else None,
-        "__flow__": True
-    }
+    return {"success": True,  "outputs": outputs, "errors": [],
+            "time": _t(start_time), "_tag": _FLOW}
 
 def error(err, start_time=None):
+    return {"success": False, "outputs": None,
+            "errors": [str(err)] if not isinstance(err, list) else err,
+            "time": _t(start_time), "_tag": _FLOW}
+
+def is_result(v) -> bool: return isinstance(v, dict) and v.get("_tag") is _FLOW
+def value_of(v):          return v["outputs"] if is_result(v) else v
+def errors_of(v) -> list: return v["errors"]  if is_result(v) else []
+
+def _t(t0): return (time.perf_counter() - t0) if t0 else None
+
+# back-compat
+ok     = success
+fail   = error
+output = value_of
+
+# ---------------------------------------------------------------------------
+# Nodo DAG
+# ---------------------------------------------------------------------------
+
+def node(name: str, fn: Callable, deps: List[str] = None,
+         params: dict = None, schedule: float = None, event_trigger: Callable = None):
+    deps, params = deps or [], params or {}
+    pos   = (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    names = [n for n, p in inspect.signature(fn).parameters.items() if p.kind in pos]
     return {
-        "success": False,
-        "outputs": None,
-        "errors": [str(err)] if not isinstance(err, list) else err,
-        "time": (time.perf_counter() - start_time) if start_time else None,
-        "__flow__": True
+        "name": name, "fn": fn, "deps": deps, "params": params,
+        "arg_map": {d: names[i] for i, d in enumerate(deps) if i < len(names)},
+        "schedule": schedule, "event_trigger": event_trigger,
     }
 
-def output(value):
-    """Normalizza l'output di un nodo, coerente con success/error"""
-    if isinstance(value, dict) and "outputs" in value and "errors" in value:
-        return value.get("outputs")
-    else:
-        return value
+# ---------------------------------------------------------------------------
+# Wrapper nodi
+# ---------------------------------------------------------------------------
 
-# ------------------ Nodo DAG ------------------
-
-def node(
-    name: str,
-    fn: Callable,
-    deps: List[str] = None,
-    params: dict = None,
-    schedule: float = None,        # seconds
-    event_trigger: Callable = None # funzione che restituisce booleano
-):
-    """Crea un nodo DAG come dizionario"""
-    deps = deps or []
-    params = params or {}
-    
-    # Automatizziamo l'arg_map
-    sig = inspect.signature(fn)
-    param_names = [name for name, p in sig.parameters.items() if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
-    
-    # Crea la mappa: prende i nomi dei parametri della funzione 
-    # e li associa nell'ordine alle dipendenze (deps)
-    # Esempio: deps=['input_A'], fn(data) -> arg_map={'input_A': 'data'}
-    arg_map = {}
-    for i, dep_name in enumerate(deps):
-        if i < len(param_names):
-            arg_map[dep_name] = param_names[i]
-    return {
-        "name": name,
-        "fn": fn,
-        "deps": deps or [],
-        "params": params or {},
-        "arg_map": arg_map or {},
-        "schedule": schedule,
-        "event_trigger": event_trigger
-    }
-
-# ------------------ Nodo wrapper come nodo ------------------
-
-def retry(fn_node, retries=3, delay=1):
-    async def node_fn(**kwargs):
+def retry(n, retries=3, delay=1):
+    async def fn(**kw):
         for i in range(retries):
-            try:
-                return await fn_node["fn"](**kwargs) if asyncio.iscoroutinefunction(fn_node["fn"]) else fn_node["fn"](**kwargs)
-            except Exception as e:
-                if i == retries-1:
-                    raise
+            try:    return await _call(n["fn"], kw)
+            except:
+                if i == retries - 1: raise
                 await asyncio.sleep(delay)
-    return node(f"retry({fn_node['name']})", node_fn, deps=fn_node["deps"])
+    return node(f"retry({n['name']})", fn, n["deps"])
 
-def timeout(fn_node, seconds=5):
-    async def node_fn(**kwargs):
-        return await asyncio.wait_for(fn_node["fn"](**kwargs) if asyncio.iscoroutinefunction(fn_node["fn"]) else fn_node["fn"](**kwargs), timeout=seconds)
-    return node(f"timeout({fn_node['name']})", node_fn, deps=fn_node["deps"])
+def timeout(n, seconds=5):
+    async def fn(**kw): return await asyncio.wait_for(_call(n["fn"], kw), seconds)
+    return node(f"timeout({n['name']})", fn, n["deps"])
 
-def catch(fn_node, recovery_fn=lambda x=None: None):
-    async def node_fn(**kwargs):
-        try:
-            return await fn_node["fn"](**kwargs) if asyncio.iscoroutinefunction(fn_node["fn"]) else fn_node["fn"](**kwargs)
-        except Exception:
-            return await recovery_fn(**kwargs) if asyncio.iscoroutinefunction(recovery_fn) else recovery_fn(**kwargs)
-    return node(f"catch({fn_node['name']})", node_fn, deps=fn_node["deps"])
+def catch(n, recovery=lambda **kw: None):
+    async def fn(**kw):
+        try:    return await _call(n["fn"], kw)
+        except: return await _call(recovery, kw)
+    return node(f"catch({n['name']})", fn, n["deps"])
 
-# ------------------ Costrutti avanzati come nodi ------------------
-
-def pipeline(name, fns: List[Callable], deps=None):
-    deps = deps or []
-    async def node_fn(**kwargs):
-        # 1. Recupero del dato iniziale (già pulito dal worker)
-        data = kwargs.get('kwargs')
-        # 2. Esecuzione sequenziale
-        for fn in fns:
-            data = await fn(data) if asyncio.iscoroutinefunction(fn) else fn(data)
-            
-            # 3. Controllo errore logico (Ispezione)
-            # Se la funzione ha restituito un oggetto che segnala un fallimento,
-            # ci fermiamo e restituiamo l'errore al worker
-            if isinstance(data, dict) and data.get("success") is False:
-                return data 
-                
-        # Ritorno del risultato finale
+def pipeline(name, fns, deps=None):
+    async def fn(**kw):
+        data = kw.get("kwargs")
+        for f in fns:
+            data = await _call(f, data)
+            if is_result(data) and not data["success"]: return data
         return data
-        
-    return node(name, node_fn, deps)
+    return node(name, fn, deps or [])
 
 def foreach(name, fn, data_dep=None):
-    deps = [data_dep] if data_dep else []
-    async def node_fn(**kwargs):
-        data = kwargs.get('kwargs', [])
-        outputs = []
-        
-        for item in data:
-            # Eseguiamo la funzione. Se solleva un'eccezione, il worker la catturerà
-            # rendendo il nodo interamente fallito (crash di sistema).
-            res = await fn(item) if asyncio.iscoroutinefunction(fn) else fn(item)
-            
-            # Controllo se l'item specifico ha restituito un errore logico
-            if isinstance(res, dict) and res.get("success") is False:
-                # Possiamo scegliere: interrompere il foreach o loggare l'errore
-                # Qui restituiamo un errore che spiega quale item ha fallito
-                return {
-                    "success": False, 
-                    "errors": [f"Errore logico nell'item {item}: {res.get('message', 'Errore sconosciuto')}"],
-                    "outputs": None
-                }
-            
-            outputs.append(res)
-            
-        return outputs 
-    return node(name, node_fn, deps)
+    async def node_fn(**kw):
+        out = []
+        for item in kw.get("kwargs", []):
+            r = await _call(fn, item)
+            if is_result(r) and not r["success"]: return error(f"item {item}: {r['errors']}")
+            out.append(r)
+        return out
+    return node(name, node_fn, [data_dep] if data_dep else [])
 
-def switch(name, cases: List, deps=None):
-    deps = deps or []
-    async def node_fn(**kwargs):
+def switch(name, cases, deps=None):
+    async def fn(**kw):
         for cond, act in cases:
-            check = cond(**kwargs) if callable(cond) else cond
-            if check:
-                return await act(**kwargs) if asyncio.iscoroutinefunction(act) else act(**kwargs)
-        return None
-    return node(name, node_fn, deps)
+            if (cond(**kw) if callable(cond) else cond):
+                return await _call(act, kw)
+    return node(name, fn, deps or [])
 
-# ------------------ Motore di Esecuzione ------------------
+# ---------------------------------------------------------------------------
+# Runtime
+# ---------------------------------------------------------------------------
 
-async def worker(queue: asyncio.Queue, context: Dict, nodes_map: Dict, locks: Dict):
+async def _call(fn, arg):
+    if asyncio.iscoroutinefunction(fn):
+        return await fn(**arg) if isinstance(arg, dict) else await fn(arg)
+    return fn(**arg) if isinstance(arg, dict) else fn(arg)
+
+async def _run_node(n, ctx):
+    t0      = time.perf_counter()
+    deps    = n["deps"]
+    arg_map = n["arg_map"]
+
+    failed = [d for d in deps if is_result(ctx.get(d)) and not ctx[d]["success"]]
+    if failed:
+        ctx[n["name"]] = error(f"dep failed: {', '.join(failed)}", t0); return
+
+    kw = {**n["params"], **{arg_map.get(d, d): value_of(ctx[d]) for d in deps}}
+    try:
+        r = await _call(n["fn"], kw)
+        ctx[n["name"]] = r if is_result(r) else success(r, t0)
+    except Exception as e:
+        ctx[n["name"]] = error(e, t0)
+
+async def _worker(q, ctx, nodes_map, locks):
     while True:
-        node_name = await queue.get()
-        node = nodes_map[node_name]
-        
-        async with locks[node_name]:
-            if node_name not in context:
-                start = time.perf_counter()
-                
-                '''deps = node.get("deps", [])
-                # Il worker estrae solo il valore 'outputs' (il dato puro)
-                dep_results = {dep: context[dep]["outputs"] for dep in deps if dep in context}
-                kwargs = {**node.get("params", {}), **dep_results}'''
-                # --- INSERISCI IL CODICE QUI ---
-                deps = node.get("deps", [])
-                arg_map = node.get("arg_map", {})
-                
-                # Prepariamo i dati dalle dipendenze
-                raw_dep_results = {}
-                failed_deps = []
-                for dep in deps:
-                    if dep in context:
-                        dep_res = context[dep]
-                        if isinstance(dep_res, dict) and not dep_res.get("success", True):
-                            failed_deps.append(dep)
-                        raw_dep_results[dep] = dep_res.get("outputs")
+        name = await q.get()
+        async with locks[name]:
+            if name not in ctx:
+                await _run_node(nodes_map[name], ctx)
+        q.task_done()
 
-                if failed_deps:
-                    context[node_name] = error(f"Dependency failed: {', '.join(failed_deps)}", start_time=start)
-                    queue.task_done()
-                    continue
-                
-                # Inizializziamo con i parametri statici del nodo
-                kwargs = {**node.get("params", {})}
-                
-                # Applichiamo la mappatura
-                for dep_name, value in raw_dep_results.items():
-                    target_name = arg_map.get(dep_name, dep_name)
-                    kwargs[target_name] = value
-                
-                try:
-                    fn = node["fn"]
-                    res = await fn(**kwargs) if asyncio.iscoroutinefunction(fn) else fn(**kwargs)
-                    
-                    # LOGICA AGGIUNTA:
-                    # Se la funzione di business ha restituito un dizionario con "success": False,
-                    # lo trattiamo come un errore logico, non un crash di sistema.
-                    if isinstance(res, dict) and "success" in res and res["success"] is False:
-                        context[node_name] = res # Manteniamo la struttura di errore logico
-                    else:
-                        # Successo standard
-                        context[node_name] = success(res, start_time=start)
-                        
-                except Exception as e:
-                    # Crash di sistema (Eccezione Python)
-                    context[node_name] = error(e, start_time=start)
-        
-        queue.task_done()
-
-async def run(nodes: List[Dict[str, Any]], num_workers: int = 3):
-    # 1. Analisi del Grafo con NetworkX
+async def run(nodes: List[Dict[str, Any]], num_workers=3):
     G = nx.DiGraph()
     nodes_map = {n["name"]: n for n in nodes}
     for n in nodes:
         G.add_node(n["name"])
-        for dep in n.get("deps", []):
-            G.add_edge(dep, n["name"])
-            
+        for d in n["deps"]: G.add_edge(d, n["name"])
     if not nx.is_directed_acyclic_graph(G):
-        raise ValueError("Errore: Il grafo contiene cicli!")
+        raise ValueError("Il grafo contiene cicli!")
 
-    context = {}
-    locks = {n["name"]: asyncio.Lock() for n in nodes}
-    queue = asyncio.Queue()
-    
-    # 2. Avvio del pool di Worker
-    workers = [asyncio.create_task(worker(queue, context, nodes_map, locks)) 
-               for _ in range(num_workers)]
-    
-    # 3. Esecuzione per Generazioni (Livelli)
-    # NetworkX garantisce che i nodi in 'generation' abbiano le dipendenze soddisfatte
-    for generation in nx.topological_generations(G):
-        for node_name in generation:
-            await queue.put(node_name)
-        await queue.join() 
-        
-    # 
-    
-    # Pulizia
-    for w in workers: w.cancel()
-    return context
+    ctx, locks, q = {}, {n["name"]: asyncio.Lock() for n in nodes}, asyncio.Queue()
+    ws = [asyncio.create_task(_worker(q, ctx, nodes_map, locks)) for _ in range(num_workers)]
+    for gen in nx.topological_generations(G):
+        for name in gen: await q.put(name)
+        await q.join()
+    for w in ws: w.cancel()
+    return ctx
 
-# ============================================================
-# DSL COMPATIBILITY LAYER
-# ============================================================
+# ---------------------------------------------------------------------------
+# DSL compatibility layer
+# ---------------------------------------------------------------------------
 
-def step(fn: Callable, *args, **kwargs):
-    """
-    Compatibilità con il vecchio interpreter DSL.
-    Restituisce uno step eseguibile da act().
-    """
-    return (fn, args, kwargs)
+def step(fn: Callable, *args, **kwargs): return (fn, args, kwargs)
 
-
-async def act(step):
-    """
-    Esegue uno step usando il nuovo runtime.
-    """
-    start = time.perf_counter()
-
-    if not isinstance(step, tuple):
-        return error("invalid step", start)
-
-    fn, args, kwargs = step
-
+async def act(s):
+    t0 = time.perf_counter()
+    if not isinstance(s, tuple): return error("invalid step", t0)
+    fn, args, kwargs = s
     try:
-
-        if asyncio.iscoroutinefunction(fn):
-            result = await fn(*args, **kwargs)
-        else:
-            result = fn(*args, **kwargs)
-
-        return success(result, start)
-
+        r = await fn(*args, **kwargs) if asyncio.iscoroutinefunction(fn) else fn(*args, **kwargs)
+        return r if is_result(r) else success(r, t0)
     except Exception as e:
-
-        return error(e, start)
+        return error(e, t0)
