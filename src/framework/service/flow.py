@@ -10,7 +10,8 @@ def success(outputs, start_time=None):
         "success": True,
         "outputs": outputs,
         "errors": [],
-        "time": (time.perf_counter() - start_time) if start_time else None
+        "time": (time.perf_counter() - start_time) if start_time else None,
+        "__flow__": True
     }
 
 def error(err, start_time=None):
@@ -18,7 +19,8 @@ def error(err, start_time=None):
         "success": False,
         "outputs": None,
         "errors": [str(err)] if not isinstance(err, list) else err,
-        "time": (time.perf_counter() - start_time) if start_time else None
+        "time": (time.perf_counter() - start_time) if start_time else None,
+        "__flow__": True
     }
 
 def output(value):
@@ -44,7 +46,7 @@ def node(
     
     # Automatizziamo l'arg_map
     sig = inspect.signature(fn)
-    param_names = list(sig.parameters.keys())
+    param_names = [name for name, p in sig.parameters.items() if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
     
     # Crea la mappa: prende i nomi dei parametri della funzione 
     # e li associa nell'ordine alle dipendenze (deps)
@@ -167,7 +169,19 @@ async def worker(queue: asyncio.Queue, context: Dict, nodes_map: Dict, locks: Di
                 arg_map = node.get("arg_map", {})
                 
                 # Prepariamo i dati dalle dipendenze
-                raw_dep_results = {dep: context[dep]["outputs"] for dep in deps if dep in context}
+                raw_dep_results = {}
+                failed_deps = []
+                for dep in deps:
+                    if dep in context:
+                        dep_res = context[dep]
+                        if isinstance(dep_res, dict) and not dep_res.get("success", True):
+                            failed_deps.append(dep)
+                        raw_dep_results[dep] = dep_res.get("outputs")
+
+                if failed_deps:
+                    context[node_name] = error(f"Dependency failed: {', '.join(failed_deps)}", start_time=start)
+                    queue.task_done()
+                    continue
                 
                 # Inizializziamo con i parametri statici del nodo
                 kwargs = {**node.get("params", {})}

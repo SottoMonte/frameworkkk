@@ -39,8 +39,8 @@ class tester():
                         ),
                         flow.step(flow.log,"Errore: {errors[0]} "),
                     )'''
-                    #await self.dsl(path= module_path)
-                    async def add_one(x): return x+1
+                    await self.dsl(path= module_path)
+                    '''async def add_one(x): return x+1
                     async def double(x): return x*2
                     async def sum_list(lst): return sum(lst)
 
@@ -56,8 +56,8 @@ class tester():
 
                     context = await flow.run(nodes)
                     for k,v in context.items():
-                        print("\n",k, v)
-                    exit(1)
+                        print("\n",k, v)'''
+                    # exit(1) removed
 
 
     async def dsl(self, **kwargs):
@@ -69,46 +69,42 @@ class tester():
         
         path = kwargs.get('path')
         parsed = kwargs.get('data') or kwargs.get('parsed')
-        #path = "src/framework/service/factory.test.dsl"
+        #path = "src/framework/service/context.test.dsl"
         print(path)
         res = await resource(path)
-        ok = res.get('output',path)
-        #print(res)
-
-        '''# 1. Verifica Integrità (Hash) se possibile
-        integrity_results = {}
-        source_path = parsed.get('source') or (path.replace('.test.dsl', '.py') if path and '.test.dsl' in path else None)
+        ok = res if isinstance(res, str) else res.get('outputs', path)
         
-        if source_path:
-            try:
-                contract = await helper_get_contract(source_path)
-                if contract:
-                    integrity_results = await helper_verify_integrity(source_path, contract)
-            except Exception as e:
-                framework_log("WARNING", f"Errore verifica integrità per {source_path}: {e}")'''
-        visitor = language.Interpreter(language.DSL_FUNCTIONS)
+        visitor = language.DAGGenerator(language.DSL_FUNCTIONS)
         parser = language.create_parser()
         s = language.parse(ok, parser)
         if isinstance(s, Exception):
             framework_log("ERROR", f"Errore di parsing DSL in {path}: {s}", emoji="❌")
             return {"success": False, "errors": [str(s)]}
 
-        parsed = await visitor.run(s)
-        
-        if not parsed.get('success', False):
-            framework_log("ERROR", f"Errore di esecuzione DSL in {path}: {parsed.get('errors')}", emoji="❌")
+        # run() ritorna il contesto DAG grezzo da flow.run()
+        raw = await visitor.run(s)
+        if raw is None: raw = {}
+
+        # Pulizia: estrae outputs dai nodi DAG
+        ooout = language.DAGGenerator.clean(raw)
+
+        # Controllo errori nei nodi DAG
+        success, errors = True, []
+        if isinstance(raw, dict):
+            for k, v in raw.items():
+                if k.startswith("_grp_"): continue
+                if language.DAGGenerator._is_flow_result(v) and not v.get("success", True):
+                    success = False
+                    errors.extend(v.get("errors", []))
+
+        if not success:
+            framework_log("ERROR", f"Errore di esecuzione DSL in {path}: {errors}", emoji="❌")
             ooout = {}
-        else:
-            ooout = parsed.get('output')
-            if isinstance(ooout, Exception):
-                framework_log("ERROR", f"Errore nel runtime DSL (ritorno) per {path}: {ooout}", emoji="❌")
-                ooout = {}
-        #exit(1)
-        # 2. Esecuzione Test Suite (TDD)
+
         if not isinstance(ooout, dict):
             print(ooout)
             return
-        test_suite = ooout.get('test_suite',[])
+        test_suite = ooout.get('test_suite', []) or []
         if isinstance(test_suite, dict): test_suite = [test_suite]
         
         results = {

@@ -580,44 +580,140 @@ class DSLRuntimeError(Exception):
 
         super().__init__(error_msg)
 
-class Interpreter:
+# ============================================================================
+# DAG GENERATOR — Analisi statica dell'AST e generazione nodi flow
+# ============================================================================
+
+class DAGGenerator:
+    """Legge un AST root-dict e genera una lista di flow.node() per flow.run(), oppure esegue AST puro."""
+
     def __init__(self, env=None):
         self.env = env if env is not None else {}
         self._node_stack = []
 
-    # =========================================================
-    # ENTRY POINT
-    # =========================================================
-    
-    async def run(self, ast, **c):
-        value, _ = await self.visit(ast, self.env)
-        return value
+    # --- Analisi statica: estrae le chiavi definite da un item AST ---
+    def keys(self, node):
+        if not isinstance(node, dict): return []
+        t = node.get("type")
+        if t == "declaration": return self.keys(node.get("target"))
+        if t == "pair":
+            k, v = node.get("key", {}), node.get("value", {})
+            # pattern TIPO:NOME (es. int:x, type:MyType) o NOME:VALORE
+            if v.get("type") in ("var", "identifier") and k.get("type") in ("var", "identifier"):
+                return [v["name"]]
+            # pattern CHIAVESTRINGA:VALORE (es. 'exports': { ... })
+            key_name = k.get("value") if k.get("type") == "string" else k.get("name")
+            return [key_name] if key_name else []
+            
+        if t in ("var", "identifier"): return [node["name"]]
+        if t in ("sequence", "tuple", "list", "dictionary_node", "dict"):
+            return [k for x in node.get("items", []) for k in self.keys(x)]
+        return []
 
-    # =========================================================
-    # DISPATCHER (VISIT)
-    # =========================================================
+    # --- Analisi statica: estrae le dipendenze (variabili usate) ---
+    def deps(self, node):
+        if isinstance(node, (list, tuple)):
+            return set().union(*(self.deps(x) for x in node))
+        if isinstance(node, str):
+            return {node.split(".")[0]}
+        if isinstance(node, dict):
+            t = node.get("type")
+            if t in ("var", "identifier"):
+                return {node["name"].split(".")[0]}
+            if t == "context_var":
+                return set()
+            return set().union(*(self.deps(v) for k, v in node.items() if k not in ("meta", "type")))
+        return set()
+
+    # --- Pulisce l'output del DAG, estraendo solo gli outputs ---
+    @staticmethod
+    def _is_flow_result(v):
+        """Un risultato flow ha il marker __flow__."""
+        return isinstance(v, dict) and v.get("__flow__")
+
+    @staticmethod
+    def clean(ctx):
+        if not isinstance(ctx, dict): return ctx
+        return {
+            k: (v["outputs"] if DAGGenerator._is_flow_result(v) else v)
+            for k, v in ctx.items()
+        }
+
+    # --- Genera nodi DAG da un AST root-dict ---
+    def generate(self, ast, env):
+        items = ast.get("items", [])
+        defined = {k for item in items for k in self.keys(item)}
+        nodes = []
+
+        for item in items:
+            item_keys = self.keys(item)
+            if not item_keys: continue
+
+            value_node = item.get("value", item)
+            item_deps = [d for d in self.deps(value_node) if d in defined and d not in item_keys]
+
+            # Factory: cattura variabili nel closure
+            def make_worker(ast_item):
+                async def worker(**kw):
+                    local_env = env | kw
+                    res, _ = await self.visit(ast_item, local_env)
+                    key, value = res
+                    if isinstance(key, tuple) and isinstance(value, tuple):
+                        return dict(zip(key, value))
+                    return value
+                return worker
+
+            if len(item_keys) == 1:
+                nodes.append(flow.node(item_keys[0], make_worker(item), deps=item_deps))
+            else:
+                # Multi-variabile: nodo gruppo + estrattori
+                group = "_grp_" + "_".join(item_keys)
+                nodes.append(flow.node(group, make_worker(item), deps=item_deps))
+                for k in item_keys:
+                    def make_extract(key, grp=group):
+                        async def extract(**kw):
+                            g = kw.get(grp)
+                            return g[key] if isinstance(g, dict) else g
+                        return extract
+                    nodes.append(flow.node(k, make_extract(k), deps=[group]))
+
+        return nodes
+
+    # ============================================================================
+    # EXECUTION ENGINE
+    # ============================================================================
+
+    async def run(self, ast):
+        # Prova prima a generare un DAG (se l'AST è un dizionario root)
+        nodes = self.generate(ast, self.env)
+        if nodes:
+            return await flow.run(nodes)
+        
+        # Altrimenti, valutazione AST pura sequenziale
+        result, _ = await self.visit(ast, self.env)
+        return result
+
     async def visit(self, node, env):
         if not isinstance(node, dict):
             return node, env
-
+        
         t = node.get("type")
         method = getattr(self, f"visit_{t}", None)
-
         if not method:
             raise DSLRuntimeError(f"Unknown node type: {t}", node.get("meta"))
-
+        
         self._node_stack.append(node)
         try:
-            # Esecuzione tramite il framework flow
+            # Eseguiamo tramite flow.act per avere monitoraggio e cattura errori
             res = await flow.act(flow.step(method, node, env))
             
-            if isinstance(res, dict) and res.get('errors'):
+            if isinstance(res, dict) and res.get('success') is False:
+                # Errore logico o eccezione durante l'esecuzione dello step
                 raise DSLRuntimeError(res['errors'][0])
-
-            # Ritorna gli output (valore, ambiente)
+            
             return res.get('outputs')
-
         except DSLRuntimeError as e:
+            # Arricchisce lo stack trace con le info dei nodi AST
             trace = " -> ".join(
                 f"{n.get('type')}({n.get('meta', {}).get('line','?')}:{n.get('meta', {}).get('column','?')})"
                 for n in self._node_stack
@@ -628,186 +724,82 @@ class Interpreter:
             self._node_stack.pop()
 
     async def resolve(self, val, env):
-        # Se è un'istanza di LazyBinOp o ContextVar, le eseguiamo
         while callable(val):
-            # Invochiamo il callable passando l'ambiente come contesto
             res = val(**env)
-            # Se il risultato è una coroutine, la attendiamo
-            if inspect.isawaitable(res):
-                val = await res
-            else:
-                val = res
+            val = await res if inspect.isawaitable(res) else res
         return val
 
     # =========================================================
-    # PRIMITIVES & IDENTIFIERS
+    # VISITOR METHODS
     # =========================================================
+
     async def visit_number(self, node, env): return node["value"], env
     async def visit_string(self, node, env): return node["value"], env
     async def visit_bool(self, node, env):   return node["value"], env
     async def visit_any(self, node, env):    return None, env
-    async def visit_identifier(self, node, env):return node["name"], env
+    async def visit_identifier(self, node, env): return node["name"], env
     async def visit_var(self, node, env):
-        name = node["name"]
-        
-        val = scheme.get(env, name, name)
-        return val, env
+        return scheme.get(env, node["name"], node["name"]), env
     async def visit_context_var(self, node, env):
-        name = node["name"]
-        
-        # Restituiamo una funzione che accetta (received, expected)
-        # Questa funzione si chiude sopra il 'name' e lo usa per la logica
-        async def closure(*data,**data_context):
-            #result, _ = await self.visit(node, data_context)
-            #print("#####>",name,type(data_context),data_context)
-            '''if not isinstance(data_context, dict):
-                return data_context'''
-            
-            return scheme.get(data_context, name)
-        
-        #return closure, env
-        return ContextVar(name), env
+        return ContextVar(node["name"]), env
     async def visit_function_def(self, node, env):
-
-        # ----------------------
-        # PARAMETRI
-        # ----------------------
-        params = []
-
-        '''for p in node["params"]:
-            # se è typed_var (dopo che sistemi la grammar)
-            if p.get("type") == "typed_var":
-                params.append({
-                    "var_type": p["var_type"],
-                    "name": p["name"]
-                })
-            else:
-                # fallback temporaneo per il tuo AST attuale
-                # dict con pair(int:c)
-                pair = p["items"][0]
-                params.append(pair)'''
-
-        # ----------------------
-        # BODY
-        # ----------------------
-        body_value = node["body"]
-
-        # ----------------------
-        # RETURN TYPE
-        # ----------------------
-        '''return_types = []
-        for r in node["return_type"].get("items",node["return_type"]):
-            print(r)
-            pair = r["items"][0]
-            return_types.append(pair)'''
-        params = node["params"].get("items",[node["params"]])
-        return_type = node["return_type"].get("items",[node["return_type"]])
-
-        return (params, body_value, return_type), env
+        params = node["params"].get("items", [node["params"]])
+        return_type = node["return_type"].get("items", [node["return_type"]])
+        return (params, node["body"], return_type), env
 
     # =========================================================
-    # DECLARATIONS (MULTIPLE & SINGLE)
+    # DECLARATIONS & COLLECTIONS
     # =========================================================
-    
     async def visit_declaration(self, node, env):
         val, _ = await self.visit(node["value"], env)
         key, _ = await self.visit(node["target"], env)
         meta = node.get("meta")
-        #print("BOOOOOOOOOOOOM",node["target"])
-        items = key if isinstance(key[0],tuple) else [key]
-        keys = []
-        values = []
-        #print(key)
+        items = key if isinstance(key[0], tuple) else [key]
+        
         if node["target"]["type"] == "pair":
             tipo = node["target"]["key"]["name"]
             name = node["target"]["value"]["name"]
-            decl_type, _ = key
             if tipo == 'type':
                 CUSTOM_TYPES[name] = val
                 return (name, val), env
             checked_val = await self._check_type(val, tipo, meta, name)
             return (name, checked_val), env
-            #return (name,val),env
-
-
-        for i,t in enumerate(items):
+            
+        keys, values = [], []
+        for i, t in enumerate(items):
             tipo = node["target"]["items"][i]["key"]["name"]
             name = node["target"]["items"][i]["value"]["name"]
-            decl_type, _ = t
             if tipo == "type":
                 CUSTOM_TYPES[name] = val
-            
             keys.append(name)
-            if isinstance(val,tuple):
-                checked_val = await self._check_type(val[i], tipo, meta, name)
-                values.append(checked_val)
-            else:
-                checked_val = await self._check_type(val, tipo, meta, name)
-                values.append(checked_val)
+            checked_val = await self._check_type(
+                val[i] if isinstance(val, tuple) else val, tipo, meta, name
+            )
+            values.append(checked_val)
         return (tuple(keys), tuple(values)), env
-        # Assumiamo che node["target"] contenga la definizione (tipo, nome)
-        '''for t in node["target"]:
-            tu, _ = await self.visit(t, {})
-            decl_type, name = tu[0], tu[1]
 
-            # Gestione Tipi Personalizzati
-            if decl_type == "type":
-                CUSTOM_TYPES[name] = val
-                return (name, val), env # Restituisce il nome del tipo e la sua struttura
-
-            # Gestione Destrutturazione (se tu[0] è una tupla di coppie tipo/nome)
-            if isinstance(decl_type, tuple):
-                keys = [i[0] for i in tu]
-                vals = [await self._check_type(val[idx], i[0], meta, i[1]) for idx, i in enumerate(tu)]
-                return (tuple(keys), tuple(vals)), env
-
-            # Gestione Variabile Singola Standard
-            checked_val = await self._check_type(val, decl_type, meta, name)
-            return (key, checked_val), env'''
-
-    # =========================================================
-    # COLLECTIONS
-    # =========================================================
-    async def visit_dict(self, node, env):
+    async def visit_dict(self, ast, env):
         result = {}
-
-        for item in node["items"]:
-            evaluation_env = env | result
-            res, _ = await self.visit(item, evaluation_env)
-
+        for item in ast["items"]:
+            # Valutazione sequenziale con propagazione dei risultati precedenti
+            res, _ = await self.visit(item, env | result)
             key, value = res
-            meta = item.get("meta")
-
-            # gestione destructuring
-            if isinstance(key, tuple) and isinstance(value, tuple) and len(key) == len(value):
-                for k, v in zip(key, value):
-                    if k in result:
-                        raise DSLRuntimeError(
-                            f"Duplicate key in dict: {k}",
-                            meta
-                        )
-                    result[k] = v
+            # Se la chiave è un tuple (es. int:x) usiamo il secondo elemento (x)
+            if isinstance(key, tuple) and not isinstance(value, tuple):
+                if len(key) == 2: key = key[1]
+                
+            if isinstance(key, tuple) and isinstance(value, tuple):
+                result.update(zip(key, value))
             else:
-                if key in result:
-                    raise DSLRuntimeError(
-                        f"Duplicate key in dict: {key}",
-                        meta
-                    )
-
                 result[key] = value
-
         return result, env
-    
+
     async def visit_pair(self, node, env):
-        # Utilizzato sia per i dati {k:v} che per i tipi int:x
-        #key, _ = await self.visit(node["key"], env) 
         value, _ = await self.visit(node["value"], env)
         if node["key"]["type"] == "var":
             key = node["key"]["name"]
         else:
             key, _ = await self.visit(node["key"], env)
-        #if not isinstance(key, (str, int, float, tuple, LazyBinOp,type)):
-        #    raise DSLRuntimeError(f"Key invalida: {key}:{value}. Deve essere un tipo primitivo.", node.get("meta"))
         return (key, value), env
 
     async def visit_tuple(self, node, env):
@@ -836,59 +828,38 @@ class Interpreter:
     # =========================================================
 
     async def visit_binop(self, node, env):
-        # 1. Risolviamo i valori dei due rami
         left, env = await self.visit(node["left"], env)
         right, env = await self.visit(node["right"], env)
         op = node["op"]
-        if isinstance(left, tuple):
-            left = left[0]
         
-        if isinstance(right, tuple):
-            right = right[0]
+        if isinstance(left, tuple): left = left[0]
+        if isinstance(right, tuple): right = right[0]
 
-        l_desc = repr(left)
-        r_desc = repr(right)
-        espressione_totale = f"{l_desc} {op} {r_desc}"
-
-        # 2. Gestione Lazy (se uno dei due è una closure/context_var)
+        # Gestione Lazy
         if callable(left) or callable(right):
             def lazy_binop(*a, **context):
                 l = left(**context) if callable(left) else left
                 r = right(**context) if callable(right) else right
-                # Usiamo OPS_FUNCTIONS che hai già definito in alto nel file
-                # Mappando l'operatore DSL alla chiave corretta (es. "and" -> "OP_AND")
                 op_key = f"OP_{OPS_MAP.get(op, op.upper())}"
                 return OPS_FUNCTIONS[op_key](l, r)
-            return LazyBinOp(lazy_binop, espressione_totale), env
-            #return lazy_binop, env
+            return LazyBinOp(lazy_binop, f"{repr(left)} {op} {repr(right)}"), env
 
-        # 3. Valutazione immediata (Standard)
-        # Mappa pulita per evitare KeyError
+        # Valutazione immediata
         logic_ops = {
-            "and": lambda: left and right,
-            "or":  lambda: left or right,
-            "==":  lambda: left == right,
-            "!=":  lambda: left != right,
-            ">":   lambda: left > right,
-            "<":   lambda: left < right,
-            ">=":  lambda: left >= right,
-            "<=":  lambda: left <= right,
-            "+":   lambda: left + right,
-            "-":   lambda: left - right,
-            "*":   lambda: left * right,
-            "/":   lambda: left / right,
-            "%":   lambda: left % right,
-            "^":   lambda: left ** right,
+            "and": lambda: left and right, "or":  lambda: left or right,
+            "==":  lambda: left == right,  "!=":  lambda: left != right,
+            ">":   lambda: left > right,   "<":   lambda: left < right,
+            ">=":  lambda: left >= right,  "<=":  lambda: left <= right,
+            "+":   lambda: left + right,   "-":   lambda: left - right,
+            "*":   lambda: left * right,   "/":   lambda: left / right,
+            "%":   lambda: left % right,   "^":   lambda: left ** right,
         }
 
         try:
-            # Se l'operatore non è in logic_ops, prova a cercarlo in OPS_MAP
             operation = logic_ops.get(op)
             if not operation:
-                # Fallback su OPS_FUNCTIONS usando la tua OPS_MAP
                 op_key = f"OP_{OPS_MAP.get(op)}"
                 return OPS_FUNCTIONS[op_key](left, right), env
-                
             return operation(), env
         except Exception as e:
             raise DSLRuntimeError(f"Errore nell'operazione '{op}': {str(e)}", node.get("meta"))
@@ -907,87 +878,60 @@ class Interpreter:
             val, env = await self.visit_call(step, env, args=[val])
         return val, env
 
-    async def _call_function(self, function,args=[],kwargs={}):
-        local_env = {}
-        
-        #name = node["name"]
+    async def _call_function(self, function, args=[], kwargs={}):
         params_ast, body_ast, return_ast = function
-        # Bind parametri
+        local_env = {}
         for param_node, arg_node in zip(params_ast, args):
             param_type = param_node["key"]["name"]
             param_name = param_node["value"]["name"]
             arg_value = await self._check_type(arg_node, param_type, param_node.get("meta"), param_name)
             local_env[param_name] = arg_value
-        # Esegui body
+            
         result, _ = await self.visit(body_ast, local_env)
         out = []
-        # Controllo tipo di ritorno
         for ty in return_ast:
-            pair,env = await self.visit(ty,local_env)
-            tipo,name = pair
+            pair, _ = await self.visit(ty, local_env)
+            tipo, name = pair
             if name in result:
-                out.append(await self._check_type(result[name], tipo, ty.get("meta"),name))
+                out.append(await self._check_type(result[name], tipo, ty.get("meta"), name))
 
-        if len(out) == 1:
-            return out[0]
-
-        return out
+        return out[0] if len(out) == 1 else out
 
     async def visit_call(self, node, env, args=[], kwargs={}):
-        name,meta = node.get("name"),node.get("meta")
-
-        # Risoluzione argomenti aggiuntivi dal nodo AST
+        name, meta = node.get("name"), node.get("meta")
         ast_args = [(await self.visit(a, env))[0] for a in node.get("args", [])]
         all_args = list(args) + ast_args
-        
         ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
         all_kwargs = {**kwargs, **ast_kwargs}
         
         function = scheme.get(env, str(name))
         if callable(function):
-            step = flow.step(function,*all_args,**all_kwargs)
+            step = flow.step(function, *all_args, **all_kwargs)
         elif isinstance(function, tuple) and len(function) == 3:
-            #params_ast, body_ast, return_ast = function
-            fn = scheme.get(env,name)
-            step = flow.step(self._call_function,fn,all_args,all_kwargs)
+            step = flow.step(self._call_function, function, all_args, all_kwargs)
         else:
             raise DSLRuntimeError(f"Unknown function '{name}'", meta)
 
         action = await flow.act(step)
-        return action.get("output",action),env
+        return action.get("outputs"), env
 
     async def invoke(self, function, args=[], kwargs={}):
-        """
-        Punto di ingresso universale per eseguire funzioni.
-        'target' può essere:
-        - Una stringa (nome della funzione nel dizionario env)
-        - Una funzione Python reale
-        - Un oggetto 'function' del DSL
-        """
         if callable(function):
-            step = flow.step(function,*args,**kwargs)
+            step = flow.step(function, *args, **kwargs)
         elif isinstance(function, tuple) and len(function) == 3:
-            step = flow.step(self._call_function,function,args,kwargs)
+            step = flow.step(self._call_function, function, args, kwargs)
         else:
-            raise DSLRuntimeError(f"Unknown function ")
+            raise DSLRuntimeError(f"Unknown function")
 
-        action = await flow.act(step)
-        return action
-        #return action.get("outputs",action)
-        
+        return await flow.act(step)
 
     async def _check_type(self, value, expected_type, meta, var_name):
         py_type = TYPE_MAP.get(expected_type)
-        
         if expected_type in CUSTOM_TYPES:
             return await scheme.normalize(value, CUSTOM_TYPES[expected_type])
-            #return value # Gestione tipi custom semplificata
         
         if py_type:
-            # Python considera bool come una sottoclasse di int, quindi isinstance(True, int) == True. 
-            # Dobbiamo prevenire esplicitamente questa sovrapposizione.
             is_valid = isinstance(value, py_type) and not (py_type is int and isinstance(value, bool))
-            
             if not is_valid:
                 raise DSLRuntimeError(
                     f"Type error for '{var_name}': expected {expected_type}, got {type(value).__name__}", 
@@ -1021,4 +965,4 @@ def parse(content: str, parser: Lark,**data):
 
 async def execute(content_or_ast, parser, functions):
     ast = parse(content_or_ast, parser) if isinstance(content_or_ast, str) else content_or_ast
-    return await Interpreter(functions).run(ast)
+    return await DAGGenerator(functions).run(ast)

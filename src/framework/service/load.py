@@ -11,7 +11,6 @@ imports = {
     "context": "framework/service/context.py",
     "diagnostic": "framework/service/diagnostic.py",
     "factory": "framework/service/factory.py",
-    "test": "framework/service/test.py",
     "telemetry": "framework/service/telemetry.py"
 }
 
@@ -49,11 +48,13 @@ async def _register_dependency_in_container(module, path, name, services, payloa
     # Placeholder for more complex logic
     return {"success": True}
 
+from framework.service.diagnostic import _load_resource
+
 #@flow.action()
 async def resource(path: str):
     """Carica una risorsa (file, modulo, config)."""
     try:
-        content = await flow._load_resource(path=path)
+        content = await _load_resource(path=path)
         if path.endswith('.py'):
             import importlib.util
             module_name = f"dynamic_{path.replace('/', '_').replace('.', '_')}"

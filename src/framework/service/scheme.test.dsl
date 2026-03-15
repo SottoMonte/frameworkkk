@@ -271,8 +271,8 @@ tuple:test_suite := (
     {
         "action": exports.normalize;
         "inputs": ({"name": "Mario"; "surname": "Rossi"; "age": 30;}, schema);
-        "outputs": {"name": "Mario"; "surname": "Rossi"; "age": 30; "email": "[EMAIL_ADDRESS]"; "phone": 1234567890; "address": "Via Roma 1"};
-        "assert": @received.outputs == @expected;
+        "outputs": None;
+        "assert": @received.success == false;
         "note": "normalize fail";
     },
 );

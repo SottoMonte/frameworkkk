@@ -1,5 +1,6 @@
+any:extension := "py";
 imports: {
-    'factory':resource("framework/service/factory." + extension) |> transaction |> get("outputs");
+    'factory':resource("framework/service/factory." + extension);
 };
 
 type:schema := {

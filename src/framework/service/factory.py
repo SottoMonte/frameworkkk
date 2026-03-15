@@ -45,7 +45,7 @@ class repository:
         transaction['result'] = [item for item in results if isinstance(item, dict)]
         return transaction
 
-    @flow.action()
+    #@flow.action()
     async def parameters(self, **inputs):
         # 1. Recupera l'action (payload + logica)
         ops = inputs.get('operation')

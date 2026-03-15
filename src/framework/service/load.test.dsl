@@ -5,8 +5,6 @@ imports: {
 aaa:imports.load |> print("############");
 
 exports: {
-    //"bootstrap": imports.load.bootstrap;
-    //"generate_checksum": imports.load.generate_checksum;
     "resource": imports.load.resource;
     "register": imports.load.register;
 };
@@ -15,8 +13,8 @@ test_suite: (
     { 
         "action": exports.resource;
         "inputs": {'path':"framework/service/load.py"};
-        "outputs": 10;
-        "assert":@received == @expected;
+        "outputs": true;
+        "assert":@received.success == @expected;
         "note": "test resource"; 
     },
 );
