@@ -58,7 +58,7 @@ class tester:
             return {"success": False, "errors": errors}
 
         ctx = language.DAGGenerator.clean(raw)
-        #print(ctx)
+        print(ctx)
         if not isinstance(ctx, dict):
             print(ctx); return
 

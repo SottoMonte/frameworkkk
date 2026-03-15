@@ -1,13 +1,24 @@
+exports: {
+    "resource": imports.load.resource;
+    "register": imports.load.register;
+};
+
 imports: {
     'load':resource("framework/service/load.py");
 };
 
 aaa:imports.load |> print("############");
 
-exports: {
-    "resource": imports.load.resource;
-    "register": imports.load.register;
-};
+nested: {
+    a:{
+        c:b;
+        b:{x:123}
+    };
+    b:{x:123};
+}
+
+cioa :nested.a.a.c |> print("############");
+
 
 test_suite: (
     { 

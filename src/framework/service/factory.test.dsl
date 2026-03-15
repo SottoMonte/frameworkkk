@@ -3,6 +3,10 @@ imports: {
     'factory':resource("framework/service/factory." + extension);
 };
 
+exports: {
+    'repository': imports.factory.repository;
+};
+
 type:schema := {
     "id":          { "type": "integer"; "default": 0; "force_type": "string"; };
     "name":        { "type": "string"; "required": true; "regex": "^[\\w\\-]+$"; };
@@ -71,7 +75,7 @@ actions: {
     };
 };
 
-repository : imports.factory.repository(
+repository : exports.repository(
     location: location,
     mapper: mapper,
     values: values,

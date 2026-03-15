@@ -463,28 +463,34 @@ class Interpreter:
 # DAG GENERATOR  —  AST dict → flow.node[]  (compilatore DAG)
 # ============================================================================
 #
-# Regole di compilazione:
+# Granularità: ogni dichiarazione top-level del DSL è un nodo DAG.
 #
-#   dict top-level   →  _nodes_from_dict:  nodi con naming <var>.<key>
-#   pipe top-level   →  _pipe_to_nodes:    catena <var>, _pipe_<var>_i
-#   pipe annidata    →  _lift:             nodo sintetico _anf_<ctx>_N
-#   dict annidato    →  visit_dict:        valutato inline dal visitor (letterale)
-#   expr singola     →  _nodes_from_single
-#   multi-var        →  _nodes_from_multi
+#   imports: { 'load': resource("load.py") }    → nodo "imports"
+#   exports: { "resource": imports.load.resource } → nodo "exports"  deps:[imports]
+#   test_suite: (...)                            → nodo "test_suite" deps:[exports]
 #
-# Il visitor gestisce direttamente i dict inline (dentro tuple/list/args)
-# perché sono letterali strutturali senza dipendenze DAG proprie.
-# Solo le pipe annidate dentro espressioni diventano nodi DAG sintetici.
+# Il vantaggio reale: dichiarazioni indipendenti girano in parallelo.
+# I dict dentro le dichiarazioni vengono valutati dall'Interpreter — il DAG
+# non cerca di spezzarli in sotto-nodi, il che evita cicli e complessità.
+#
+# L'unica espansione semantica è quella dei dict top-level: ogni chiave
+# diventa un nodo separato <var>.<key> così il contesto finale rispecchia
+# la struttura del DSL e le variabili sono accessibili per dot-notation.
+#
+#   imports: { 'load': resource("load.py") }
+#   ──────────────────────────────────────────────
+#   imports.load    → resource("load.py")     deps: []
+#   imports         → {"load": ↑}             deps: [imports.load]
 # ============================================================================
 
 class DAGGenerator:
-    """Compila un AST DSL in un grafo DAG ed esegue tutto via flow.run()."""
+    """Compila le dichiarazioni top-level DSL in un DAG ed esegue via flow.run()."""
 
     def __init__(self, env=None):
-        self.env    = env if env is not None else {}
+        self.env     = env if env is not None else {}
         self._interp = Interpreter()
 
-    # ── API pubblica ──────────────────────────────────────────────────────────
+    # ── analisi statica ───────────────────────────────────────────────────────
 
     @staticmethod
     def keys(node) -> list:
@@ -505,129 +511,76 @@ class DAGGenerator:
 
     @staticmethod
     def deps(node) -> set:
-        """Variabili referenziate da un sotto-AST."""
+        """
+        Variabili top-level referenziate da un nodo AST.
+        Restituisce solo la radice del dotpath (es. "imports" da "imports.load.resource").
+        Ignora: primitivi, scope locali (function_def), campi operatore.
+        """
+        _LEAF   = frozenset({"number","string","bool","any"})
+        _OPAQUE = frozenset({"function_def","function_value"})
+        _SKIP   = frozenset({"meta","type","op"})
+
         if isinstance(node, (list, tuple)):
             return set().union(*(DAGGenerator.deps(x) for x in node))
-        if isinstance(node, str): return {node.split(".")[0]}
         if isinstance(node, dict):
             t = node.get("type")
-            if t in ("var","identifier"): return {node["name"].split(".")[0]}
-            if t == "context_var":        return set()
+            if t in ("var","identifier"):  return {node["name"].split(".")[0]}
+            if t == "context_var":         return set()
+            if t in _LEAF or t in _OPAQUE: return set()
             return set().union(*(DAGGenerator.deps(v) for k,v in node.items()
-                                 if k not in ("meta","type")))
+                                 if k not in _SKIP))
         return set()
 
     @staticmethod
-    def ext_deps(node, defined, exclude=frozenset()) -> list:
-        """Dipendenze esterne: presenti nel nodo e nel DAG globale."""
-        return [d for d in DAGGenerator.deps(node) if d in defined and d not in exclude]
-
-    @staticmethod
     def clean(ctx) -> dict:
-        """Converte il contesto di flow.run() in valori puri."""
-        return {k: flow.value_of(v) for k, v in ctx.items()} if isinstance(ctx, dict) else ctx
-
-    # ── lifting ANF ───────────────────────────────────────────────────────────
-    #
-    # _lift() solleva SOLO le pipe in nodi DAG sintetici.
-    # I dict non vengono mai toccati da _lift: quelli top-level sono gestiti
-    # da _nodes_from_dict (naming semantico), quelli annidati inside
-    # espressioni (tuple, list, args) vengono valutati inline dal visitor
-    # perché non hanno dipendenze DAG proprie — sono letterali strutturali.
-
-    @staticmethod
-    def _fresh(ctx, counter):
-        n = counter[0]; counter[0] += 1; return f"_anf_{ctx}_{n}"
-
-    def _lift(self, node, ctx, defined, ev_expr, ev_call, lifted, counter):
-        """Solleva le pipe annidate in nodi DAG. I dict vengono lasciati invariati."""
-        if not isinstance(node, dict): return node
-        t = node.get("type")
-
-        if t == "pipe":
-            name  = self._fresh(ctx, counter)
-            steps = [self._lift(s, name, defined | {name}, ev_expr, ev_call, lifted, counter)
-                     for s in node["steps"]]
-            lifted.extend(self._pipe_to_nodes(
-                {"type": "pipe", "steps": steps, "meta": node.get("meta")},
-                sink=name, defined=defined | {name}, ev_expr=ev_expr, ev_call=ev_call))
-            return {"type": "var", "name": name, "meta": node.get("meta")}
-
-        # Per tutti gli altri nodi (incluso dict): ricorsione solo sui figli,
-        # senza estrarre il nodo stesso — i dict rimangono nell'AST.
-        return {k: (self._lift_children(v, ctx, defined, ev_expr, ev_call, lifted, counter)
-                    if k not in ("meta","type") else v)
-                for k, v in node.items()}
-
-    def _lift_children(self, value, ctx, defined, ev_expr, ev_call, lifted, counter):
-        if isinstance(value, list):
-            return [self._lift(x, ctx, defined, ev_expr, ev_call, lifted, counter) for x in value]
-        if isinstance(value, dict):
-            return self._lift(value, ctx, defined, ev_expr, ev_call, lifted, counter)
-        return value
-
-    # ── pipe → catena di nodi ─────────────────────────────────────────────────
-
-    def _pipe_to_nodes(self, pipe_ast, sink, defined, ev_expr, ev_call):
-        """sink := expr |> f1 |> f2  →  catena di nodi DAG."""
-        steps, nodes, prev = pipe_ast.get("steps", []), [], None
-        for i, step in enumerate(steps):
-            name     = sink if i == len(steps)-1 else f"_pipe_{sink}_{i}"
-            ext      = self.ext_deps(step, defined, exclude={sink})
-            all_deps = ([prev] + ext) if prev else ext
-            if i == 0:
-                def _src(a=step):
-                    async def src(**kw): return (await ev_expr(a, kw))[0]
-                    return src
-                fn = _src()
-            else:
-                def _stp(a=step, up=prev):
-                    async def s(**kw): return (await ev_call(a, kw, args=[kw.get(up)]))[0]
-                    return s
-                fn = _stp()
-            nodes.append(flow.node(name, fn, deps=all_deps)); prev = name
-        return nodes
-
-    # ── strategie item ────────────────────────────────────────────────────────
-
-    def _item_worker(self, item, ev_item):
-        async def w(**kw):
-            (key, val), _ = await ev_item(item, kw)
-            return dict(zip(key, val)) if isinstance(key, tuple) and isinstance(val, tuple) else val
-        return w
-
-    def _nodes_from_single(self, name, item, deps, ev_item):
-        return [flow.node(name, self._item_worker(item, ev_item), deps=deps)]
-
-    def _nodes_from_multi(self, keys, item, deps, ev_item):
-        grp = "_grp_" + "_".join(keys)
-        def _ex(k, g=grp):
-            async def ex(**kw): return (kw.get(g) or {}).get(k)
-            return flow.node(k, ex, deps=[g])
-        return [flow.node(grp, self._item_worker(item, ev_item), deps=deps),
-                *[_ex(k) for k in keys]]
-
-    def _nodes_from_dict(self, var_name, dict_node, defined, ev_expr, ev_call, ev_item):
         """
-        Dict top-level → nodi DAG con naming semantico <var>.<key>.
+        Restituisce solo i nodi top-level del DAG — quelli che corrispondono
+        alle dichiarazioni DSL originali (senza punto nel nome).
 
-            imports: { 'load': resource(...) }
-            ──────────────────────────────────────────
-            imports.load    eval resource(...)    deps: ext
-            imports         {"load": ↑}           deps: [imports.load]
+        I nodi dot-notation (imports.load, test_suite.0, ...) servono al
+        runtime DAG per le dipendenze ma non fanno parte del risultato:
+        sono già contenuti dentro il valore nested del nodo padre.
 
-        I dict annidati come valori vengono espansi ricorsivamente.
-        Le pipe dentro i valori vengono lift-ate normalmente.
+            ctx grezzo:  imports, imports.load, exports, exports.resource, ...
+            clean():     imports → {"load": <mod>}
+                         exports → {"resource": fn, "register": fn}
         """
-        pair_names = {}
+        if not isinstance(ctx, dict):
+            return ctx
+        return {
+            k: flow.value_of(v)
+            for k, v in ctx.items()
+            if "." not in k and not k.startswith("_")
+        }
+
+    # ── espansione dict top-level ─────────────────────────────────────────────
+
+    def _expand_dict(self, var_name, dict_node, defined, ev_expr) -> list:
+        """
+        Espande ricorsivamente un dict AST in nodi DAG con naming <var>.<key>.
+
+        Ogni chiave diventa un nodo indipendente — se il valore è a sua volta
+        un dict, viene espanso ricorsivamente così ogni foglia è un nodo DAG
+        e tutti i fratelli girano in parallelo.
+
+            schema: {
+                "id":   {"type":"integer"; "default":0};
+                "name": {"type":"string";  "required":true};
+            }
+            ──────────────────────────────────────────────────────────────────
+            schema.id.type      → "integer"   deps:[]  ┐ paralleli
+            schema.id.default   → 0           deps:[]  ┘
+            schema.id           → {"type":↑, "default":↑}   deps:[↑,↑]
+
+            schema.name.type     → "string"   deps:[]  ┐ paralleli
+            schema.name.required → True       deps:[]  ┘
+            schema.name          → {"type":↑, "required":↑} deps:[↑,↑]
+
+            schema.id e schema.name paralleli tra loro
+            schema ← assemblatore deps:[schema.id, schema.name]
+        """
         nodes      = []
-        # aggiorna defined con i nodi che stiamo per creare, così le dep
-        # tra fratelli dello stesso dict sono risolte correttamente
-        all_children = {
-            f"{var_name}.{(item.get('key') or item.get('target',{}).get('key',{})).get('value') or (item.get('key') or item.get('target',{}).get('key',{})).get('name','')}"
-            for item in dict_node.get("items", [])
-        } - {""}
-        defined_here = defined | all_children | {var_name}
+        pair_names = {}
 
         for item in dict_node.get("items", []):
             raw_key = item.get("key", {}) if item.get("type") == "pair"                       else item.get("target", {}).get("key", {})
@@ -638,25 +591,20 @@ class DAGGenerator:
             val_ast    = item.get("value", {})
 
             if isinstance(val_ast, dict) and val_ast.get("type") == "dict":
-                # Valore è un dict: espansione ricorsiva
-                nodes.extend(self._nodes_from_dict(
-                    child_name, val_ast, defined_here, ev_expr, ev_call, ev_item))
+                # Valore è un dict: espansione ricorsiva — nodi paralleli
+                nodes += self._expand_dict(child_name, val_ast, defined, ev_expr)
             else:
-                # Valore è un'espressione: solleva solo pipe al suo interno
-                lifted, counter = [], [0]
-                val_lifted = self._lift(val_ast, child_name, defined_here,
-                                        ev_expr, ev_call, lifted, counter)
-                nodes.extend(lifted)
-                child_deps = self.ext_deps(
-                    val_lifted, defined_here | {n["name"] for n in lifted})
-                def _vw(a=val_lifted):
+                # Valore è un'espressione scalare/call/pipe/var
+                child_deps = [d for d in self.deps(val_ast)
+                              if d in defined and d != var_name]
+                def _worker(a=val_ast):
                     async def w(**kw): return (await ev_expr(a, kw))[0]
                     return w
-                nodes.append(flow.node(child_name, _vw(), deps=child_deps))
+                nodes.append(flow.node(child_name, _worker(), deps=child_deps))
 
             pair_names[key_str] = child_name
 
-        # Assemblatore: legge i valori dai nodi figli tramite kw (dep → kw key)
+        # Assemblatore: raccoglie i valori dai figli diretti
         def _asm(_k=dict(pair_names)):
             async def a(**kw): return {k: kw.get(v) for k, v in _k.items()}
             return a
@@ -666,41 +614,89 @@ class DAGGenerator:
     # ── compilazione ──────────────────────────────────────────────────────────
 
     def compile(self, ast, env) -> list:
-        """AST → lista piatta di flow.node() pronta per flow.run()."""
+        """
+        AST root → lista piatta di flow.node() pronta per flow.run().
+
+        Per ogni dichiarazione top-level:
+          • se il valore è un dict   → _expand_dict (nodi <var>.<key>)
+          • se il valore è una pipe  → catena di nodi
+          • altrimenti               → un singolo nodo worker
+
+        Le dipendenze tra nodi sono calcolate staticamente sulle radici
+        dei dotpath (es. "imports" da "imports.load.resource").
+        """
         items   = ast.get("items", [])
         defined = {k for item in items for k in self.keys(item)}
 
         async def ev_item(item, kw): return await self._interp.visit(item, env | kw)
-        async def ev_expr(ast,  kw): return await self._interp.visit(ast,  env | kw)
-        async def ev_call(ast, kw, args=()):
-            return await self._interp.visit_call(ast, env | kw, args=args)
+        async def ev_expr(node, kw): return await self._interp.visit(node, env | kw)
+        async def ev_call(node, kw, args=()):
+            return await self._interp.visit_call(node, env | kw, args=args)
 
         nodes = []
         for item in items:
             item_keys = self.keys(item)
             if not item_keys: continue
 
-            lifted, counter = [], [0]
-            item_lifted = self._lift(item, "_".join(item_keys), defined,
-                                     ev_expr, ev_call, lifted, counter)
-            nodes.extend(lifted)
+            value_node = item.get("value", item)
+            item_deps  = [d for d in self.deps(value_node)
+                          if d in defined and d not in item_keys]
 
-            defined_ext = defined | {n["name"] for n in lifted}
-            value_node  = item_lifted.get("value", item_lifted)
-            item_deps   = self.ext_deps(value_node, defined_ext, exclude=set(item_keys))
-
+            # ── dict top-level: espansione in <var>.<key> ─────────────────────
             if value_node.get("type") == "dict" and len(item_keys) == 1:
-                # Dict top-level: nodi con naming semantico <var>.<key>
-                nodes += self._nodes_from_dict(item_keys[0], value_node, defined_ext,
-                                               ev_expr, ev_call, ev_item)
-            elif value_node.get("type") == "pipe" and len(item_keys) == 1:
-                nodes += self._pipe_to_nodes(value_node, item_keys[0], defined_ext,
-                                             ev_expr, ev_call)
-            elif len(item_keys) == 1:
-                nodes += self._nodes_from_single(item_keys[0], item_lifted, item_deps, ev_item)
-            else:
-                nodes += self._nodes_from_multi(item_keys, item_lifted, item_deps, ev_item)
+                nodes += self._expand_dict(item_keys[0], value_node,
+                                           defined, ev_expr)
 
+            # ── pipe top-level: catena di nodi ────────────────────────────────
+            elif value_node.get("type") == "pipe" and len(item_keys) == 1:
+                nodes += self._pipe_chain(value_node, item_keys[0],
+                                          defined, item_deps, ev_expr, ev_call)
+
+            # ── singola variabile ─────────────────────────────────────────────
+            elif len(item_keys) == 1:
+                def _w(it=item):
+                    async def worker(**kw):
+                        (key, val), _ = await ev_item(it, kw)
+                        return dict(zip(key,val)) if isinstance(key,tuple) and isinstance(val,tuple) else val
+                    return worker
+                nodes.append(flow.node(item_keys[0], _w(), deps=item_deps))
+
+            # ── multi-variabile ───────────────────────────────────────────────
+            else:
+                grp = "_grp_" + "_".join(item_keys)
+                def _gw(it=item):
+                    async def worker(**kw):
+                        (key, val), _ = await ev_item(it, kw)
+                        return dict(zip(key,val)) if isinstance(key,tuple) and isinstance(val,tuple) else val
+                    return worker
+                nodes.append(flow.node(grp, _gw(), deps=item_deps))
+                for k in item_keys:
+                    def _ex(key=k, g=grp):
+                        async def ex(**kw): return (kw.get(g) or {}).get(key)
+                        return flow.node(key, ex, deps=[g])
+                    nodes.append(_ex())
+
+        return nodes
+
+    def _pipe_chain(self, pipe_ast, sink, defined, sink_deps, ev_expr, ev_call):
+        """pipe top-level → catena di nodi DAG."""
+        steps, nodes, prev = pipe_ast.get("steps", []), [], None
+        for i, step in enumerate(steps):
+            name     = sink if i == len(steps)-1 else f"_pipe_{sink}_{i}"
+            ext_deps = [d for d in self.deps(step) if d in defined and d != sink]
+            all_deps = ([prev] + ext_deps) if prev else ext_deps
+            if i == 0:
+                def _src(a=step):
+                    async def src(**kw): return (await ev_expr(a, kw))[0]
+                    return src
+                fn = _src()
+            else:
+                def _stp(a=step, up=prev):
+                    async def s(**kw): return (await ev_call(a, kw, args=[kw.get(up)]))[0]
+                    return s
+                fn = _stp()
+            nodes.append(flow.node(name, fn, deps=all_deps))
+            prev = name
         return nodes
 
     # ── esecuzione ────────────────────────────────────────────────────────────
@@ -715,7 +711,7 @@ class DAGGenerator:
             nodes = [flow.node("__result__", _root)]
         return await flow.run(nodes)
 
-# ============================================================================
+
 # PUBLIC API
 # ============================================================================
 
