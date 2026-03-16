@@ -242,12 +242,19 @@ class DSLRuntimeError(Exception):
                 message += f" ({loc})"
         super().__init__(message)
 
-# ── Interpreter + DAG (unified) ───────────────────────────────────────────────
+# ── Interpreter ───────────────────────────────────────────────────────────────
 #
-# Una sola classe gestisce sia la valutazione AST (visit_*) sia l'ordinamento
-# topologico delle dichiarazioni (compile + flow.run).
-# Non esiste più una separazione artificiale tra "chi valuta" e "chi ordina":
-# il dict è un dict, a qualunque livello di annidamento.
+# visit_dict usa due path distinti:
+#   • fast-path  — dict senza dipendenze interne (la maggioranza: schema, mapper,
+#                  config, record). Valutazione sequenziale, zero overhead DAG.
+#   • slow-path  — dict dove almeno una chiave dipende da un'altra chiave dello
+#                  stesso dict. Attiva flow.run_ast con ordinamento topologico.
+#
+# Il top-level del file DSL (dictionary_node radice) passa sempre dal slow-path
+# perché le dichiarazioni `:=` si referenziano tra loro per definizione.
+#
+# Per dict reattivi (scheduled / event-driven), introdurre un costrutto
+# esplicito `reactive:` che bypassa visit_dict e usa flow.run direttamente.
 
 class Interpreter:
 
@@ -326,23 +333,33 @@ class Interpreter:
     # ── dict ─────────────────────────────────────────────────────────────────
 
     async def visit_dict(self, node, env):
-        results, errors = await flow.run_ast(node["items"], env, self.visit)
+        items = node["items"]
+
+        # fast-path: nessuna chiave dipende da un'altra chiave dello stesso dict
+        # → valutazione sequenziale, nessun DAG, nessuna dipendenza da networkx
+        defined = {k for it in items for k in flow._keys_of(it)}
+        if not any(flow._deps_of(it) & defined for it in items):
+            result = {}
+            for it in items:
+                (key, val), _ = await self.visit(it, env)
+                if isinstance(key, tuple):
+                    result.update(dict(zip(key, val)))
+                else:
+                    result[key] = val
+            return result, env
+
+        # slow-path: dipendenze interne rilevate → ordinamento topologico DAG
+        results, errors = await flow.run_ast(items, env, self.visit)
         results.update({k: flow.error(e) for k, e in errors.items()})
         return results, env
 
-    # ── entry point ───────────────────────────────────────────────────────────
-
-    async def run(self, ast, env=None):
-        result, _ = await self.visit(ast, env or {})
-        return result
-
     async def visit_pipe(self, node, env):
-        '''steps = node["steps"]
+        steps = node["steps"]
         val, env = await self.visit(steps[0], env)
         for step in steps[1:]:
             val, env = await self.visit_call(step, env, args=[val])
-        return val, env'''
-        steps = node["steps"]
+        return val, env
+        '''steps = node["steps"]
         val, _ = await self.visit(steps[0], env)
         
         def make_stage(ast_node):
@@ -358,14 +375,14 @@ class Interpreter:
         pipe_node = flow.pipeline("pipe_execution", stages)
         _, results = await flow.run([pipe_node], {"kwargs": val})
         
-        return flow.value_of(results["pipe_execution"]), env
+        return flow.value_of(results["pipe_execution"]), env'''
 
     async def visit_binop(self, node, env):
-        #left,  env = await self.visit(node["left"],  env)
-        #right, env = await self.visit(node["right"], env)
-        left_res,  env = await self.visit(node["left"],  env)
+        left,  env = await self.visit(node["left"],  env)
+        right, env = await self.visit(node["right"], env)
+        '''left_res,  env = await self.visit(node["left"],  env)
         right_res, env = await self.visit(node["right"], env)
-        left, right = flow.value_of(left_res), flow.value_of(right_res)
+        left, right = flow.value_of(left_res), flow.value_of(right_res)'''
         op = node["op"]
         if isinstance(left,  tuple): left  = left[0]
         if isinstance(right, tuple): right = right[0]
@@ -389,14 +406,14 @@ class Interpreter:
 
     async def visit_call(self, node, env, args=(), kwargs=None):
         name, meta = node.get("name"), node.get("meta")
-        #ast_args   = [(await self.visit(a, env))[0] for a in node.get("args", [])]
-        #ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
-        #all_args   = list(args) + ast_args
-        #all_kwargs = {**(kwargs or {}), **ast_kwargs}
-        ast_args   = [flow.value_of((await self.visit(a, env))[0]) for a in node.get("args", [])]
+        ast_args   = [(await self.visit(a, env))[0] for a in node.get("args", [])]
+        ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
+        all_args   = list(args) + ast_args
+        all_kwargs = {**(kwargs or {}), **ast_kwargs}
+        '''ast_args   = [flow.value_of((await self.visit(a, env))[0]) for a in node.get("args", [])]
         ast_kwargs = {k: flow.value_of((await self.visit(v, env))[0]) for k, v in node.get("kwargs", {}).items()}
         all_args   = [flow.value_of(a) for a in args] + ast_args
-        all_kwargs = {k: flow.value_of(v) for k, v in {**(kwargs or {}), **ast_kwargs}.items()}
+        all_kwargs = {k: flow.value_of(v) for k, v in {**(kwargs or {}), **ast_kwargs}.items()}'''
         fn = scheme.get(env, str(name))
         if callable(fn):
             result = await fn(*all_args, **all_kwargs) \
