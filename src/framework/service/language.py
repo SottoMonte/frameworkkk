@@ -256,10 +256,7 @@ class Interpreter:
     # ── visita generica ───────────────────────────────────────────────────────
 
     async def visit(self, node, env):
-        if not isinstance(node, dict): return node, env
         t = node.get("type")
-        if t == "pipe":
-            raise DSLRuntimeError("BUG: pipe non espansa", node.get("meta"))
         method = getattr(self, f"visit_{t}", None)
         if not method:
             raise DSLRuntimeError(f"Tipo AST sconosciuto: '{t}'", node.get("meta"))
@@ -339,9 +336,36 @@ class Interpreter:
         result, _ = await self.visit(ast, env or {})
         return result
 
+    async def visit_pipe(self, node, env):
+        '''steps = node["steps"]
+        val, env = await self.visit(steps[0], env)
+        for step in steps[1:]:
+            val, env = await self.visit_call(step, env, args=[val])
+        return val, env'''
+        steps = node["steps"]
+        val, _ = await self.visit(steps[0], env)
+        
+        def make_stage(ast_node):
+            async def stage(input_data):
+                res, _ = await self.visit_call(ast_node, env, args=[flow.value_of(input_data)])
+                return res
+            return stage
+
+        stages = [make_stage(s) for s in steps[1:]]
+        if not stages: return val, env
+
+        # Costruiamo il nodo pipeline e lo eseguiamo via flow.run
+        pipe_node = flow.pipeline("pipe_execution", stages)
+        _, results = await flow.run([pipe_node], {"kwargs": val})
+        
+        return flow.value_of(results["pipe_execution"]), env
+
     async def visit_binop(self, node, env):
-        left,  env = await self.visit(node["left"],  env)
-        right, env = await self.visit(node["right"], env)
+        #left,  env = await self.visit(node["left"],  env)
+        #right, env = await self.visit(node["right"], env)
+        left_res,  env = await self.visit(node["left"],  env)
+        right_res, env = await self.visit(node["right"], env)
+        left, right = flow.value_of(left_res), flow.value_of(right_res)
         op = node["op"]
         if isinstance(left,  tuple): left  = left[0]
         if isinstance(right, tuple): right = right[0]
@@ -365,10 +389,14 @@ class Interpreter:
 
     async def visit_call(self, node, env, args=(), kwargs=None):
         name, meta = node.get("name"), node.get("meta")
-        ast_args   = [(await self.visit(a, env))[0] for a in node.get("args", [])]
-        ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
-        all_args   = list(args) + ast_args
-        all_kwargs = {**(kwargs or {}), **ast_kwargs}
+        #ast_args   = [(await self.visit(a, env))[0] for a in node.get("args", [])]
+        #ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
+        #all_args   = list(args) + ast_args
+        #all_kwargs = {**(kwargs or {}), **ast_kwargs}
+        ast_args   = [flow.value_of((await self.visit(a, env))[0]) for a in node.get("args", [])]
+        ast_kwargs = {k: flow.value_of((await self.visit(v, env))[0]) for k, v in node.get("kwargs", {}).items()}
+        all_args   = [flow.value_of(a) for a in args] + ast_args
+        all_kwargs = {k: flow.value_of(v) for k, v in {**(kwargs or {}), **ast_kwargs}.items()}
         fn = scheme.get(env, str(name))
         if callable(fn):
             result = await fn(*all_args, **all_kwargs) \

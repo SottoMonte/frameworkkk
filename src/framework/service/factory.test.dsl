@@ -87,11 +87,11 @@ request:richiesta := {
     "provider": "GITHUB";
     //"operation": "view";
     "repository": "repository";
-    /*"filter": {
+    "filter": {
         "eq": {
             "owner": "SottoMonte"
         }
-    };*/
+    };
     "payload": {
         "owner": "SottoMonte";
         "name": "framework"
