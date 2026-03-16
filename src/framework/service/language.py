@@ -169,17 +169,14 @@ class DSLTransformer(Transformer):
     def sequence(self, meta, items):
         return self._m({"type":"sequence","items":[i for i in items if i is not None]}, meta)
 
-    def _unwrap(self, items, typ):
+    def _unwrap(self, meta, items, typ):
         items = [i for i in items if i is not None]
         if len(items) == 1 and isinstance(items[0], dict) and items[0].get("type") == "sequence":
             items = items[0]["items"]
-        return self._m({"type":typ,"items":items}, None)  # meta not available here — set below
+        return self._m({"type": typ, "items": items}, meta)
 
-    def tuple_node(self, meta, items):
-        return self._m(self._unwrap(items, "tuple"), meta)
-
-    def list_node(self, meta, items):
-        return self._m(self._unwrap(items, "list"), meta)
+    def tuple_node(self, meta, items): return self._unwrap(meta, items, "tuple")
+    def list_node(self, meta, items):  return self._unwrap(meta, items, "list")
 
     def dictionary_node(self, meta, items):
         return self._m({"type":"dict","items":[i for i in items if i is not None]}, meta)
@@ -336,11 +333,15 @@ class Interpreter:
 
     async def visit_dict(self, node, env):
         defined = {k for it in node["items"] for k in self._item_keys(it)}
-        nodes   = self._compile(node["items"], defined, env)
+        nodes   = self._compile(node["items"], defined)
         if not nodes:
             return {}, env
-        result = await flow.run(nodes, env=env)
-        return {k: v for k, v in result.items() if k in defined}, env
+        result, ctx = await flow.run(nodes, env=dict(env))
+        out = {k: v for k, v in result.items() if k in defined}
+        for k in defined:
+            if k not in out and k in ctx:
+                out[k] = ctx[k]  # NodeResult fallito
+        return out, env
 
     # ── analisi statica ───────────────────────────────────────────────────────
 
@@ -350,7 +351,12 @@ class Interpreter:
         if not isinstance(node, dict): return []
         t = node.get("type")
         if t == "declaration":
-            return Interpreter._item_keys(node.get("target"))
+            target = node.get("target", {})
+            # tipo:nome := expr  →  target è un pair {key:tipo, value:nome}
+            if target.get("type") == "pair":
+                name = target.get("value", {}).get("name")
+                return [name] if name else []
+            return Interpreter._item_keys(target)
         if t == "pair":
             k = node.get("key", {})
             kn = k.get("value") if k.get("type") == "string" else k.get("name")
@@ -374,14 +380,17 @@ class Interpreter:
             if t in ("var","identifier"): return {node["name"].split(".")[0]}
             if t == "context_var":        return set()
             if t in _LEAF or t in _OPAQUE: return set()
+            if t == "call":
+                name_dep = {node["name"].split(".")[0]} if node.get("name") else set()
+                return name_dep | set().union(*(Interpreter._item_deps(v) for k, v in node.items()
+                                               if k not in _SKIP))
             return set().union(*(Interpreter._item_deps(v) for k, v in node.items()
                                  if k not in _SKIP))
         return set()
 
     # ── compilazione items → flow.node ────────────────────────────────────────
 
-    def _compile(self, items, defined, env) -> list:
-        """Trasforma una lista di item AST in flow.node con dipendenze calcolate."""
+    def _compile(self, items, defined) -> list:
         nodes = []
         for item in items:
             ks = self._item_keys(item)
@@ -478,8 +487,6 @@ class Interpreter:
             raise DSLRuntimeError("Funzione sconosciuta")
         return await flow.act(s)
 
-    # ── type checking ─────────────────────────────────────────────────────────
-
     async def _check(self, value, expected, meta, name):
         if expected in CUSTOM_TYPES:
             return await scheme.normalize(value, CUSTOM_TYPES[expected])
@@ -489,27 +496,19 @@ class Interpreter:
                 f"Tipo errato '{name}': atteso {expected}, ottenuto {type(value).__name__}", meta)
         return value
 
-    async def resolve(self, val, env):
-        while callable(val):
-            res = val(**env)
-            val = await res if inspect.isawaitable(res) else res
-        return val
-
     # ── entry point ───────────────────────────────────────────────────────────
 
     async def run(self, ast, env=None):
-        """Esegue un AST top-level (dict di dichiarazioni) con ordinamento DAG."""
-        env = env or {}
-        if ast.get("type") != "dict":
-            result, _ = await self.visit(ast, env)
-            return result
-        defined = {k for it in ast["items"] for k in self._item_keys(it)}
-        nodes   = self._compile(ast["items"], defined, env)
+        defined      = {k for it in ast["items"] for k in self._item_keys(it)}
+        nodes        = self._compile(ast["items"], defined)
         if not nodes:
-            result, _ = await self.visit(ast, env)
-            return {"__result__": result}
-        return await flow.run(nodes, env=env)
-
+            return {}
+        result, ctx  = await flow.run(nodes, env=dict(env or {}))
+        out = {k: v for k, v in result.items() if k in defined}
+        for k in defined:
+            if k not in out and k in ctx:
+                out[k] = ctx[k]  # NodeResult fallito — visibile al tester
+        return out
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -522,4 +521,4 @@ def parse(source: str, parser: Lark) -> dict:
 
 async def execute(source_or_ast, parser, functions):
     ast = parse(source_or_ast, parser) if isinstance(source_or_ast, str) else source_or_ast
-    return await Interpreter(functions).run(ast)
+    return await Interpreter().run(ast, env=functions)

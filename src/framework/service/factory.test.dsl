@@ -70,8 +70,8 @@ dict:mapper := {
 
 actions: {
     "view": {
-        "payload": view_payload_func;
-        "logic": view_logic_func;
+        "payload": '';
+        "logic": '';
     };
 };
 

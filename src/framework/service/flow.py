@@ -135,7 +135,7 @@ async def run(nodes: List[Dict[str, Any]], env: dict = None, num_workers=3):
         for name in gen: await q.put(name)
         await q.join()
     for w in ws: w.cancel()
-    return shared_env
+    return shared_env, ctx
 
 # ── DSL compat ────────────────────────────────────────────────────────────────
 

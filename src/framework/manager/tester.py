@@ -1,31 +1,22 @@
 import os
-import asyncio
-from framework.service.diagnostic import framework_log
 import framework.service.language as language
 import framework.service.flow as flow
+from framework.service.diagnostic import framework_log
 
 
 class tester:
 
-    def __init__(self, **constants):
-        self.sessions  = {}
-        self.providers = constants.get('providers', [])
-
     async def run(self, **constants):
         framework_log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
-        test_dir = './src'
-        for root, _, files in os.walk(test_dir):
+        for root, _, files in os.walk('./src'):
             for file in files:
                 if file.endswith('.test.dsl'):
-                    path = os.path.join(root, file).replace('./', '')
-                    await self.dsl(path=path)
+                    await self.dsl(path=os.path.join(root, file).replace('./', ''))
 
     async def dsl(self, **kwargs):
-        """Esegue i test definiti in un file DSL."""
         from framework.service.load import resource
 
         path = kwargs.get('path')
-        print(path)
 
         # ── caricamento e parsing ─────────────────────────────────────────────
         res    = await resource(path)
@@ -34,34 +25,25 @@ class tester:
             framework_log("ERROR", f"Risorsa non stringa per {path}", emoji="❌")
             return {"success": False, "errors": ["risorsa non valida"]}
 
-        parser  = language.create_parser()
-        ast     = language.parse(source, parser)
+        parser = language.create_parser()
+        ast    = language.parse(source, parser)
         if isinstance(ast, Exception):
             framework_log("ERROR", f"Errore di parsing DSL in {path}: {ast}", emoji="❌")
             return {"success": False, "errors": [str(ast)]}
 
         # ── esecuzione ────────────────────────────────────────────────────────
         interp = language.Interpreter()
-        raw    = await interp.run(ast, env=language.DSL_FUNCTIONS) or {}
-
-        # Controlla nodi falliti nel contesto grezzo
+        ctx    = await interp.run(ast, env=language.DSL_FUNCTIONS) or {}
+        #print("ctx", ctx)
         errors = [
             err
-            for k, v in raw.items()
-            if not k.startswith("_")           # salta nodi sintetici
-            and flow.is_result(v)
-            and not v["success"]
+            for k, v in ctx.items()
+            if not k.startswith("_") and flow.is_result(v) and not v["success"]
             for err in flow.errors_of(v)
         ]
         if errors:
-            framework_log("ERROR", f"Errore DAG in {path}: {errors}", emoji="❌")
+            framework_log("ERROR", f"Errore in {path}: {errors}", emoji="❌")
             return {"success": False, "errors": errors}
-
-        #ctx = language.DAGGenerator.clean(raw)
-        ctx = raw
-        print(ctx)
-        if not isinstance(ctx, dict):
-            print(ctx); return
 
         # ── esecuzione test suite ─────────────────────────────────────────────
         test_suite = ctx.get('test_suite', []) or []
@@ -81,13 +63,8 @@ class tester:
             try:
                 if isinstance(args, dict):
                     received = await interp.invoke(target, [], args)
-                elif isinstance(args, list):
-                    received = await interp.invoke(target, args)
                 else:
                     received = await interp.invoke(target, args)
-
-                # invoke restituisce un NodeResult — estraiamo il valore
-                #received = flow.value_of(received)
 
                 if assert_(received=received, expected=expected):
                     results["passed"] += 1
