@@ -7,17 +7,21 @@ imports: {
     'load':resource("framework/service/load.py");
 };
 
-aaa:imports.load |> print("############");
+//aaa:imports.load |> print("############");
 
 nested: {
     a:{
+        
+        
         c:b;
-        b:{x:123}
+        b:{x:1};
     };
-    b:{x:123};
+    b:{x:2};
 }
 
-cioa :nested.a.a.c |> print("############");
+//cioa :nested.a.c |> print("############");
+
+aaa:print("############",nested);
 
 
 test_suite: (

@@ -57,7 +57,8 @@ class tester:
             framework_log("ERROR", f"Errore DAG in {path}: {errors}", emoji="❌")
             return {"success": False, "errors": errors}
 
-        ctx = language.DAGGenerator.clean(raw)
+        #ctx = language.DAGGenerator.clean(raw)
+        ctx = raw
         print(ctx)
         if not isinstance(ctx, dict):
             print(ctx); return
