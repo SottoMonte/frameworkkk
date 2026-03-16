@@ -40,9 +40,9 @@ class tester:
             framework_log("ERROR", f"Errore di parsing DSL in {path}: {ast}", emoji="❌")
             return {"success": False, "errors": [str(ast)]}
 
-        # ── esecuzione DAG ────────────────────────────────────────────────────
-        dag = language.DAGGenerator(language.DSL_FUNCTIONS)
-        raw = await dag.run(ast) or {}
+        # ── esecuzione ────────────────────────────────────────────────────────
+        interp = language.Interpreter()
+        raw    = await interp.run(ast, env=language.DSL_FUNCTIONS) or {}
 
         # Controlla nodi falliti nel contesto grezzo
         errors = [
@@ -80,11 +80,11 @@ class tester:
 
             try:
                 if isinstance(args, dict):
-                    received = await dag._interp.invoke(target, [], args)
+                    received = await interp.invoke(target, [], args)
                 elif isinstance(args, list):
-                    received = await dag._interp.invoke(target, args)
+                    received = await interp.invoke(target, args)
                 else:
-                    received = await dag._interp.invoke(target, args)
+                    received = await interp.invoke(target, args)
 
                 # invoke restituisce un NodeResult — estraiamo il valore
                 #received = flow.value_of(received)
