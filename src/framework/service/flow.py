@@ -94,7 +94,105 @@ def switch(name, cases, deps=None):
                 return await act(env) if asyncio.iscoroutinefunction(act) else act(env)
     return node(name, fn, deps or [])
 
-# ── Runtime ───────────────────────────────────────────────────────────────────
+# ── DAG su AST ────────────────────────────────────────────────────────────────
+#
+# run_ast riceve gli item AST di un dict direttamente dall'interprete,
+# analizza chiavi e dipendenze, costruisce il grafo ed esegue in parallelo.
+# L'interprete non fa pre-processing: passa solo items, env e visit.
+
+def _keys_of(n) -> list:
+    if not isinstance(n, dict): return []
+    t = n.get("type")
+    if t == "declaration":
+        tgt = n.get("target", {})
+        if tgt.get("type") == "pair":
+            name = tgt.get("value", {}).get("name")
+            return [name] if name else []
+        return _keys_of(tgt)
+    if t == "pair":
+        k  = n.get("key", {})
+        kn = k.get("value") if k.get("type") == "string" else k.get("name")
+        return [kn] if kn else []
+    if t in ("var", "identifier"):
+        return [n["name"]]
+    if t in ("sequence", "tuple", "list", "dict"):
+        return [k for x in n.get("items", []) for k in _keys_of(x)]
+    return []
+
+def _deps_of(n) -> set:
+    if not isinstance(n, dict): return set()
+    t = n.get("type")
+    if t in ("number", "string", "bool", "any", "context_var",
+             "function_def", "function_value"):
+        return set()
+    if t in ("var", "identifier"):
+        return {n["name"].split(".")[0]}
+    if t == "call":
+        d = {n["name"].split(".")[0]} if n.get("name") else set()
+        d |= set().union(*(_deps_of(a) for a in n.get("args", [])))
+        d |= set().union(*(_deps_of(v) for v in n.get("kwargs", {}).values()))
+        return d
+    if t == "binop":       return _deps_of(n["left"]) | _deps_of(n["right"])
+    if t == "not":         return _deps_of(n["value"])
+    if t == "pipe":        return set().union(*(_deps_of(s) for s in n.get("steps", [])))
+    if t in ("pair", "declaration"):
+        return _deps_of(n["value"])
+    if t in ("tuple", "list", "sequence", "dict"):
+        return set().union(*(_deps_of(i) for i in n.get("items", [])))
+    return set()
+
+async def run_ast(items: list, env: dict, visit) -> tuple:
+    """Esegue una lista di item AST con parallelismo DAG.
+
+    items  — item AST di un dict (top-level o annidato)
+    env    — contesto padre (sola lettura: viene copiato)
+    visit  — coroutine  visit(node, env) → (key, val), env  dell'interprete
+
+    Ritorna (result, errors):
+      result — dict {nome: valore} per i nodi riusciti
+      errors — dict {nome: str}   per i nodi falliti
+    """
+    defined  = {k for it in items for k in _keys_of(it)}
+    item_of  = {k: it for it in items for k in _keys_of(it)}
+    if not defined:
+        return {}, {}
+
+    G = nx.DiGraph()
+    for k in defined:
+        G.add_node(k)
+    for k, it in item_of.items():
+        for d in _deps_of(it):
+            if d in defined and d != k:
+                G.add_edge(d, k)
+    if not nx.is_directed_acyclic_graph(G):
+        raise ValueError("Ciclo di dipendenze nel dict")
+
+    local   = dict(env)
+    results = {}
+    errors  = {}
+
+    async def eval_node(name):
+        failed = [d for d in G.predecessors(name) if d in errors]
+        if failed:
+            errors[name] = f"dep failed: {', '.join(failed)}"
+            return
+        try:
+            (key, val), _ = await visit(item_of[name], local)
+            if isinstance(key, tuple):
+                for k, v in zip(key, val):
+                    results[k] = v
+                    local[k]   = v
+            else:
+                results[name] = val
+                local[name]   = val
+        except Exception as e:
+            errors[name] = str(e)
+
+    for generation in nx.topological_generations(G):
+        await asyncio.gather(*(eval_node(name) for name in generation))
+
+    return results, errors
+
 
 async def _run_node(n, env, ctx, locks):
     t0   = time.perf_counter()
@@ -135,7 +233,7 @@ async def run(nodes: List[Dict[str, Any]], env: dict = None, num_workers=3):
         for name in gen: await q.put(name)
         await q.join()
     for w in ws: w.cancel()
-    return shared_env, ctx
+    return shared_env
 
 # ── DSL compat ────────────────────────────────────────────────────────────────
 

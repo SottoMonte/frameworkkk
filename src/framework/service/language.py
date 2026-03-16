@@ -326,102 +326,18 @@ class Interpreter:
             values.append(await self._check(val[i] if isinstance(val, tuple) else val, tipo, meta, name))
         return (tuple(keys), tuple(values)), env
 
-    # ── dict: valutazione con ordinamento topologico ──────────────────────────
-    #
-    # Sia top-level che annidati usano la stessa logica: compile → flow.run.
-    # Non serve distinguere i due casi — sono identici.
+    # ── dict ─────────────────────────────────────────────────────────────────
 
     async def visit_dict(self, node, env):
-        defined = {k for it in node["items"] for k in self._item_keys(it)}
-        nodes   = self._compile(node["items"], defined)
-        if not nodes:
-            return {}, env
-        result, ctx = await flow.run(nodes, env=dict(env))
-        out = {k: v for k, v in result.items() if k in defined}
-        for k in defined:
-            if k not in out and k in ctx:
-                out[k] = ctx[k]  # NodeResult fallito
-        return out, env
+        results, errors = await flow.run_ast(node["items"], env, self.visit)
+        results.update({k: flow.error(e) for k, e in errors.items()})
+        return results, env
 
-    # ── analisi statica ───────────────────────────────────────────────────────
+    # ── entry point ───────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _item_keys(node) -> list:
-        """Chiave/i definita da un item AST."""
-        if not isinstance(node, dict): return []
-        t = node.get("type")
-        if t == "declaration":
-            target = node.get("target", {})
-            # tipo:nome := expr  →  target è un pair {key:tipo, value:nome}
-            if target.get("type") == "pair":
-                name = target.get("value", {}).get("name")
-                return [name] if name else []
-            return Interpreter._item_keys(target)
-        if t == "pair":
-            k = node.get("key", {})
-            kn = k.get("value") if k.get("type") == "string" else k.get("name")
-            return [kn] if kn else []
-        if t in ("var", "identifier"):
-            return [node["name"]]
-        if t in ("sequence", "tuple", "list", "dict"):
-            return [k for x in node.get("items", []) for k in Interpreter._item_keys(x)]
-        return []
-
-    @staticmethod
-    def _item_deps(node) -> set:
-        """Radici referenziate da un nodo AST."""
-        _LEAF   = frozenset({"number","string","bool","any"})
-        _OPAQUE = frozenset({"function_def","function_value"})
-        _SKIP   = frozenset({"meta","type","op"})
-        if isinstance(node, (list, tuple)):
-            return set().union(*(Interpreter._item_deps(x) for x in node))
-        if isinstance(node, dict):
-            t = node.get("type")
-            if t in ("var","identifier"): return {node["name"].split(".")[0]}
-            if t == "context_var":        return set()
-            if t in _LEAF or t in _OPAQUE: return set()
-            if t == "call":
-                name_dep = {node["name"].split(".")[0]} if node.get("name") else set()
-                return name_dep | set().union(*(Interpreter._item_deps(v) for k, v in node.items()
-                                               if k not in _SKIP))
-            return set().union(*(Interpreter._item_deps(v) for k, v in node.items()
-                                 if k not in _SKIP))
-        return set()
-
-    # ── compilazione items → flow.node ────────────────────────────────────────
-
-    def _compile(self, items, defined) -> list:
-        nodes = []
-        for item in items:
-            ks = self._item_keys(item)
-            if not ks: continue
-            vn   = item.get("value", item)
-            deps = [d for d in self._item_deps(vn) if d in defined and d not in ks]
-
-            if len(ks) == 1:
-                def _w(it=item):
-                    async def w(e):
-                        (key, val), _ = await self.visit(it, e)
-                        return val if not isinstance(key, tuple) else dict(zip(key, val))
-                    return w
-                nodes.append(flow.node(ks[0], _w(), deps=deps))
-            else:
-                # multi-variabile: (tipo a, tipo b) := expr
-                grp = "_grp_" + "_".join(ks)
-                def _gw(it=item):
-                    async def w(e):
-                        (key, val), _ = await self.visit(it, e)
-                        return dict(zip(key, val)) if isinstance(key, tuple) else val
-                    return w
-                nodes.append(flow.node(grp, _gw(), deps=deps))
-                for k in ks:
-                    def _ex(key=k, g=grp):
-                        async def ex(e): return (flow._get_nested(e, g) or {}).get(key)
-                        return flow.node(key, ex, deps=[g])
-                    nodes.append(_ex())
-        return nodes
-
-    # ── espressioni ───────────────────────────────────────────────────────────
+    async def run(self, ast, env=None):
+        result, _ = await self.visit(ast, env or {})
+        return result
 
     async def visit_binop(self, node, env):
         left,  env = await self.visit(node["left"],  env)
@@ -499,16 +415,8 @@ class Interpreter:
     # ── entry point ───────────────────────────────────────────────────────────
 
     async def run(self, ast, env=None):
-        defined      = {k for it in ast["items"] for k in self._item_keys(it)}
-        nodes        = self._compile(ast["items"], defined)
-        if not nodes:
-            return {}
-        result, ctx  = await flow.run(nodes, env=dict(env or {}))
-        out = {k: v for k, v in result.items() if k in defined}
-        for k in defined:
-            if k not in out and k in ctx:
-                out[k] = ctx[k]  # NodeResult fallito — visibile al tester
-        return out
+        result, _ = await self.visit(ast, env or {})
+        return result
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
