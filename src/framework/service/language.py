@@ -13,6 +13,8 @@ import framework.service.scheme as scheme
 import framework.service.flow as flow
 import framework.service.load as load
 
+import random
+
 # ── Grammar ───────────────────────────────────────────────────────────────────
 
 GRAMMAR = r"""
@@ -112,6 +114,7 @@ TYPE_MAP = {
 CUSTOM_TYPES = {}
 
 DSL_FUNCTIONS = {
+    'random': random.randint,
     'resource': load.resource,
     'transform': scheme.transform,
     'get': scheme.get,
@@ -504,31 +507,24 @@ class Interpreter:
         for task in self._tasks:
             task_name = task["name"]
             action_ast = task["action"]
-            depends_on = task.get("kwargs", {}).get("depends_on", [])
-            print("###############################1",depends_on)
             
             # Crea una closure che cattura correttamente le variabili
-            def make_task_fn(ast, interpreter_ref, environment,deps):
+            def make_task_fn(ast, interpreter_ref, environment):
                 async def task_fn(env_dict):
                     try:
-                        print("###############################2",deps)
+                        print("###############################2",env_dict)
                         call, _ = await interpreter_ref.visit(ast, environment)
-                        result = await interpreter_ref.invoke(call, *deps)
-                        print("###############################3",result)
-                        return flow.success(result)
+                        result = await interpreter_ref.invoke(call)
+                        #print("###############################3",result)
+                        return flow.output(result)
                     except Exception as e:
                         return flow.error(str(e))
                 return task_fn
             
-            task_fn = make_task_fn(action_ast, interpreter, env,depends_on)
+            task_fn = make_task_fn(action_ast, interpreter, env)
             
             # Crea il nodo flow
-            node = flow.node(
-                name=task_name,
-                fn=task_fn,
-                deps=[],
-                schedule=1,
-            )
+            node = flow.node(name=task_name,fn=task_fn,**task.get("kwargs", {}))
             
             flow_nodes.append(node)
         
@@ -543,7 +539,7 @@ class Interpreter:
         if self._tasks:
             # Costruisci i nodi flow (non è async)
             flow_nodes = self._build_flow_nodes(env|result)
-            
+            print("###############################1",flow_nodes)
             # Esegui via flow.run()
             shared_env, ctx = await flow.run(flow_nodes, env|result)
             

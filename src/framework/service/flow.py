@@ -132,11 +132,7 @@ class DagCache:
 
 # ── Nodo DAG ──────────────────────────────────────────────────────────────────
 
-def node(name: str, fn: Callable, deps: List[str] = None, 
-         schedule: float = None, duration: float = None,
-         on_success: Callable = None, on_error: Callable = None, 
-         on_start: Callable = None, triggers: List[str] = None,
-         cache: bool = False, cache_ttl: float = 3600):
+def node(name: str, fn: Callable, **kwargs):
     """
     Crea un nodo nel DAG.
     
@@ -153,18 +149,23 @@ def node(name: str, fn: Callable, deps: List[str] = None,
         cache: Se True, cache il risultato
         cache_ttl: Tempo di vita del cache (secondi)
     """
+    '''deps: List[str] = None, 
+         schedule: float = None, duration: float = None,
+         on_success: Callable = None, on_error: Callable = None, 
+         on_start: Callable = None, triggers: List[str] = None,
+         cache: bool = False, cache_ttl: float = 3600'''
     return {
         "name": name, 
         "fn": fn, 
-        "deps": deps or [], 
-        "schedule": schedule, 
-        "duration": duration,
-        "on_success": on_success, 
-        "on_error": on_error, 
-        "on_start": on_start,
-        "triggers": triggers or [],
-        "cache": cache,
-        "cache_ttl": cache_ttl,
+        "deps": kwargs.get("deps", []) or [],
+        "triggers": kwargs.get("triggers", []) or [],
+        "schedule": kwargs.get("schedule", None), 
+        "duration": kwargs.get("duration", None),
+        "on_success": kwargs.get("on_success", None), 
+        "on_error": kwargs.get("on_error", None), 
+        "on_start": kwargs.get("on_start", None),
+        "cache": kwargs.get("cache", False),
+        "cache_ttl": kwargs.get("cache_ttl", 3600),
     }
 
 # ── NODE WRAPPERS (COMPOSABLE DECORATORS) ─────────────────────────────────────
@@ -390,8 +391,40 @@ async def _run_node(n, env, ctx, locks, monitor: DagMonitor = None,
             duration = time.perf_counter() - t0
             monitor.record_execution(name, False, duration)
 
- 
 async def _worker(q, env, ctx, nodes_map, locks, monitor: DagMonitor = None,
+                 cache: DagCache = None):
+    """Worker ottimizzato per la freschezza dei dati via triggers."""
+    while True:
+        name = await q.get()
+        async with locks[name]:
+            node_def = nodes_map[name]
+            
+            # Eseguiamo il nodo se:
+            # 1. È pianificato (schedule)
+            # 2. NON è ancora presente nel contesto (prima esecuzione)
+            # 3. O se è stato rimesso in coda forzatamente (ctx[name] resettato a None)
+            if node_def.get("schedule") is not None or name not in ctx or ctx[name] is None:
+                
+                await _run_node(node_def, env, ctx, locks, monitor, cache)
+                
+                # --- LOGICA TRIGGER (REATTIVITÀ) ---
+                res = ctx.get(name)
+                if res and res["success"] and node_def.get("triggers"):
+                    for triggered_name in node_def["triggers"]:
+                        if triggered_name in nodes_map:
+                            # 1. INVALIDAZIONE: Resettiamo il contesto del figlio
+                            # Questo garantisce che il figlio usi i nuovi dati del padre
+                            ctx[triggered_name] = None 
+                            
+                            # 2. TRIGGER: Mettiamo il figlio in coda
+                            await q.put(triggered_name)
+                            
+                            if monitor:
+                                monitor.log_event("trigger_refresh", triggered_name, 
+                                               {"triggered_by": name})
+        q.task_done()
+
+async def _worker2(q, env, ctx, nodes_map, locks, monitor: DagMonitor = None,
                   cache: DagCache = None):
     """Worker che elabora nodi dalla coda con supporto per triggers."""
     while True:

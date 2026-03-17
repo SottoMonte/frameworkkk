@@ -1,8 +1,5 @@
 // Test suite
 
-a : 1;
-a : 2;
-
 // soglie e configurazione
 dict:limits := {
     "cpu":    80.0;
@@ -17,7 +14,7 @@ dict:messages := {
 };
 
 // logica di valutazione
-int:level := 0;
+int:level := random(0,100);
 
 bool:cpu_ok    := level < limits.cpu;
 bool:mem_ok    := level < limits.memory;
@@ -39,7 +36,10 @@ str:status := all_ok == true & messages.ok
 };*/
 
 health: {
-    check(every: "1s",depends_on:[aaa]) -> print;
+    check(schedule:10,triggers:[level]) -> print;
+    /*report(schedule:60,triggers:[level]) -> print;
+    alert(on: threshold_exceeded,triggers:[level]) -> print;
+    sync(schedule:30,triggers:[level]) -> print;*/
 };
 
 tuple:test_suite := (
