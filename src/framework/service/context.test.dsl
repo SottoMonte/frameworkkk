@@ -14,7 +14,7 @@ dict:messages := {
 };
 
 // logica di valutazione
-int:level := random(0,100);
+int:level := @random(0,100);
 
 bool:cpu_ok    := level < limits.cpu;
 bool:mem_ok    := level < limits.memory;

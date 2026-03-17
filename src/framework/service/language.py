@@ -279,14 +279,14 @@ class Interpreter:
 
     # ── visita generica ───────────────────────────────────────────────────────
 
-    async def visit(self, node, env):
+    async def visit(self, node, env, gad=[]):
         t = node.get("type")
         method = getattr(self, f"visit_{t}", None)
         if not method:
             raise DSLRuntimeError(f"Tipo AST sconosciuto: '{t}'", node.get("meta"))
         self._stack.append(node)
         try:
-            return await method(node, env)
+            return await method(node, env, gad)
         except DSLRuntimeError as e:
             trace = " -> ".join(
                 f"{n['type']}({n.get('meta',{}).get('line','?')}:{n.get('meta',{}).get('column','?')})"
@@ -297,26 +297,25 @@ class Interpreter:
 
     # ── primitivi ─────────────────────────────────────────────────────────────
 
-    async def visit_number(self, n, e):      return n["value"], e
-    async def visit_string(self, n, e):      return n["value"], e
-    async def visit_bool(self, n, e):        return n["value"], e
-    async def visit_any(self, n, e):         return None, e
-    async def visit_identifier(self, n, e):  return n["name"], e
-    async def visit_var(self, n, e):         return scheme.get(e, n["name"], n["name"]), e
-    async def visit_context_var(self, n, e): return ContextVar(n["name"]), e
+    async def visit_number(self, n, e, gad):      return n["value"], e, gad
+    async def visit_string(self, n, e, gad):      return n["value"], e, gad
+    async def visit_bool(self, n, e, gad):        return n["value"], e, gad
+    async def visit_any(self, n, e, gad):         return None, e, gad
+    async def visit_identifier(self, n, e, gad):  return n["name"], e, gad
+    async def visit_var(self, n, e, gad):         return scheme.get(e, n["name"], n["name"]), e, gad
+    async def visit_context_var(self, n, e, gad): return ContextVar(n["name"]), e, gad
 
-    async def visit_function_def(self, n, e):
+    async def visit_function_def(self, n, e, gad):
         p = n["params"].get("items", [n["params"]])
         r = n["return_type"].get("items", [n["return_type"]])
-        return (p, n["body"], r), e
+        return (p, n["body"], r), e, gad
 
     # ── strutture ─────────────────────────────────────────────────────────────
 
-    async def visit_task(self, node, env):
-        #action, _ = await self.visit(node["action"], env)
+    async def visit_task(self, node, env, gad=[]):
         kwargs = {}
         for k, v in node['trigger'].get("kwargs", {}).items():
-            val, _ = await self.visit(v, env)
+            val, env, gad = await self.visit(v, env, gad)
             kwargs[k] = val
         self._tasks.append({
             "name": node['trigger']['name'],
@@ -324,35 +323,35 @@ class Interpreter:
             "kwargs": kwargs
         })
         
-        return (node['trigger']['name'], node['action']), env
+        return (node['trigger']['name'], node['action']), env, gad
         
 
-    async def _collect(self, node, env, cast):
+    async def _collect(self, node, env, cast, gad=[]):
         items = []
         for item in node["items"]:
-            val, env = await self.visit(item, env)
+            val, env, gad = await self.visit(item, env, gad)
             items.append(val)
-        return cast(items), env
+        return cast(items), env, gad
 
-    async def visit_tuple(self, n, e):    return await self._collect(n, e, tuple)
-    async def visit_sequence(self, n, e): return await self._collect(n, e, tuple)
-    async def visit_list(self, n, e):     return await self._collect(n, e, list)
+    async def visit_tuple(self, n, e, gad=[]):    return await self._collect(n, e, tuple, gad)
+    async def visit_sequence(self, n, e, gad=[]): return await self._collect(n, e, tuple, gad)
+    async def visit_list(self, n, e, gad=[]):     return await self._collect(n, e, list, gad)
 
-    async def visit_pair(self, node, env):
-        value, _ = await self.visit(node["value"], env)
+    async def visit_pair(self, node, env, gad=[]):
+        value, _, gad = await self.visit(node["value"], env, gad)
         key = node["key"]["name"] if node["key"]["type"] == "var" \
               else (await self.visit(node["key"], env))[0]
-        return (key, value), env
+        return (key, value), env, gad
 
-    async def visit_declaration(self, node, env):
-        val, _ = await self.visit(node["value"], env)
-        key, _ = await self.visit(node["target"], env)
+    async def visit_declaration(self, node, env, gad=[]):
+        val, _, gad = await self.visit(node["value"], env, gad)
+        key, _, gad = await self.visit(node["target"], env, gad)
         meta   = node.get("meta")
         items  = key if isinstance(key[0], tuple) else [key]
         if node["target"]["type"] == "pair":
             tipo, name = node["target"]["key"]["name"], node["target"]["value"]["name"]
-            if tipo == "type": CUSTOM_TYPES[name] = val; return (name, val), env
-            return (name, await self._check(val, tipo, meta, name)), env
+            if tipo == "type": CUSTOM_TYPES[name] = val; return (name, val), env, gad
+            return (name, await self._check(val, tipo, meta, name)), env, gad
         keys, values = [], []
         for i, _ in enumerate(items):
             tipo = node["target"]["items"][i]["key"]["name"]
@@ -360,37 +359,28 @@ class Interpreter:
             if tipo == "type": CUSTOM_TYPES[name] = val
             keys.append(name)
             values.append(await self._check(val[i] if isinstance(val, tuple) else val, tipo, meta, name))
-        return (tuple(keys), tuple(values)), env
+        return (tuple(keys), tuple(values)), env, gad
 
     # ── dict ─────────────────────────────────────────────────────────────────
 
-    async def visit_dict(self, node, env):
+    async def visit_dict(self, node, env, gad=[]):
         items = node["items"]
+        result = {}
+        for it in items:
+            (key, val), _, gad = await self.visit(it, env|result, gad)
+            if isinstance(key, tuple):
+                result.update(dict(zip(key, val)))
+            else:
+                result[key] = val
+                gad.append(flow.node(key, lambda:val))
+        return result, env, gad
 
-        # fast-path: nessuna chiave dipende da un'altra chiave dello stesso dict
-        # → valutazione sequenziale, nessun DAG, nessuna dipendenza da networkx
-        defined = {k for it in items for k in flow._keys_of(it)}
-        if not any(flow._deps_of(it) & defined for it in items):
-            result = {}
-            for it in items:
-                (key, val), _ = await self.visit(it, env)
-                if isinstance(key, tuple):
-                    result.update(dict(zip(key, val)))
-                else:
-                    result[key] = val
-            return result, env
-
-        # slow-path: dipendenze interne rilevate → ordinamento topologico DAG
-        results, errors = await flow.run_ast(items, env, self.visit)
-        results.update({k: flow.error(e) for k, e in errors.items()})
-        return results, env
-
-    async def visit_pipe(self, node, env):
+    async def visit_pipe(self, node, env, gad=[]):
         steps = node["steps"]
-        val, env = await self.visit(steps[0], env)
+        val, env, gad = await self.visit(steps[0], env, gad)
         for step in steps[1:]:
-            val, env = await self.visit_call(step, env, args=[val])
-        return val, env
+            val, env, gad = await self.visit_call(step, env, gad, args=[val])
+        return val, env, gad
         '''steps = node["steps"]
         val, _ = await self.visit(steps[0], env)
         
@@ -409,9 +399,9 @@ class Interpreter:
         
         return flow.value_of(results["pipe_execution"]), env'''
 
-    async def visit_binop(self, node, env):
-        left,  env = await self.visit(node["left"],  env)
-        right, env = await self.visit(node["right"], env)
+    async def visit_binop(self, node, env, gad=[]):
+        left,  env, gad = await self.visit(node["left"],  env, gad)
+        right, env, gad = await self.visit(node["right"], env, gad)
         '''left_res,  env = await self.visit(node["left"],  env)
         right_res, env = await self.visit(node["right"], env)
         left, right = flow.value_of(left_res), flow.value_of(right_res)'''
@@ -424,19 +414,19 @@ class Interpreter:
                 l = left(**ctx)  if callable(left)  else left
                 r = right(**ctx) if callable(right) else right
                 return fn_op(l, r)
-            return LazyBinOp(lazy, f"{left!r} {op} {right!r}"), env
+            return LazyBinOp(lazy, f"{left!r} {op} {right!r}"), env, gad
         try:
-            return OPS[op](left, right), env
+            return OPS[op](left, right), env, gad
         except Exception as e:
             raise DSLRuntimeError(f"Errore '{op}': {e}", node.get("meta"))
 
-    async def visit_not(self, node, env):
-        val, env = await self.visit(node["value"], env)
-        return not val, env
+    async def visit_not(self, node, env, gad=[]):
+        val, env, gad = await self.visit(node["value"], env, gad)
+        return not val, env, gad
 
     # ── chiamate a funzione ───────────────────────────────────────────────────
 
-    async def visit_call(self, node, env, args=(), kwargs=None):
+    async def visit_call(self, node, env, gad=[], args=(), kwargs=None):
         name, meta = node.get("name"), node.get("meta")
         ast_args   = [(await self.visit(a, env))[0] for a in node.get("args", [])]
         ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
@@ -454,7 +444,7 @@ class Interpreter:
             result = await self._call_dsl_fn(fn, all_args, all_kwargs)
         else:
             raise DSLRuntimeError(f"Funzione sconosciuta: '{name}'", meta)
-        return result, env
+        return result, env, gad
 
     async def _call_dsl_fn(self, fn_triple, args, kwargs):
         params_ast, body_ast, return_ast = fn_triple
@@ -462,10 +452,10 @@ class Interpreter:
         for p, a in zip(params_ast, args):
             local_env[p["value"]["name"]] = await self._check(
                 a, p["key"]["name"], p.get("meta"), p["value"]["name"])
-        result, _ = await self.visit(body_ast, local_env)
+        result, _, _ = await self.visit(body_ast, local_env)
         out = []
         for ty in return_ast:
-            (tipo, name), _ = await self.visit(ty, local_env)
+            (tipo, name), _, _ = await self.visit(ty, local_env)
             if name in result:
                 out.append(await self._check(result[name], tipo, ty.get("meta"), name))
         return out[0] if len(out) == 1 else out
@@ -513,7 +503,7 @@ class Interpreter:
                 async def task_fn(env_dict):
                     try:
                         print("###############################2",env_dict)
-                        call, _ = await interpreter_ref.visit(ast, environment)
+                        call, _, _ = await interpreter_ref.visit(ast, environment)
                         result = await interpreter_ref.invoke(call)
                         #print("###############################3",result)
                         return flow.output(result)
@@ -533,7 +523,9 @@ class Interpreter:
     # ── entry point ───────────────────────────────────────────────────────────
  
     async def run(self, ast, env={}):
-        result, _ = await self.visit(ast, env)
+        result , _ , gad = await self.visit(ast, env)
+
+        print("###############################@@@@@@@@@",gad)
         
         # Orchestra i task usando flow.run()
         if self._tasks:
@@ -541,7 +533,7 @@ class Interpreter:
             flow_nodes = self._build_flow_nodes(env|result)
             print("###############################1",flow_nodes)
             # Esegui via flow.run()
-            shared_env, ctx = await flow.run(flow_nodes, env|result)
+            shared_env, ctx, _ = await flow.run(flow_nodes+gad, env|result)
             
             # Estrai i risultati
             task_results = {}

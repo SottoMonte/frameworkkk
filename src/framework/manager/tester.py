@@ -40,7 +40,7 @@ class tester:
             err
             for k, v in ctx.items()
             if not k.startswith("_") and flow.is_result(v) and not v["success"]
-            for err in flow.errors_of(v)
+            for err in v["errors"]
         ]
         if errors:
             framework_log("ERROR", f"Errore in {path}: {errors}", emoji="❌")

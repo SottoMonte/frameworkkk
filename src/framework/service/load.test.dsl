@@ -9,7 +9,7 @@ imports: {
 
 //aaa:imports.load |> print("############");
 
-nested: {
+/*nested: {
     a:{
         
         
@@ -17,7 +17,7 @@ nested: {
         b:{x:1};
     };
     b:{x:2};
-}
+}*/
 
 //cioa :nested.a.c |> print("############");
 
