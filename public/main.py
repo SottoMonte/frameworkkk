@@ -11,4 +11,6 @@ async def main(argv=sys.argv):
     return await loader_instance.bootstrap()
 
 if __name__ == "__main__":
-    run_module = asyncio.run(main(sys.argv))
+    loop = asyncio.get_event_loop()
+    run_module = loop.run_until_complete(main(sys.argv))
+    loop.run_forever()

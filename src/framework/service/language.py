@@ -20,7 +20,9 @@ start: dictionary | [item (item)*] -> dictionary_node
 
 dictionary: "{" [item (item)*] "}" -> dictionary_node
 
-item: (pair|type_sequence) ASSIGN_OP sequence ";"? | (atom|sequence) COLON_OP sequence ";"?
+item: (pair|type_sequence) ASSIGN_OP sequence ";"? 
+    | (atom|sequence) COLON_OP sequence ";"?
+    | function_call _ARROW sequence ";"? -> task
 
 ?type_sequence: pair ("," pair)* ","? -> sequence
 ?sequence: expr ("," expr)* ","?
@@ -74,6 +76,7 @@ value: SIGNED_NUMBER      -> number
      | "none"i            -> any_val
 
 PIPE: "|>"
+_ARROW: "->"
 ASSIGN_OP: ":="
 COLON_OP: ":"
 COMPARISON_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
@@ -139,6 +142,15 @@ OPS = {
 
 @v_args(meta=True)
 class DSLTransformer(Transformer):
+
+    def task(self, meta, items):
+        # items may contain trigger, deps (list), and action
+        # _ARROW is ignored because of the _ prefix in grammar
+        items = [i for i in items if i is not None]
+        trigger = items[0]
+        action = items[1]
+
+        return self._m({"type": "task", "trigger": trigger, "action": action}, meta)
 
     def _m(self, node, meta):
         node["meta"] = {"line": meta.line, "column": meta.column,
@@ -258,7 +270,9 @@ class DSLRuntimeError(Exception):
 
 class Interpreter:
 
-    def __init__(self): self._stack = []
+    def __init__(self): 
+        self._stack = []
+        self._tasks = []
 
     # ── visita generica ───────────────────────────────────────────────────────
 
@@ -294,6 +308,21 @@ class Interpreter:
         return (p, n["body"], r), e
 
     # ── strutture ─────────────────────────────────────────────────────────────
+
+    async def visit_task(self, node, env):
+        #action, _ = await self.visit(node["action"], env)
+        kwargs = {}
+        for k, v in node['trigger'].get("kwargs", {}).items():
+            val, _ = await self.visit(v, env)
+            kwargs[k] = val
+        self._tasks.append({
+            "name": node['trigger']['name'],
+            "action": node['action'],
+            "kwargs": kwargs
+        })
+        
+        return (node['trigger']['name'], node['action']), env
+        
 
     async def _collect(self, node, env, cast):
         items = []
@@ -457,11 +486,84 @@ class Interpreter:
                 f"Tipo errato '{name}': atteso {expected}, ottenuto {type(value).__name__}", meta)
         return value
 
+    # ── Orchestrazione task via flow.run() ─────────────────────────────────────
+ 
+    def _build_flow_nodes(self, env):
+        """
+        Converte i task DSL in nodi flow.node().
+        
+        Ogni task diventa un nodo con:
+          - name: task_name
+          - fn: funzione che visita action_ast
+          - deps: lista di dipendenze
+          - params: metadati (every, on, etc.)
+        """
+        flow_nodes = []
+        interpreter = self
+        
+        for task in self._tasks:
+            task_name = task["name"]
+            action_ast = task["action"]
+            depends_on = task.get("kwargs", {}).get("depends_on", [])
+            print("###############################1",depends_on)
+            
+            # Crea una closure che cattura correttamente le variabili
+            def make_task_fn(ast, interpreter_ref, environment,deps):
+                async def task_fn(env_dict):
+                    try:
+                        print("###############################2",deps)
+                        call, _ = await interpreter_ref.visit(ast, environment)
+                        result = await interpreter_ref.invoke(call, *deps)
+                        print("###############################3",result)
+                        return flow.success(result)
+                    except Exception as e:
+                        return flow.error(str(e))
+                return task_fn
+            
+            task_fn = make_task_fn(action_ast, interpreter, env,depends_on)
+            
+            # Crea il nodo flow
+            node = flow.node(
+                name=task_name,
+                fn=task_fn,
+                deps=[],
+                schedule=1,
+            )
+            
+            flow_nodes.append(node)
+        
+        return flow_nodes
+ 
     # ── entry point ───────────────────────────────────────────────────────────
-
-    async def run(self, ast, env=None):
-        result, _ = await self.visit(ast, env or {})
+ 
+    async def run(self, ast, env={}):
+        result, _ = await self.visit(ast, env)
+        
+        # Orchestra i task usando flow.run()
+        if self._tasks:
+            # Costruisci i nodi flow (non è async)
+            flow_nodes = self._build_flow_nodes(env|result)
+            
+            # Esegui via flow.run()
+            shared_env, ctx = await flow.run(flow_nodes, env|result)
+            
+            # Estrai i risultati
+            task_results = {}
+            for task_name in [t["name"] for t in self._tasks]:
+                result_entry = ctx.get(task_name)
+                if flow.is_result(result_entry):
+                    task_results[task_name] = flow.value_of(result_entry)
+                else:
+                    task_results[task_name] = result_entry
+            
+            # Aggiungi i risultati al dict principale
+            if isinstance(result, dict):
+                result["_tasks"] = task_results
+            else:
+                result = {"_result": result, "_tasks": task_results}
+        
         return result
+ 
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

@@ -142,11 +142,3 @@ tuple:test_suite := (
         "note": "Orchestratore: generazione path finale e provider corretto"; 
     }
 );
-
-/*{
-    validate: repository.validate_schema;
-    build->validate: repository.build_template;
-    fetch->build: repository.fetch_data;
-    map->fetch|build,validate:   repository.map_values;
-    action->map: repository.run_action;
-};*/
