@@ -543,6 +543,8 @@ class Interpreter:
         await self.runner.stop()
 
     async def run(self, name, ast, env={}):
+        self._tasks = [] # Reset tasks for this run
+        self._stack = []
         result , _ , gad = await self.visit(ast, env)
         flow_nodes = await self._build_flow_nodes(env|result)
         await self.runner.add_file(name,flow_nodes, env|result)

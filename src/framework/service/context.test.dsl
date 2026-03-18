@@ -42,7 +42,7 @@ zzz1:print(CCC);
 
 health: {
     
-    level(schedule:20) -> random(0,100);
+    level(schedule:5) -> random(0,100);
     check() -> print(level);
     /*report(schedule:60,triggers:[level]) -> print;
     alert(on: threshold_exceeded,triggers:[level]) -> print;
