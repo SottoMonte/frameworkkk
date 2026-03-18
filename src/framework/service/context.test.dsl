@@ -14,19 +14,24 @@ dict:messages := {
 };
 
 // logica di valutazione
-int:level := @random(0,100);
+any:level := random(0,100);
 
-bool:cpu_ok    := level < limits.cpu;
-bool:mem_ok    := level < limits.memory;
-bool:disk_ok   := level < limits.disk;
+any:cpu_ok    := @level < limits.cpu;
+any:mem_ok    := @level < limits.memory;
+any:disk_ok   := @level < limits.disk;
 
-bool:all_ok    := cpu_ok & mem_ok & disk_ok;
-bool:any_crit  := (not cpu_ok) | (not mem_ok);
+any:all_ok    := cpu_ok & mem_ok & disk_ok;
+any:any_crit  := (not cpu_ok) | (not mem_ok);
 
-str:status := all_ok == true & messages.ok
+/*bool:status := all_ok == true & messages.ok
            | any_crit == true & messages.critical
-           | messages.warning;
+           | messages.warning;*/
 
+aaac:print(all_ok(level:100));
+aaa:print(all_ok(level:0));
+CCC:@random(1,10);
+zzz:print(CCC);
+zzz1:print(CCC);
 // pipeline
 /*health: {
     check(every: 10) -> print(status);
@@ -36,7 +41,7 @@ str:status := all_ok == true & messages.ok
 };*/
 
 health: {
-    check(schedule:10,triggers:[level]) -> print;
+    check(schedule:1) -> print(level);
     /*report(schedule:60,triggers:[level]) -> print;
     alert(on: threshold_exceeded,triggers:[level]) -> print;
     sync(schedule:30,triggers:[level]) -> print;*/

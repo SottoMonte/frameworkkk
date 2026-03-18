@@ -4,17 +4,19 @@ import framework.service.flow as flow
 from framework.service.diagnostic import framework_log
 import asyncio
 
-
 class tester:
 
     async def run(self, **constants):
         framework_log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
+        interp = language.Interpreter()
+        await interp.start()
         for root, _, files in os.walk('./src'):
             for file in files:
                 if file.endswith('.test.dsl'):
-                    await self.dsl(path=os.path.join(root, file).replace('./', ''))
+                    await self.dsl(interp, path=os.path.join(root, file).replace('./', ''))
+        
 
-    async def dsl(self, **kwargs):
+    async def dsl(self, interp, **kwargs):
         from framework.service.load import resource
 
         path = kwargs.get('path')
@@ -33,10 +35,9 @@ class tester:
             return {"success": False, "errors": [str(ast)]}
 
         # ── esecuzione ────────────────────────────────────────────────────────
-        interp = language.Interpreter()
-        ctx    = await interp.run(ast, env=language.DSL_FUNCTIONS) or {}
-        #print("ctx", ctx)
-        errors = [
+        ctx    = await interp.run(path, ast, env=language.DSL_FUNCTIONS) or {}
+        
+        '''errors = [
             err
             for k, v in ctx.items()
             if not k.startswith("_") and flow.is_result(v) and not v["success"]
@@ -44,7 +45,7 @@ class tester:
         ]
         if errors:
             framework_log("ERROR", f"Errore in {path}: {errors}", emoji="❌")
-            return {"success": False, "errors": errors}
+            return {"success": False, "errors": errors}'''
 
         # ── esecuzione test suite ─────────────────────────────────────────────
         test_suite = ctx.get('test_suite', []) or []

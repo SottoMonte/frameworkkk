@@ -276,6 +276,7 @@ class Interpreter:
     def __init__(self): 
         self._stack = []
         self._tasks = []
+        self.runner = flow.DagRunner()
 
     # ── visita generica ───────────────────────────────────────────────────────
 
@@ -372,7 +373,7 @@ class Interpreter:
                 result.update(dict(zip(key, val)))
             else:
                 result[key] = val
-                gad.append(flow.node(key, lambda:val))
+                gad.append(flow.node(key, lambda x:val))
         return result, env, gad
 
     async def visit_pipe(self, node, env, gad=[]):
@@ -502,10 +503,15 @@ class Interpreter:
             def make_task_fn(ast, interpreter_ref, environment):
                 async def task_fn(env_dict):
                     try:
-                        print("###############################2",env_dict)
-                        call, _, _ = await interpreter_ref.visit(ast, environment)
-                        result = await interpreter_ref.invoke(call)
-                        #print("###############################3",result)
+                        print("###############################AST",ast)
+                        call = env_dict.get(ast["name"])
+                        print("###############################CALL",call)
+                        args = [env_dict.get(a["name"]) for a in ast["args"]]
+                        print("###############################ARGS",args)
+                        kwargs = {k: env_dict.get(v["name"]) for k, v in ast["kwargs"].items()}
+                        print("###############################KWARGS",kwargs)
+                        #call, _, _ = await interpreter_ref.visit(ast, environment)
+                        result = await interpreter_ref.invoke(call,args,kwargs)
                         return flow.output(result)
                     except Exception as e:
                         return flow.error(str(e))
@@ -521,35 +527,19 @@ class Interpreter:
         return flow_nodes
  
     # ── entry point ───────────────────────────────────────────────────────────
- 
-    async def run(self, ast, env={}):
-        result , _ , gad = await self.visit(ast, env)
+    async def start(self):
+        await self.runner.start()
 
-        print("###############################@@@@@@@@@",gad)
-        
-        # Orchestra i task usando flow.run()
-        if self._tasks:
-            # Costruisci i nodi flow (non è async)
-            flow_nodes = self._build_flow_nodes(env|result)
-            print("###############################1",flow_nodes)
-            # Esegui via flow.run()
-            shared_env, ctx, _ = await flow.run(flow_nodes+gad, env|result)
-            
-            # Estrai i risultati
-            task_results = {}
-            for task_name in [t["name"] for t in self._tasks]:
-                result_entry = ctx.get(task_name)
-                if flow.is_result(result_entry):
-                    task_results[task_name] = flow.value_of(result_entry)
-                else:
-                    task_results[task_name] = result_entry
-            
-            # Aggiungi i risultati al dict principale
-            if isinstance(result, dict):
-                result["_tasks"] = task_results
-            else:
-                result = {"_result": result, "_tasks": task_results}
-        
+    async def stop(self):
+        await self.runner.stop()
+
+    async def run(self, name, ast, env={}):
+        result , _ , gad = await self.visit(ast, env)
+        flow_nodes = self._build_flow_nodes(env|result)
+        await self.runner.add_file(name,flow_nodes, env|result)
+        await self.runner.wait_file(name)
+        ctx = self.runner.get_file_context(name)
+        print("###############################4",ctx)
         return result
  
 
