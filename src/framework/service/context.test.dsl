@@ -40,7 +40,14 @@ zzz1:print(CCC);
     sync(every: 30, on: 'force') -> print("sync");
 };*/
 
-
+health: {
+    
+    level(schedule:20) -> random(0,100);
+    check() -> print(level);
+    /*report(schedule:60,triggers:[level]) -> print;
+    alert(on: threshold_exceeded,triggers:[level]) -> print;
+    sync(schedule:30,triggers:[level]) -> print;*/
+};
 
 tuple:test_suite := (
 
