@@ -33,10 +33,10 @@ value_of = lambda v: v["outputs"] if is_result(v) else v
 
 # ── HELPERS ────────────────────────────────────────────────────────────────────
 
-async def _call_if_coro(fn: Callable, *args):
+async def _call_if_coro(fn: Callable, *args, **kwargs):
     if asyncio.iscoroutinefunction(fn):
-        return await fn(*args)
-    return fn(*args)
+        return await fn(*args, **kwargs)
+    return fn(*args, **kwargs)
 
 # ── NODE DEFINITION ────────────────────────────────────────────────────────────
 
