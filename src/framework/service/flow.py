@@ -54,23 +54,27 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
         "triggers": kwargs.get("triggers", []),
         "when": kwargs.get("when"),       # Aggiunto 'when' (condizione booleana)
         "timeout": kwargs.get("timeout"), # Aggiunto 'timeout' (secondi)
+        "retries": kwargs.get("retries", 0),         # Numero di tentativi in caso di errore
+        "retry_delay": kwargs.get("retry_delay", 0), # Ritardo tra i tentativi (secondi)
     }
 
-# ── CORE EXECUTION ─────────────────────────────────────────────────────────────
-
 # ── RUN HELPERS ────────────────────────────────────────────────────────────────
+
+def _get_clean_ctx(ctx: dict) -> dict:
+    """Restituisce una vista del contesto con i valori dei risultati scompattati (unwrapped)"""
+    return {k: value_of(v) for k, v in ctx.items() if not k.startswith("_")}
 
 async def _check_deps(node_def, ctx, t0) -> bool:
     """Controlla se le dipendenze sono soddisfatte"""
     name = node_def["name"]
     deps = node_def.get("deps", [])
     
-    # Dipendenze mancanti?
+    # 1. Dipendenze mancanti?
     missing = [d for d in deps if not is_result(ctx.get(d))]
     if missing:
         return False
         
-    # Dipendenze fallite?
+    # 2. Dipendenze fallite?
     failed = [d for d in deps if not ctx[d]["success"]]
     if failed:
         ctx[name] = error(f"dep failed: {', '.join(failed)}", t0)
@@ -79,7 +83,7 @@ async def _check_deps(node_def, ctx, t0) -> bool:
     return True
 
 async def _run_triggers(node_def, ctx, locks, nodes_map, queue, get_graph):
-    """Esegue in parallelo i triggers specificati"""
+    """Esegue in parallelo i triggers (Pull)"""
     triggers = node_def.get("triggers", [])
     if not triggers:
         return
@@ -93,50 +97,60 @@ async def _run_triggers(node_def, ctx, locks, nodes_map, queue, get_graph):
     await asyncio.gather(*(run_one(tn) for tn in triggers))
 
 async def _check_condition(node_def, ctx, t0) -> bool:
-    """Valuta la condizione 'when'"""
-    name = node_def["name"]
+    """Valuta la condizione 'when' fornendo un contesto pulito"""
     when_fn = node_def.get("when")
     if when_fn:
         try:
-            if not await _call_if_coro(when_fn, ctx):
-                return False
+            # Scompattiamo i risultati per permettere accesso diretto @var
+            clean_ctx = _get_clean_ctx(ctx)
+            print(clean_ctx['level'])
+            return await _call_if_coro(when_fn, **clean_ctx)
         except Exception as e:
-            ctx[name] = error(f"condition 'when' failed: {e}", t0)
+            ctx[node_def["name"]] = error(f"condition 'when' failed: {e}", t0)
             return False
     return True
 
-async def _execute_node(node_def, ctx, t0):
-    """Gestisce il ciclo di esecuzione: Hooks -> Call -> Hooks"""
+async def _run_hook(node_def, ctx, hook_name, extra_arg=None):
+    """Esegue un hook del nodo passando il contesto pulito"""
+    hook = node_def.get(hook_name)
+    if not hook:
+        return
+    
     name = node_def["name"]
-    # 1. Start Hook
-    if node_def.get("on_start"):
-        await _call_if_coro(node_def["on_start"], name, ctx)
-        
-    try:
-        # 2. Chiamata effettiva (con Timeout)
-        result = await _call_node_fn(node_def, ctx, t0)
-        
-        # 3. Success Hook
-        if result["success"] and node_def.get("on_success"):
-            await _call_if_coro(node_def["on_success"], name, result, ctx)
-        return result
-        
-    except Exception as e:
-        # 4. Error Hook
-        res = error(e, t0)
-        ctx[name] = res
-        if node_def.get("on_error"):
-            await _call_if_coro(node_def["on_error"], name, str(e), ctx)
-        return res
+    clean_ctx = _get_clean_ctx(ctx)
+    if extra_arg is not None:
+        await _call_if_coro(hook, name, extra_arg, clean_ctx)
+    else:
+        await _call_if_coro(hook, name, clean_ctx)
+
+async def _execute_with_retry(node_def, ctx, t0):
+    """Gestisce puramente il loop di retry e il delay tra tentativi"""
+    retries = node_def.get("retries", 0)
+    delay = node_def.get("retry_delay", 0)
+    
+    for attempt in range(retries + 1):
+        try:
+            return await _call_node_fn(node_def, ctx, t0)
+        except Exception as e:
+            if attempt < retries:
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                continue
+            # Se tutti i tentativi falliscono: registra e restituisci l'errore
+            res = error(e, t0)
+            ctx[node_def["name"]] = res
+            return res
 
 async def _call_node_fn(node_def, ctx, t0):
-    """Esegue la funzione del nodo rispettando il timeout"""
+    """Esegue la funzione del nodo passando il contesto pulito"""
     name = node_def["name"]
     timeout = node_def.get("timeout")
+    clean_ctx = _get_clean_ctx(ctx)
+    
     if timeout:
-        r = await asyncio.wait_for(_call_if_coro(node_def["fn"], ctx), timeout=timeout)
+        r = await asyncio.wait_for(_call_if_coro(node_def["fn"], clean_ctx), timeout=timeout)
     else:
-        r = await _call_if_coro(node_def["fn"], ctx)
+        r = await _call_if_coro(node_def["fn"], clean_ctx)
         
     result = r if is_result(r) else success(r, t0)
     ctx[name] = result
@@ -196,25 +210,34 @@ async def _handle_scheduling(node_def, ctx, queue):
 # ── CORE EXECUTION ─────────────────────────────────────────────────────────────
 
 async def _run_node(node_def, ctx, locks, nodes_map, queue=None, get_graph: Callable = None):
-    """Esegue un nodo del DAG orchestrando i vari passaggi"""
+    """Esegue un nodo del DAG orchestrando i vari passaggi atomici"""
     t0 = time.perf_counter()
     
-    # 1. Controllo Dipendenze
+    # 1. Controlli Preliminari
     if not await _check_deps(node_def, ctx, t0):
         return
-
-    # 2. Esecuzione Triggers (Pull) in parallelo
     await _run_triggers(node_def, ctx, locks, nodes_map, queue, get_graph)
 
-    # 3. Controllo Condizione (when)
+    # 2. Controllo Condizione (Se falsa, manteniamo comunque lo scheduling)
     if not await _check_condition(node_def, ctx, t0):
+        await _handle_scheduling(node_def, ctx, queue)
         return
 
-    # 4. Esecuzione effettiva (con Ciclo Hooks + Timeout)
-    result = await _execute_node(node_def, ctx, t0)
+    # 2. Lifecycle del Nodo (Hooks + Esecuzione Atomica)
+    await _run_hook(node_def, ctx, "on_start")
+    
+    result = await _execute_with_retry(node_def, ctx, t0)
+    
+    if result["success"]:
+        await _run_hook(node_def, ctx, "on_success", result)
+    else:
+        err_msg = ", ".join(result["errors"])
+        await _run_hook(node_def, ctx, "on_error", err_msg)
 
-    # 5. Gestione Post-Esecuzione (Successori e Scheduling)
+    # 3. Gestione Post-Esecuzione (Successori e Scheduling)
     await _handle_post_run(node_def, result, ctx, queue, get_graph)
+
+    
 
 # ── DAGRUNNER ──────────────────────────────────────────────────────────────────
 
