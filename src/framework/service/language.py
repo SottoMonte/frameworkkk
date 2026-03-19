@@ -34,7 +34,7 @@ item: (pair|type_sequence) ASSIGN_OP sequence ";"?
      | logic (PIPE logic)+ -> pipe_node
 
 ?logic: comparison
-      | "not" logic                -> not_op
+      | ("not" | "!") logic        -> not_op
       | logic ("and" | "&") logic  -> and_op
       | logic ("or"  | "|") logic  -> or_op
 
@@ -423,6 +423,10 @@ class Interpreter:
 
     async def visit_not(self, node, env, gad=[]):
         val, env, gad = await self.visit(node["value"], env, gad)
+        if callable(val):
+            def lazy(*_, **ctx):
+                return not val(**ctx)
+            return LazyBinOp(lazy, f"not {val!r}"), env, gad
         return not val, env, gad
 
     # ── chiamate a funzione ───────────────────────────────────────────────────
@@ -439,10 +443,9 @@ class Interpreter:
         all_kwargs = {k: flow.value_of(v) for k, v in {**(kwargs or {}), **ast_kwargs}.items()}'''
         fn = scheme.get(env, str(name))
         if callable(fn):
-            result = await fn(*all_args, **all_kwargs) \
-                     if asyncio.iscoroutinefunction(fn) else fn(*all_args, **all_kwargs)
+            result = await fn(*all_args, **all_kwargs) if asyncio.iscoroutinefunction(fn) else fn(*all_args, **all_kwargs)
         elif isinstance(fn, tuple) and len(fn) == 3:
-            result = await self._call_dsl_fn(fn, all_args, all_kwargs)
+            result = await self._call_dsl_fn(fn, args, all_kwargs)
         else:
             raise DSLRuntimeError(f"Funzione sconosciuta: '{name}'", meta)
         return result, env, gad
@@ -451,8 +454,12 @@ class Interpreter:
         params_ast, body_ast, return_ast = fn_triple
         local_env = {}
         for p, a in zip(params_ast, args):
-            local_env[p["value"]["name"]] = await self._check(
-                a, p["key"]["name"], p.get("meta"), p["value"]["name"])
+            local_env[p["value"]["name"]] = await self._check(a, p["key"]["name"], p.get("meta"), p["value"]["name"])
+
+        for p in params_ast[len(args):]:
+            name = p["value"]["name"]
+            if name in kwargs:
+                local_env[name] = await self._check(kwargs[name], p["key"]["name"], p.get("meta"), name)
         result, _, _ = await self.visit(body_ast, local_env)
         out = []
         for ty in return_ast:
@@ -461,12 +468,12 @@ class Interpreter:
                 out.append(await self._check(result[name], tipo, ty.get("meta"), name))
         return out[0] if len(out) == 1 else out
 
-    async def invoke(self, fn, args=(), kwargs=None):
+    async def invoke(self, fn, args=(), kwargs={}):
         """Esegue una funzione dall'esterno (usato dal tester)."""
         if callable(fn):
-            s = flow.step(fn, *args, **(kwargs or {}))
+            s = flow.step(fn, *args, **kwargs)
         elif isinstance(fn, tuple) and len(fn) == 3:
-            s = flow.step(self._call_dsl_fn, fn, args, kwargs or {})
+            s = flow.step(self._call_dsl_fn, fn, args, kwargs)
         else:
             raise DSLRuntimeError("Funzione sconosciuta")
         return await flow.act(s)
@@ -501,7 +508,7 @@ class Interpreter:
             deps = [a["name"] for a in action_ast["args"] if a["type"] == "var"]
             #print("###############################DEPS",deps)
             kwargs = task.get("kwargs", {})
-            #kwargs['deps'] = deps + kwargs.get('deps', [])
+            kwargs['deps'] = deps + kwargs.get('deps', [])
             
             # Crea una closure che cattura correttamente le variabili
             def make_task_fn(ast, interpreter_ref, environment):
@@ -513,7 +520,7 @@ class Interpreter:
                         args = [(await self.visit(a, env_dict))[0] for a in ast["args"]]
                         #print("###############################ARGS",args)
                         
-                        kwargs = {k: env_dict.get(v["name"]) for k, v in ast["kwargs"].items()}
+                        kwargs = {k: (await self.visit(v, env_dict))[0] for k, v in ast["kwargs"].items()}
                         #print("###############################KWARGS",kwargs)
 
                         #call, _, _ = await interpreter_ref.visit(ast, environment)

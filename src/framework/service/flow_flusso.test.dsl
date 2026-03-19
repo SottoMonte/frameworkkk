@@ -30,12 +30,12 @@ dict:messages := {
     "critical": "critico: intervento richiesto";
 };
 
-any:cpu_ok    := @level > limits.cpu;
-any:mem_ok    := @level > limits.memory;
-any:disk_ok   := @level > limits.disk;
+any:cpu_ok    := @cpu < limits.cpu;
+any:mem_ok    := @ram < limits.memory;
+any:disk_ok   := @disk < limits.disk;
 
 any:all_ok    := cpu_ok & mem_ok & disk_ok;
-any:any_crit  := cpu_ok | mem_ok;
+any:any_crit  :=  mem_ok | cpu_ok;
 
 any:status := all_ok == true & messages.ok
            | any_crit == false & messages.critical
@@ -47,14 +47,16 @@ function:error_function := (str:y){
 
 function:success_function := (str:y){x:y;}(str:x);
 
+aaa:print(success_function(y:"ciao"));
+
 health: {
 
-    level(schedule:5) -> random(0,100);
+    cpu(schedule:5) -> random(0,100);
     gpu(schedule:5) -> random(0,100);
-    ram(schedule:5) -> @random(0,100);
+    ram(schedule:5) -> random(0,100);
     disk(schedule:1) -> random(0,100);
-    check(deps:['level','gpu','ram','disk'],deps_policy:3) -> print("######### CPU:",level,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
-    //alert(schedule:5,when: all_ok) -> print("ATTENZIONE: SOGLIA SUPERATA");
+    check(deps_policy:3) -> print("######### CPU:",cpu,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
+    alert(schedule:5,deps:['check'],when: any_crit) -> print("ATTENZIONE: SOGLIA SUPERATA");
 };
 
 tuple:test_suite := (
