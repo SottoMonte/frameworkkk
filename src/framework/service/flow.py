@@ -52,59 +52,106 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
         "on_success": kwargs.get("on_success"),
         "on_error": kwargs.get("on_error"),
         "triggers": kwargs.get("triggers", []),
+        "when": kwargs.get("when"),       # Aggiunto 'when' (condizione booleana)
+        "timeout": kwargs.get("timeout"), # Aggiunto 'timeout' (secondi)
     }
 
 # ── CORE EXECUTION ─────────────────────────────────────────────────────────────
 
-async def _run_node(node_def, ctx, locks, nodes_map, queue=None, get_graph: Callable = None):
-    t0 = time.perf_counter()
+# ── RUN HELPERS ────────────────────────────────────────────────────────────────
+
+async def _check_deps(node_def, ctx, t0) -> bool:
+    """Controlla se le dipendenze sono soddisfatte"""
     name = node_def["name"]
-    
-    # 1. Controllo Dipendenze
     deps = node_def.get("deps", [])
-    # Se mancano dipendenze (mai eseguite), saltiamo l'esecuzione per ora.
-    # Verrà triggerato quando le dipendenze finiscono.
+    
+    # Dipendenze mancanti?
     missing = [d for d in deps if not is_result(ctx.get(d))]
     if missing:
-        return
-
-    # Se invece le dipendenze hanno fallito, marchiamo come errore.
+        return False
+        
+    # Dipendenze fallite?
     failed = [d for d in deps if not ctx[d]["success"]]
     if failed:
         ctx[name] = error(f"dep failed: {', '.join(failed)}", t0)
-        return
-    
-    # 1.1 Triggers (Riesegue nodi specificati)
+        return False
+        
+    return True
+
+async def _run_triggers(node_def, ctx, locks, nodes_map, queue, get_graph):
+    """Esegue in parallelo i triggers specificati"""
     triggers = node_def.get("triggers", [])
-    for t_name in triggers:
+    if not triggers:
+        return
+
+    async def run_one(t_name):
         t_def = nodes_map.get(t_name)
         if t_def and t_name in locks:
-            # Riesegui il trigger acquisendo il suo lock
             async with locks[t_name]:
                 await _run_node(t_def, ctx, locks, nodes_map, queue, get_graph)
     
+    await asyncio.gather(*(run_one(tn) for tn in triggers))
+
+async def _check_condition(node_def, ctx, t0) -> bool:
+    """Valuta la condizione 'when'"""
+    name = node_def["name"]
+    when_fn = node_def.get("when")
+    if when_fn:
+        try:
+            if not await _call_if_coro(when_fn, ctx):
+                return False
+        except Exception as e:
+            ctx[name] = error(f"condition 'when' failed: {e}", t0)
+            return False
+    return True
+
+async def _execute_node(node_def, ctx, t0):
+    """Gestisce il ciclo di esecuzione: Hooks -> Call -> Hooks"""
+    name = node_def["name"]
+    # 1. Start Hook
+    if node_def.get("on_start"):
+        await _call_if_coro(node_def["on_start"], name, ctx)
+        
     try:
-        if node_def.get("on_start"):
-            await _call_if_coro(node_def["on_start"], name, ctx)
+        # 2. Chiamata effettiva (con Timeout)
+        result = await _call_node_fn(node_def, ctx, t0)
         
-        # 2. Esecuzione
-        r = await _call_if_coro(node_def["fn"], ctx)
-        result = r if is_result(r) else success(r, t0)
-        
-        # Aggiorniamo il contesto col nuovo risultato (sovrascrive il vecchio)
-        ctx[name] = result
-        
+        # 3. Success Hook
         if result["success"] and node_def.get("on_success"):
             await _call_if_coro(node_def["on_success"], name, result, ctx)
-    
+        return result
+        
     except Exception as e:
-        ctx[name] = error(e, t0)
+        # 4. Error Hook
+        res = error(e, t0)
+        ctx[name] = res
         if node_def.get("on_error"):
             await _call_if_coro(node_def["on_error"], name, str(e), ctx)
-    
-    # ── LOGICA DI SCHEDULING E REATTIVITÀ ──────────────────────────────────
-    
-    # 3. Trigger dei successori (Reattività)
+        return res
+
+async def _call_node_fn(node_def, ctx, t0):
+    """Esegue la funzione del nodo rispettando il timeout"""
+    name = node_def["name"]
+    timeout = node_def.get("timeout")
+    if timeout:
+        r = await asyncio.wait_for(_call_if_coro(node_def["fn"], ctx), timeout=timeout)
+    else:
+        r = await _call_if_coro(node_def["fn"], ctx)
+        
+    result = r if is_result(r) else success(r, t0)
+    ctx[name] = result
+    return result
+
+async def _handle_post_run(node_def, result, ctx, queue, get_graph):
+    """Orchestra le attività post-esecuzione"""
+    # 1. Trigger successori (Push)
+    await _trigger_successors(node_def, result, queue, get_graph)
+    # 2. Scheduling
+    await _handle_scheduling(node_def, ctx, queue)
+
+async def _trigger_successors(node_def, result, queue, get_graph):
+    """Notifica e accoda i successori reattivi"""
+    name = node_def["name"]
     graph = get_graph(name) if get_graph else None
     if result["success"] and graph and queue:
         if name in graph:
@@ -114,10 +161,9 @@ async def _run_node(node_def, ctx, locks, nodes_map, queue=None, get_graph: Call
                 except asyncio.QueueFull:
                     await queue.put(succ)
 
-    # 4. Nota: i triggers sono stati eseguiti sopra. 
-    # Ogni trigger ha già aggiornato i PROPRI successori tramite la chiamata ricorsiva a _run_node.
-
-    # 4. Scheduling
+async def _handle_scheduling(node_def, ctx, queue):
+    """Gestisce il reschedule temporizzato se configurato"""
+    name = node_def["name"]
     schedule = node_def.get("schedule")
     duration = node_def.get("duration")
     
@@ -135,7 +181,7 @@ async def _run_node(node_def, ctx, locks, nodes_map, queue=None, get_graph: Call
                 should_reschedule = False
         
         if should_reschedule:
-            async def reschedule():
+            async def reschedule_task():
                 await asyncio.sleep(schedule)
                 if queue:
                     try:
@@ -143,9 +189,32 @@ async def _run_node(node_def, ctx, locks, nodes_map, queue=None, get_graph: Call
                     except asyncio.QueueFull:
                         await queue.put(name)
             
-            asyncio.create_task(reschedule())
+            asyncio.create_task(reschedule_task())
         elif "_schedule_start" in ctx and name in ctx["_schedule_start"]:
             del ctx["_schedule_start"][name]
+
+# ── CORE EXECUTION ─────────────────────────────────────────────────────────────
+
+async def _run_node(node_def, ctx, locks, nodes_map, queue=None, get_graph: Callable = None):
+    """Esegue un nodo del DAG orchestrando i vari passaggi"""
+    t0 = time.perf_counter()
+    
+    # 1. Controllo Dipendenze
+    if not await _check_deps(node_def, ctx, t0):
+        return
+
+    # 2. Esecuzione Triggers (Pull) in parallelo
+    await _run_triggers(node_def, ctx, locks, nodes_map, queue, get_graph)
+
+    # 3. Controllo Condizione (when)
+    if not await _check_condition(node_def, ctx, t0):
+        return
+
+    # 4. Esecuzione effettiva (con Ciclo Hooks + Timeout)
+    result = await _execute_node(node_def, ctx, t0)
+
+    # 5. Gestione Post-Esecuzione (Successori e Scheduling)
+    await _handle_post_run(node_def, result, ctx, queue, get_graph)
 
 # ── DAGRUNNER ──────────────────────────────────────────────────────────────────
 
