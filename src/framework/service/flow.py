@@ -1,11 +1,5 @@
 """
 DAG Engine v5 - REFACTOR ARCHITETTURALE: PARALLEL WORLDS (OPTIMIZED)
-- ✅ Separazione netta: Mondo dei DATI (ctx) vs Mondo dei RISULTATI (results)
-- ✅ Iniezione Dinamica: Ogni nodo sceglie cosa ricevere (puro o meta)
-- ✅ Ottimizzazione 1: Riutilizzo della vista (ChainMap calcolato una sola volta)
-- ✅ Ottimizzazione 2: Check dipendenze generativo (any/all)
-- ✅ Ottimizzazione 3: Successori pre-risolti (no graph lookup a runtime)
-- ✅ Ottimizzazione 4: Notifica Event-driven (no polling in wait_node/wait_file)
 """
 
 import asyncio
@@ -31,15 +25,14 @@ success = lambda out, t0=None: _make_result(True, out, None, t0)
 error = lambda err, t0=None: _make_result(False, None, err, t0)
 is_result = lambda v: isinstance(v, dict) and v.get("_tag") is _TAG
 value_of = lambda v: v["outputs"] if is_result(v) else v
+output = lambda v: v["outputs"] if is_result(v) else v
 
 # ── DSL UTILITIES ──────────────────────────────────────────────────────────────
 
 def step(fn: Callable, *args, **kwargs):
-    """Crea uno step DSL"""
     return (fn, args, kwargs)
 
 async def act(s):
-    """Esegui uno step DSL"""
     t0 = time.perf_counter()
     if not isinstance(s, tuple):
         return error("invalid step", t0)
@@ -58,19 +51,15 @@ async def _call_if_coro(fn: Callable, *args, **kwargs):
     return fn(*args, **kwargs)
 
 def _get_node_view(node_def, ctx, results):
-    """Costruisce una vista iniettando Dati Puri o Risultati in base alle richieste"""
     meta_deps = node_def.get("meta_deps", [])
     if not meta_deps:
         return ctx
-    
-    # Unione virtuale senza copia - Costo minimo
     meta_subset = {md: results[md] for md in meta_deps if md in results}
     return ChainMap(meta_subset, ctx)
 
 # ── NODE DEFINITION ────────────────────────────────────────────────────────────
 
 def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
-    """Crea un nodo DAG con opzione per iniezione metadati"""
     return {
         "name": name,
         "fn": fn,
@@ -91,11 +80,9 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
 # ── RUN HELPERS ────────────────────────────────────────────────────────────────
 
 async def _check_deps(node_def, results, t0) -> bool:
-    """Check dipendenze ottimizzato (generativo)"""
     deps = node_def.get("deps", [])
     if not deps: return True
     
-    # Controllo istantaneo senza creare liste temporanee
     if any(d not in results for d in deps):
         return False
         
@@ -107,7 +94,6 @@ async def _check_deps(node_def, results, t0) -> bool:
     return True
 
 async def _run_triggers(node_def, ctx, results, locks, nodes_map, queue):
-    """Esegue in parallelo i triggers (Pull)"""
     triggers = node_def.get("triggers", [])
     if not triggers:
         return
@@ -121,7 +107,6 @@ async def _run_triggers(node_def, ctx, results, locks, nodes_map, queue):
     await asyncio.gather(*(run_one(tn) for tn in triggers))
 
 async def _check_condition(node_def, view, results, t0) -> bool:
-    """Valuta la condizione 'when' sulla vista riutilizzata"""
     when_fn = node_def.get("when")
     if when_fn:
         try:
@@ -132,7 +117,6 @@ async def _check_condition(node_def, view, results, t0) -> bool:
     return True
 
 async def _run_hook(node_def, view, hook_name, extra_arg=None):
-    """Esegue un hook del nodo sulla vista riutilizzata"""
     hook = node_def.get(hook_name)
     if not hook:
         return
@@ -144,7 +128,6 @@ async def _run_hook(node_def, view, hook_name, extra_arg=None):
         await _call_if_coro(hook, name, view)
 
 async def _execute_with_retry(node_def, ctx, results, view, t0):
-    """Tentativi di esecuzione atomica"""
     retries = node_def.get("retries", 0)
     delay = node_def.get("retry_delay", 0)
     
@@ -161,7 +144,6 @@ async def _execute_with_retry(node_def, ctx, results, view, t0):
             return res
 
 async def _call_node_fn(node_def, ctx, results, view, t0):
-    """Esecuzione funzione nodo sulla vista riutilizzata"""
     name = node_def["name"]
     timeout = node_def.get("timeout")
     
@@ -176,14 +158,10 @@ async def _call_node_fn(node_def, ctx, results, view, t0):
     return result
 
 async def _handle_post_run(node_def, result, ctx, results, queue):
-    """Post-esecuzione ottimizzata (no graph search)"""
-    # 1. Trigger successori (Push)
     await _trigger_successors(node_def, result, queue)
-    # 2. Scheduling
     await _handle_scheduling(node_def, ctx, results, queue)
 
 async def _trigger_successors(node_def, result, queue):
-    """Notifica i successori usando la lista pre-risolta"""
     if result["success"] and queue:
         for succ in node_def.get("_successors", []):
             try:
@@ -192,7 +170,6 @@ async def _trigger_successors(node_def, result, queue):
                 await queue.put(succ)
 
 async def _handle_scheduling(node_def, ctx, results, queue):
-    """Gestione timer interni"""
     name = node_def["name"]
     schedule = node_def.get("schedule")
     duration = node_def.get("duration")
@@ -221,23 +198,27 @@ async def _handle_scheduling(node_def, ctx, results, queue):
 # ── CORE EXECUTION ─────────────────────────────────────────────────────────────
 
 async def _run_node(node_def, ctx, results, locks, nodes_map, queue=None):
-    """Esegue un nodo con ottimizzazioni attive"""
     t0 = time.perf_counter()
-    
-    # 1. Dipendenze
+
+    def _set_done():
+        event = node_def.get("_done_event")
+        if event:
+            event.set()
+
+    # FIX 1: se le dipendenze falliscono usciamo prima, ma settiamo comunque _done_event
     if not await _check_deps(node_def, results, t0):
+        _set_done()
         return
     await _run_triggers(node_def, ctx, results, locks, nodes_map, queue)
     
-    # Ottimizzazione 1: Vista calcolata una sola volta
     view = _get_node_view(node_def, ctx, results)
     
-    # 2. Condizione
+    # FIX 2: se la condizione 'when' è False usciamo prima, ma settiamo comunque _done_event
     if not await _check_condition(node_def, view, results, t0):
         await _handle_scheduling(node_def, ctx, results, queue)
+        _set_done()
         return
 
-    # 3. Esecuzione
     await _run_hook(node_def, view, "on_start")
     result = await _execute_with_retry(node_def, ctx, results, view, t0)
     
@@ -247,19 +228,12 @@ async def _run_node(node_def, ctx, results, locks, nodes_map, queue=None):
         err_msg = ", ".join(result["errors"])
         await _run_hook(node_def, view, "on_error", err_msg)
 
-    # 4. Successori e Scheduling
     await _handle_post_run(node_def, result, ctx, results, queue)
-    
-    # Ottimizzazione 4: Notifica completamento (Event)
-    event = node_def.get("_done_event")
-    if event:
-        event.set()
+    _set_done()
 
 # ── DAGRUNNER ──────────────────────────────────────────────────────────────────
 
 class DagRunner:
-    """DAG Runner ad alte prestazioni - Parallel Worlds Architecture"""
-    
     def __init__(self, num_workers: int = 3):
         self.num_workers = num_workers
         self.nodes_map = {}
@@ -292,15 +266,15 @@ class DagRunner:
                     self.q.task_done()
                     break
                 
+                # FIX 3: task_done viene chiamato SOLO nel finally, mai nei continue,
+                # per evitare il "task_done() called too many times" RuntimeError.
                 try:
                     name = node_name
                     if name not in self.nodes_map:
-                        self.q.task_done()
                         continue
                     
                     file_name = self._find_file_for_node(name)
                     if not file_name:
-                        self.q.task_done()
                         continue
                     
                     async with self.locks[name]:
@@ -339,7 +313,6 @@ class DagRunner:
             name = n["name"]
             self.nodes_map[name] = n
             self.locks[name] = asyncio.Lock()
-            # Ottimizzazione 4: Registro un Event per ogni nodo
             n["_done_event"] = asyncio.Event()
             G.add_node(name)
             for d in n.get("deps", []):
@@ -348,7 +321,6 @@ class DagRunner:
         if not nx.is_directed_acyclic_graph(G):
             raise ValueError(f"File {file_name}: DAG contiene cicli!")
         
-        # Ottimizzazione 3: Pre-risoluzione dei successori
         for n_name in G.nodes:
             if n_name in self.nodes_map:
                 self.nodes_map[n_name]["_successors"] = list(G.successors(n_name))
@@ -356,7 +328,6 @@ class DagRunner:
         self.files[file_name] = [n["name"] for n in nodes]
         self.context_by_file[file_name] = dict(context or {})
         
-        # Setup Risultati iniziali
         res_dict = {}
         for k, v in (context or {}).items():
             res_dict[k] = success(v)
@@ -389,14 +360,11 @@ class DagRunner:
         }
     
     async def wait_file(self, file_name: str):
-        """Attesa Event-driven per file"""
         nodes = self.files.get(file_name, [])
         if not nodes: return
-        # Aspettiamo che tutti i nodi abbiano scatenato il loro evento
         await asyncio.gather(*(self.nodes_map[n]["_done_event"].wait() for n in nodes if n in self.nodes_map))
 
     async def wait_node(self, file_name: str, node_name: str):
-        """Attesa Event-driven per nodo"""
         if node_name in self.nodes_map:
             await self.nodes_map[node_name]["_done_event"].wait()
 

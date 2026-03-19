@@ -54,7 +54,7 @@ health: {
     ram() -> @random(0,100);
     disk() -> random(0,100);
     check(schedule:5,triggers:['level','gpu','ram','disk']) -> print("######### CPU:",level,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
-    alert(schedule:5,when:cpu_ok) -> print("ATTENZIONE: SOGLIA SUPERATA");
+    alert(schedule:5,when: all_ok) -> print("ATTENZIONE: SOGLIA SUPERATA");
 };
 
 tuple:test_suite := (
