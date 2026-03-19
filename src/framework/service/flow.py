@@ -51,11 +51,12 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
         "on_start": kwargs.get("on_start"),
         "on_success": kwargs.get("on_success"),
         "on_error": kwargs.get("on_error"),
+        "triggers": kwargs.get("triggers", []),
     }
 
 # ── CORE EXECUTION ─────────────────────────────────────────────────────────────
 
-async def _run_node(node_def, ctx, locks, queue=None, graph=None):
+async def _run_node(node_def, ctx, locks, nodes_map, queue=None, get_graph: Callable = None):
     t0 = time.perf_counter()
     name = node_def["name"]
     
@@ -72,6 +73,15 @@ async def _run_node(node_def, ctx, locks, queue=None, graph=None):
     if failed:
         ctx[name] = error(f"dep failed: {', '.join(failed)}", t0)
         return
+    
+    # 1.1 Triggers (Riesegue nodi specificati)
+    triggers = node_def.get("triggers", [])
+    for t_name in triggers:
+        t_def = nodes_map.get(t_name)
+        if t_def and t_name in locks:
+            # Riesegui il trigger acquisendo il suo lock
+            async with locks[t_name]:
+                await _run_node(t_def, ctx, locks, nodes_map, queue, get_graph)
     
     try:
         if node_def.get("on_start"):
@@ -95,12 +105,17 @@ async def _run_node(node_def, ctx, locks, queue=None, graph=None):
     # ── LOGICA DI SCHEDULING E REATTIVITÀ ──────────────────────────────────
     
     # 3. Trigger dei successori (Reattività)
+    graph = get_graph(name) if get_graph else None
     if result["success"] and graph and queue:
-        for succ in graph.successors(name):
-            try:
-                queue.put_nowait(succ)
-            except asyncio.QueueFull:
-                await queue.put(succ)
+        if name in graph:
+            for succ in graph.successors(name):
+                try:
+                    queue.put_nowait(succ)
+                except asyncio.QueueFull:
+                    await queue.put(succ)
+
+    # 4. Nota: i triggers sono stati eseguiti sopra. 
+    # Ogni trigger ha già aggiornato i PROPRI successori tramite la chiamata ricorsiva a _run_node.
 
     # 4. Scheduling
     schedule = node_def.get("schedule")
@@ -167,6 +182,11 @@ class DagRunner:
                 return file_name
         return None
     
+    def _get_graph_for_node(self, node_name: str) -> Optional[nx.DiGraph]:
+        """Trova il grafo che contiene questo nodo"""
+        file_name = self._find_file_for_node(node_name)
+        return self.graphs.get(file_name) if file_name else None
+
     async def _worker(self, worker_id: int):
         """Worker asincrono"""
         try:
@@ -195,10 +215,9 @@ class DagRunner:
                     async with self.locks[node_name]:
                         node_def = self.nodes_map[node_name]
                         ctx = self.context_by_file[file_name]
-                        graph = self.graphs.get(file_name)
                         
-                        # Esegui nodo con context UNIFICATO, queue e graph per scheduling/reattività
-                        await _run_node(node_def, ctx, self.locks, self.q, graph)
+                        # Esegui nodo con context UNIFICATO, queue e provider di grafi per scheduling/reattività
+                        await _run_node(node_def, ctx, self.locks, self.nodes_map, self.q, self._get_graph_for_node)
                 
                 finally:
                     self.q.task_done()

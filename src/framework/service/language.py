@@ -499,9 +499,9 @@ class Interpreter:
             task_name = task["name"]
             action_ast = task["action"]
             deps = [a["name"] for a in action_ast["args"] if a["type"] == "var"]
-            print("###############################DEPS",deps)
+            #print("###############################DEPS",deps)
             kwargs = task.get("kwargs", {})
-            kwargs['deps'] = deps + kwargs.get('deps', [])
+            #kwargs['deps'] = deps + kwargs.get('deps', [])
             
             # Crea una closure che cattura correttamente le variabili
             def make_task_fn(ast, interpreter_ref, environment):
@@ -520,7 +520,7 @@ class Interpreter:
                         #call, _, _ = await interpreter_ref.visit(ast, environment)
                         result = await interpreter_ref.invoke(call,args,kwargs)
                         result = result.get("outputs",result)
-                        print(f"\n\n####RESULT {task_name}:{ast['name']}({', '.join(map(str,args))},{', '.join([f'{k}:{v}' for k, v in kwargs.items()])})={result}")
+                        #print(f"\n\n####RESULT {task_name}:{ast['name']}({', '.join(map(str,args))},{', '.join([f'{k}:{v}' for k, v in kwargs.items()])})={result}")
                         return result
                     except Exception as e:
                         return flow.error(str(e))
@@ -550,7 +550,7 @@ class Interpreter:
         await self.runner.add_file(name,flow_nodes, env|result)
         await self.runner.wait_file(name)
         ctx = self.runner.get_file_context(name)
-        print("###############################4",ctx)
+        #print("###############################4",ctx)
         return result
  
 
