@@ -49,12 +49,12 @@ function:success_function := (str:y){x:y;}(str:x);
 
 health: {
 
-    level() -> random(0,100);
-    gpu() -> random(0,100);
-    ram() -> @random(0,100);
-    disk() -> random(0,100);
-    check(schedule:5,triggers:['level','gpu','ram','disk']) -> print("######### CPU:",level,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
-    alert(schedule:5,when: all_ok) -> print("ATTENZIONE: SOGLIA SUPERATA");
+    level(schedule:5) -> random(0,100);
+    gpu(schedule:5) -> random(0,100);
+    ram(schedule:5) -> @random(0,100);
+    disk(schedule:1) -> random(0,100);
+    check(deps:['level','gpu','ram','disk'],deps_policy:3) -> print("######### CPU:",level,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
+    //alert(schedule:5,when: all_ok) -> print("ATTENZIONE: SOGLIA SUPERATA");
 };
 
 tuple:test_suite := (

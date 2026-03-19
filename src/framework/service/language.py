@@ -510,8 +510,7 @@ class Interpreter:
                         #print("###############################AST",ast)
                         call = env_dict.get(ast["name"])
                         #print("###############################CALL",ast["name"],call)
-                        #args = [flow.output(env_dict.get(a["name"])) for a in ast["args"]]
-                        args = [flow.output((await self.visit(a, env_dict))[0]) for a in ast["args"]]
+                        args = [(await self.visit(a, env_dict))[0] for a in ast["args"]]
                         #print("###############################ARGS",args)
                         
                         kwargs = {k: env_dict.get(v["name"]) for k, v in ast["kwargs"].items()}
@@ -548,8 +547,8 @@ class Interpreter:
         result , _ , gad = await self.visit(ast, env)
         flow_nodes = await self._build_flow_nodes(env|result)
         await self.runner.add_file(name,flow_nodes, env|result)
-        await self.runner.wait_file(name)
-        ctx = self.runner.get_file_context(name)
+        #await self.runner.wait_file(name)
+        #ctx = self.runner.get_file_context(name)
         #print("###############################4",ctx)
         return result
  
