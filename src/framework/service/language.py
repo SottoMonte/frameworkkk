@@ -553,10 +553,8 @@ class Interpreter:
         self._stack = []
         result , _ , gad = await self.visit(ast, env)
         flow_nodes = await self._build_flow_nodes(env|result)
-        await self.runner.add_file(name,flow_nodes, env|result)
-        #await self.runner.wait_file(name)
-        #ctx = self.runner.get_file_context(name)
-        #print("###############################4",ctx)
+        await self.runner.add_file(name,flow_nodes)
+        self.runner.create_session("user_1",name,env|result)
         return result
  
 
