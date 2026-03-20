@@ -49,7 +49,7 @@ function:success_function := (str:y){x:y;}(str:x);
 
 aaa:print(success_function(y:"ciao"));
 
-bios: ["bios_1", "bios_2", "bios_3", "bios_4"] |> foreach(print);
+bios: ["bios_1", "bios_2", "bios_3", "bios_4"] |> print("----->");
 
 health: {
 

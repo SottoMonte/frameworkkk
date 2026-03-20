@@ -279,7 +279,7 @@ class DagRunner:
                 for n_name in self.files[file_name]:
                     if n_name not in self.session_node_state[sid]:
                         self.session_node_state[sid][n_name] = {
-                            "last_check": 0.0,
+                            "last_check": -1.0,
                             "done": asyncio.Event()
                         }
 
@@ -291,7 +291,7 @@ class DagRunner:
 
         for n in self.files[file_name]:
             self.session_node_state[session_id][n] = {
-                "last_check": 0.0,
+                "last_check": -1.0,
                 "done": asyncio.Event()
             }
 
