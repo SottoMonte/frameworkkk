@@ -103,6 +103,33 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
         "retry_delay": kwargs.get("retry_delay", 0),
     }
 
+def foreach(collection, fn, prefix="foreach_node"):
+    """
+    collection: list o dict
+    fn: funzione che riceve item e ritorna valore o nodo DAG
+    prefix: prefisso per nomi dei nodi generati
+    """
+    nodes = []
+
+    if isinstance(collection, dict):
+        items = collection.items()
+    else:
+        items = enumerate(collection)
+
+    for i, item in items:
+        node_name = f"{prefix}_{i}"
+        
+        async def node_fn(ctx, _item=item, _fn=fn):
+            # fn può essere sync o async
+            val = _fn(_item)
+            if asyncio.iscoroutine(val):
+                val = await val
+            return val
+
+        nodes.append(node(name=node_name, fn=node_fn))
+
+    return nodes
+
 # -- CORE CHECKS ----------------------------------------------------------------
 
 async def _check_deps(node_def, results, state, t0):
@@ -246,6 +273,16 @@ class DagRunner:
         self.graphs[file_name] = G
         self.files[file_name]  = [n["name"] for n in nodes]
 
+        # Sync sessions that use this file
+        for sid, fname in self.session_files.items():
+            if fname == file_name:
+                for n_name in self.files[file_name]:
+                    if n_name not in self.session_node_state[sid]:
+                        self.session_node_state[sid][n_name] = {
+                            "last_check": 0.0,
+                            "done": asyncio.Event()
+                        }
+
     def create_session(self, session_id: str, file_name: str, context=None):
         self.session_ctx[session_id]     = dict(context or {})
         self.session_results[session_id] = {}
@@ -277,3 +314,13 @@ class DagRunner:
         self.session_results[session_id][node_name] = res
 
         self.event_queue.put_nowait((session_id, node_name))
+
+    def trigger(self, session_id: str, node_name: str):
+        self.event_queue.put_nowait((session_id, node_name))
+
+    async def wait_node(self, session_id: str, node_name: str):
+        if session_id not in self.session_node_state:
+            raise KeyError(f"Session {session_id} does not exist")
+        if node_name not in self.session_node_state[session_id]:
+            raise KeyError(f"Node {node_name} does not exist in session")
+        await self.session_node_state[session_id][node_name]["done"].wait()

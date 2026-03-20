@@ -116,6 +116,7 @@ CUSTOM_TYPES = {}
 DSL_FUNCTIONS = {
     'random': random.randint,
     'resource': load.resource,
+    'foreach': flow.foreach,
     'transform': scheme.transform,
     'get': scheme.get,
     'normalize': scheme.normalize,
@@ -376,7 +377,7 @@ class Interpreter:
                 gad.append(flow.node(key, lambda x:val))
         return result, env, gad
 
-    async def visit_pipe(self, node, env, gad=[]):
+    async def visit_pipe3(self, node, env, gad=[]):
         steps = node["steps"]
         val, env, gad = await self.visit(steps[0], env, gad)
         for step in steps[1:]:
@@ -399,6 +400,38 @@ class Interpreter:
         _, results = await flow.run([pipe_node], {"kwargs": val})
         
         return flow.value_of(results["pipe_execution"]), env'''
+
+    async def visit_pipe(self, node, env, gad=[]):
+        steps = node["steps"]
+        val = None  # valore intermedio della pipeline
+        session_id = 'interpreter'
+
+        for step in steps:
+
+            if step.get("type") == "call":
+                step_val, env, gad = await self.visit_call(step, env, gad, args=[val])
+            else:
+                step_val, env, gad = await self.visit(step, env, gad)
+            val = step_val
+            print(val)
+            # Se step genera nodi DAG
+            if isinstance(step_val, list) and step_val and isinstance(step_val[0], dict):
+                await self.runner.add_file('interpreter', step_val)
+
+                # Trigger roots
+                roots = [n for n in step_val if not n.get("deps")]
+                for r in roots:
+                    self.runner.trigger(session_id, r["name"])
+
+                # Aspetta che tutti i nodi completino
+                node_names = [n["name"] for n in step_val]
+                await asyncio.gather(*[self.runner.wait_node(session_id, n) for n in node_names])
+
+                # Recupera i risultati in un dict
+                val = {n: self.runner.session_results[session_id][n]["outputs"]
+                    for n in node_names}
+            print(val)
+        return val, env, gad
 
     async def visit_binop(self, node, env, gad=[]):
         left,  env, gad = await self.visit(node["left"],  env, gad)
@@ -544,6 +577,8 @@ class Interpreter:
     # ── entry point ───────────────────────────────────────────────────────────
     async def start(self):
         await self.runner.start()
+        await self.runner.add_file('interpreter', [])
+        self.runner.create_session('interpreter', 'interpreter', {})
 
     async def stop(self):
         await self.runner.stop()
