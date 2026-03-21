@@ -282,14 +282,14 @@ class Interpreter:
 
     # ── visita generica ───────────────────────────────────────────────────────
 
-    async def visit(self, node, env):
+    async def visit(self, node, env,path=""):
         t = node.get("type")
         method = getattr(self, f"visit_{t}", None)
         if not method:
             raise DSLRuntimeError(f"Tipo AST sconosciuto: '{t}'", node.get("meta"))
         self._stack.append(node)
         try:
-            return await method(node, env)
+            return await method(node, env,path)
         except DSLRuntimeError as e:
             trace = " -> ".join(
                 f"{n['type']}({n.get('meta',{}).get('line','?')}:{n.get('meta',{}).get('column','?')})"
@@ -298,122 +298,147 @@ class Interpreter:
         finally:
             self._stack.pop()
 
+    def _resolve_scope(self, path, name, available):
+        parts = path.split(".")
+        for i in range(len(parts), -1, -1):
+            cand = ".".join(parts[:i] + [name]) if i > 0 else name
+            if cand in available: return cand
+        return name
+
     # ── primitivi ─────────────────────────────────────────────────────────────
 
-    async def visit_number(self, n, e):      return n["value"], e
-    async def visit_string(self, n, e):      return n["value"], e
-    async def visit_bool(self, n, e):        return n["value"], e
-    async def visit_any(self, n, e):         return None, e
-    async def visit_identifier(self, n, e):  return n["name"], e
-    async def visit_var(self, n, e):         return scheme.get(e, n["name"], n["name"]), e
-    async def visit_context_var(self, n, e): return ContextVar(n["name"]), e
+    async def visit_number(self, n, e, path=""):      return n["value"], e
+    async def visit_string(self, n, e, path=""):      return n["value"], e
+    async def visit_bool(self, n, e, path=""):        return n["value"], e
+    async def visit_any(self, n, e, path=""):         return None, e
+    async def visit_identifier(self, n, e, path=""):  return n["name"], e
+    async def visit_var(self, n, e, path=""):         return scheme.get(e, n["name"], n["name"]), e
+    async def visit_context_var(self, n, e, path=""): return ContextVar(n["name"]), e
 
-    async def visit_function_def(self, n, e):
+    async def visit_function_def(self, n, e, path=""):
         p = n["params"].get("items", [n["params"]])
         r = n["return_type"].get("items", [n["return_type"]])
-        return (p, n["body"], r), e
+        return (p, n["body"], r, path), e
 
     # ── strutture ─────────────────────────────────────────────────────────────
 
-    async def visit_task(self, node, env):
+    async def visit_task(self, node, env, path=""):
+        task_name = node['trigger']['name']
+        task_path = f"{path}.{task_name}" if path else task_name
         kwargs = {}
         for k, v in node['trigger'].get("kwargs", {}).items():
-            val, env = await self.visit(v, env)
+            val, env = await self.visit(v, env, path=task_path + "." + k)
             kwargs[k] = val
         self._tasks.append({
-            "name": node['trigger']['name'],
+            "name": task_name,
             "action": node['action'],
-            "kwargs": kwargs
+            "kwargs": kwargs,
+            "path": task_path
         })
         
-        return (node['trigger']['name'], node['action']), env
+        return (task_name, node['action']), env
         
 
-    async def _collect(self, node, env, cast):
+    async def _collect(self, node, env, cast, path=""):
         items = []
-        for item in node["items"]:
-            val, env = await self.visit(item, env)
+        for i, item in enumerate(node["items"]):
+            item_path = f"{path}[{i}]" if path else f"[{i}]"
+            val, env = await self.visit(item, env, path=item_path)
             items.append(val)
         return cast(items), env
 
-    async def visit_tuple(self, n, e):    return await self._collect(n, e, tuple)
-    async def visit_sequence(self, n, e): return await self._collect(n, e, tuple)
-    async def visit_list(self, n, e):     return await self._collect(n, e, list)
+    async def visit_tuple(self, n, e, path=""):    return await self._collect(n, e, tuple, path=path)
+    async def visit_sequence(self, n, e, path=""): return await self._collect(n, e, tuple, path=path)
+    async def visit_list(self, n, e, path=""):     return await self._collect(n, e, list, path=path)
 
-    async def visit_pair(self, node, env):
-        value, _ = await self.visit(node["value"], env)
-        key = node["key"]["name"] if node["key"]["type"] == "var" \
-              else (await self.visit(node["key"], env))[0]
+    async def visit_pair(self, node, env, path=""):
+        if node["key"]["type"] == "var":
+            key = node["key"]["name"]
+        else:
+            key, _ = await self.visit(node["key"], env, path=path + ".key")
+            key = key[0] if isinstance(key, tuple) else key
+        
+        val_path = f"{path}.{key}" if path else str(key)
+        value, _ = await self.visit(node["value"], env, path=val_path)
         return (key, value), env
 
-    async def visit_declaration(self, node, env):
-        val, _ = await self.visit(node["value"], env)
-        key, _ = await self.visit(node["target"], env)
+    async def visit_declaration(self, node, env, path=""):
+        # We need the key first to build the path for the value
+        target = node["target"]
+        if target["type"] == "pair":
+             target_name = target["value"]["name"]
+        elif target["type"] == "var":
+             target_name = target["name"]
+        else:
+             target_name = None # For complex / tuple destructuring
+             
+        val_path = f"{path}.{target_name}" if path and target_name else (target_name or path)
+        val, _ = await self.visit(node["value"], env, path=val_path)
+        key, _ = await self.visit(node["target"], env, path=path)
         meta   = node.get("meta")
         items  = key if isinstance(key[0], tuple) else [key]
         if node["target"]["type"] == "pair":
             tipo, name = node["target"]["key"]["name"], node["target"]["value"]["name"]
             if tipo == "type": CUSTOM_TYPES[name] = val; return (name, val), env
-            return (name, await self._check(val, tipo, meta, name)), env
+            return (name, await self._check(val, tipo, meta, name, path=val_path)), env
         keys, values = [], []
         for i, _ in enumerate(items):
             tipo = node["target"]["items"][i]["key"]["name"]
             name = node["target"]["items"][i]["value"]["name"]
             if tipo == "type": CUSTOM_TYPES[name] = val
             keys.append(name)
-            values.append(await self._check(val[i] if isinstance(val, tuple) else val, tipo, meta, name))
+            item_val_path = f"{val_path}[{i}]" if val_path else f"[{i}]"
+            values.append(await self._check(val[i] if isinstance(val, tuple) else val, tipo, meta, name, path=item_val_path))
         return (tuple(keys), tuple(values)), env
 
     # ── dict ─────────────────────────────────────────────────────────────────
 
-    async def visit_dict(self, node, env):
+    async def visit_dict(self, node, env,path=""):
         items = node["items"]
         result = {}
         for it in items:
-            (key, val), _ = await self.visit(it, env|result)
+            (key, val), _ = await self.visit(it, env|result,path=path)
             if isinstance(key, tuple):
                 result.update(dict(zip(key, val)))
             else:
                 result[key] = val
         return result, env
 
-    async def visit_pipe(self, node, env):
-        def make_pipe_lazy(self, steps):
+    async def visit_pipe(self, node, env, path=""):
+        def make_pipe_lazy(self, steps, pipe_path):
             async def pipe_fn(ctx):
-                print("bOOOOM")
                 env = ctx
                 val = None
-                for step in steps:
+                for i, step in enumerate(steps):
+                    step_path = f"{pipe_path}[{i}]"
                     if step.get("type") == "call":
-                        val, _ = await self.visit_call(step, env, args=[val])
+                        val, _ = await self.visit_call(step, env, path=step_path, args=[val])
                     else:
-                        val, _ = await self.visit(step, env)
-
+                        val, _ = await self.visit(step, env, path=step_path)
                 return val
-
             return pipe_fn
+
         steps = node["steps"]
-
         # ── esecuzione immediata ──
-        val, env = await self.visit(steps[0], env)
+        val, env = await self.visit(steps[0], env, path=path + "[0]")
 
-        for step in steps[1:]:
+        for i, step in enumerate(steps[1:], 1):
+            step_path = path + f"[{i}]"
             if step.get("type") == "call":
-                val, env = await self.visit_call(step, env, args=[val])
+                val, env = await self.visit_call(step, env, path=step_path, args=[val])
             else:
-                val, env = await self.visit(step, env)
+                val, env = await self.visit(step, env, path=step_path)
 
         if len(steps) > 1:
-            self._dag.append(flow.node("pipe_lazy", make_pipe_lazy(self, steps)))
+            self._dag.append(flow.node("pipe_lazy", make_pipe_lazy(self, steps, path), path=path))
         
         return val, env
 
-    async def visit_binop(self, node, env):
-        left,  env = await self.visit(node["left"],  env)
-        right, env = await self.visit(node["right"], env)
-        '''left_res,  env = await self.visit(node["left"],  env)
-        right_res, env = await self.visit(node["right"], env)
-        left, right = flow.value_of(left_res), flow.value_of(right_res)'''
+    async def visit_binop(self, node, env, path=""):
+        left_path = path + ".left" if path else "left"
+        right_path = path + ".right" if path else "right"
+        left,  env = await self.visit(node["left"],  env, path=left_path)
+        right, env = await self.visit(node["right"], env, path=right_path)
         op = node["op"]
         if isinstance(left,  tuple): left  = left[0]
         if isinstance(right, tuple): right = right[0]
@@ -427,10 +452,10 @@ class Interpreter:
         try:
             return OPS[op](left, right), env
         except Exception as e:
-            raise DSLRuntimeError(f"Errore '{op}': {e}", node.get("meta"))
+            raise DSLRuntimeError(f"Errore '{op}': {e} at {path}", node.get("meta"))
 
-    async def visit_not(self, node, env):
-        val, env = await self.visit(node["value"], env)
+    async def visit_not(self, node, env, path=""):
+        val, env = await self.visit(node["value"], env, path=path + ".not")
         if callable(val):
             def lazy(*_, **ctx):
                 return not val(**ctx)
@@ -439,113 +464,97 @@ class Interpreter:
 
     # ── chiamate a funzione ───────────────────────────────────────────────────
 
-    async def visit_call(self, node, env, args=(), kwargs=None):
+    async def visit_call(self, node, env, path="", args=(), kwargs=None):
         name, meta = node.get("name"), node.get("meta")
-        ast_args   = [(await self.visit(a, env))[0] for a in node.get("args", [])]
-        ast_kwargs = {k: (await self.visit(v, env))[0] for k, v in node.get("kwargs", {}).items()}
+        call_path  = f"{path}.{name}" if path else str(name)
+        ast_args   = [(await self.visit(a, env, path=f"{call_path}[{i}]"))[0] for i, a in enumerate(node.get("args", []))]
+        ast_kwargs = {k: (await self.visit(v, env, path=f"{call_path}.{k}"))[0] for k, v in node.get("kwargs", {}).items()}
         all_args   = list(args) + ast_args
         all_kwargs = {**(kwargs or {}), **ast_kwargs}
-        '''ast_args   = [flow.value_of((await self.visit(a, env))[0]) for a in node.get("args", [])]
-        ast_kwargs = {k: flow.value_of((await self.visit(v, env))[0]) for k, v in node.get("kwargs", {}).items()}
-        all_args   = [flow.value_of(a) for a in args] + ast_args
-        all_kwargs = {k: flow.value_of(v) for k, v in {**(kwargs or {}), **ast_kwargs}.items()}'''
         fn = scheme.get(env, str(name))
         if callable(fn):
             result = await fn(*all_args, **all_kwargs) if asyncio.iscoroutinefunction(fn) else fn(*all_args, **all_kwargs)
-        elif isinstance(fn, tuple) and len(fn) == 3:
-            result = await self._call_dsl_fn(fn, args, all_kwargs)
+        elif isinstance(fn, tuple) and len(fn) == 4:
+            result = await self._call_dsl_fn(fn, all_args, all_kwargs, path=call_path)
+        elif isinstance(fn, tuple) and len(fn) == 3: # Backward compatibility
+            result = await self._call_dsl_fn(fn, all_args, all_kwargs, path=call_path)
         else:
-            raise DSLRuntimeError(f"Funzione sconosciuta: '{name}'", meta)
+            raise DSLRuntimeError(f"Funzione sconosciuta: '{name}' in {path}", meta)
         return result, env
 
-    async def _call_dsl_fn(self, fn_triple, args, kwargs):
-        params_ast, body_ast, return_ast = fn_triple
+    async def _call_dsl_fn(self, fn_triple, args, kwargs, path=""):
+        params_ast, body_ast, return_ast = fn_triple[:3]
         local_env = {}
-        for p, a in zip(params_ast, args):
-            local_env[p["value"]["name"]] = await self._check(a, p["key"]["name"], p.get("meta"), p["value"]["name"])
+        for i, (p, a) in enumerate(zip(params_ast, args)):
+             name = p["value"]["name"]
+             arg_path = f"{path}[{i}]" if path else name
+             local_env[name] = await self._check(a, p["key"]["name"], p.get("meta"), name, path=arg_path)
 
         for p in params_ast[len(args):]:
             name = p["value"]["name"]
             if name in kwargs:
-                local_env[name] = await self._check(kwargs[name], p["key"]["name"], p.get("meta"), name)
-        result, _ = await self.visit(body_ast, local_env)
+                arg_path = f"{path}.{name}" if path else name
+                local_env[name] = await self._check(kwargs[name], p["key"]["name"], p.get("meta"), name, path=arg_path)
+        
+        result, _ = await self.visit(body_ast, local_env, path=path + "->body")
         out = []
-        for ty in return_ast:
-            (tipo, name), _ = await self.visit(ty, local_env)
+        for i, ty in enumerate(return_ast):
+            (tipo, name), _ = await self.visit(ty, local_env, path=path + f"->out[{i}]")
             if name in result:
-                out.append(await self._check(result[name], tipo, ty.get("meta"), name))
+                out_path = f"{path}->out.{name}"
+                out.append(await self._check(result[name], tipo, ty.get("meta"), name, path=out_path))
         return out[0] if len(out) == 1 else out
 
-    async def invoke(self, fn, args=(), kwargs={}):
+    async def invoke(self, fn, args=(), kwargs={}, path=""):
         """Esegue una funzione dall'esterno (usato dal tester)."""
         if callable(fn):
             s = flow.step(fn, *args, **kwargs)
-        elif isinstance(fn, tuple) and len(fn) == 3:
-            s = flow.step(self._call_dsl_fn, fn, args, kwargs)
+        elif isinstance(fn, tuple) and (len(fn) == 3 or len(fn) == 4):
+            s = flow.step(self._call_dsl_fn, fn, args, kwargs, path)
         else:
             raise DSLRuntimeError("Funzione sconosciuta")
         return await flow.act(s)
 
-    async def _check(self, value, expected, meta, name):
+    async def _check(self, value, expected, meta, name, path=""):
         if expected in CUSTOM_TYPES:
             return await scheme.normalize(value, CUSTOM_TYPES[expected])
         py = TYPE_MAP.get(expected)
         if py and not (isinstance(value, py) and not (py is int and isinstance(value, bool))):
+            display_name = path if path else name
             raise DSLRuntimeError(
-                f"Tipo errato '{name}': atteso {expected}, ottenuto {type(value).__name__}", meta)
+                f"Tipo errato '{display_name}': atteso {expected}, ottenuto {type(value).__name__}", meta)
         return value
 
     # ── Orchestrazione task via flow.run() ─────────────────────────────────────
  
     async def _build_flow_nodes(self, env):
-        """
-        Converte i task DSL in nodi flow.node().
-        
-        Ogni task diventa un nodo con:
-          - name: task_name
-          - fn: funzione che visita action_ast
-          - deps: lista di dipendenze
-          - params: metadati (every, on, etc.)
-        """
-        flow_nodes = []
-        interpreter = self
-        
+        flow_nodes, interpreter = [], self
+        available = {t["path"] for t in self._tasks}
+
         for task in self._tasks:
-            task_name = task["name"]
-            action_ast = task["action"]
-            deps = [a["name"] for a in action_ast["args"] if a["type"] == "var"]
-            #print("###############################DEPS",deps)
-            kwargs = task.get("kwargs", {})
-            kwargs['deps'] = deps + kwargs.get('deps', [])
+            t_path, action = task.get("path", task["name"]), task["action"]
             
-            # Crea una closure che cattura correttamente le variabili
-            def make_task_fn(ast, interpreter_ref, environment):
+            # Resolve dependencies from ARGS and KWARGS of the task action
+            vars_in_args = [a["name"] for a in action["args"] if a["type"] == "var"]
+            vars_in_kwargs = [v["name"] for v in action["kwargs"].values() if isinstance(v, dict) and v.get("type") == "var"]
+            
+            deps = [self._resolve_scope(t_path, d, available) for d in set(vars_in_args + vars_in_kwargs)]
+            
+            kw = task.get("kwargs", {})
+            kw['deps'] = list(set(deps + kw.get('deps', [])))
+            
+            def make_task_fn(ast, interpreter_ref, t_path):
                 async def task_fn(env_dict):
                     try:
-                        #print("###############################AST",ast)
-                        call = env_dict.get(ast["name"])
-                        #print("###############################CALL",ast["name"],call)
-                        args = [(await self.visit(a, env_dict))[0] for a in ast["args"]]
-                        #print("###############################ARGS",args)
-                        
-                        kwargs = {k: (await self.visit(v, env_dict))[0] for k, v in ast["kwargs"].items()}
-                        #print("###############################KWARGS",kwargs)
-
-                        #call, _, _ = await interpreter_ref.visit(ast, environment)
-                        result = await interpreter_ref.invoke(call,args,kwargs)
-                        result = result.get("outputs",result)
-                        #print(f"\n\n####RESULT {task_name}:{ast['name']}({', '.join(map(str,args))},{', '.join([f'{k}:{v}' for k, v in kwargs.items()])})={result}")
-                        return result
-                    except Exception as e:
-                        return flow.error(str(e))
+                        call = scheme.get(env_dict, ast["name"])
+                        args = [(await interpreter_ref.visit(a, env_dict, path=t_path+".args"))[0] for a in ast["args"]]
+                        kwargs = {k: (await interpreter_ref.visit(v, env_dict, path=t_path+"."+k))[0] for k, v in ast["kwargs"].items()}
+                        res = await interpreter_ref.invoke(call, args, kwargs, path=t_path)
+                        return res.get("outputs", res)
+                    except Exception as e: return flow.error(str(e))
                 return task_fn
             
-            task_fn = make_task_fn(action_ast, interpreter, env)
-            
-            # Crea il nodo flow
-            node = flow.node(name=task_name,fn=task_fn,**kwargs)
-            
-            flow_nodes.append(node)
+            flow_nodes.append(flow.node(name=t_path, fn=make_task_fn(action, interpreter, t_path), path=t_path, **kw))
         
         return flow_nodes
  
@@ -562,9 +571,9 @@ class Interpreter:
         self._tasks = [] # Reset tasks for this run
         self._stack = []
         self._dag = []
-        result , _ = await self.visit(ast, env)
+        result , _ = await self.visit(ast, env, path="")
         flow_nodes = await self._build_flow_nodes(env|result)
-        #print("\n\n###############################FLOW NODES",self._dag)
+        #print("\n\n###############################FLOW NODES",flow_nodes)
         await self.runner.add_file(name,flow_nodes)
         self.runner.create_session("user_1",name,env|result)
         return result
@@ -579,6 +588,7 @@ def create_parser():
 def parse(source: str, parser: Lark) -> dict:
     return DSLTransformer().transform(parser.parse(source))
 
-async def execute(source_or_ast, parser, functions):
-    ast = parse(source_or_ast, parser) if isinstance(source_or_ast, str) else source_or_ast
-    return await Interpreter().run(ast, env=functions)
+async def execute(name, ast, functions, parser=None):
+    if parser is None: parser = create_parser()
+    ast = parse(ast, parser) if isinstance(ast, str) else ast
+    return await Interpreter().run(name, ast, env=functions)

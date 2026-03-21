@@ -7,6 +7,7 @@ from urllib.parse import urlparse, urlencode
 from jinja2 import Environment
 from cerberus import Validator
 from framework.service.diagnostic import LogReportEncoder, framework_log, buffered_log, _load_resource
+from collections.abc import Mapping
 
 mappa = {
     (str,dict,''): lambda v: v if isinstance(v, dict) else {},
@@ -42,7 +43,7 @@ async def convert(target, output,input=''):
 async def format(target ,**constants):
     try:
         jinjaEnv = Environment()
-        jinjaEnv.filters['get'] = lambda d, k, default=None: d.get(k, default) if isinstance(d, dict) else default
+        jinjaEnv.filters['get'] = lambda d, k, default=None: d.get(k, default) if isinstance(d, (dict, Mapping)) else default
         template = jinjaEnv.from_string(target)
         return template.render(constants)
     except Exception as e:
@@ -54,9 +55,9 @@ async def normalize(value, schema, mode='full'):
     """
     value = value or {}
 
-    if not isinstance(schema, dict):
+    if not isinstance(schema, Mapping):
         raise TypeError("Lo schema deve essere un dizionario valido per Cerberus.",schema)
-    if not isinstance(value, dict):
+    if not isinstance(value, Mapping):
         raise TypeError("I dati devono essere un dizionario valido per Cerberus.",value)
 
     # 1. Popolamento e Trasformazione Iniziale
@@ -213,7 +214,7 @@ def get(data, path, default=None):
         if key_base == "*":
             target = data if isinstance(data, (list, tuple)) else []
         else:
-            target = data.get(key_base, []) if isinstance(data, dict) else []
+            target = data.get(key_base, []) if isinstance(data, (dict, Mapping)) else []
             
         # Filtra gli elementi: cast a stringa per confronto robusto
         filtered = [x for x in target if isinstance(x, dict) and str(x.get(attr)) == expected]
@@ -230,9 +231,9 @@ def get(data, path, default=None):
             return [get(x, rest, default) for x in data]
         return default
         
-    # Navigazione standard (Dict, List, Attribute)
+    # Navigazione standard (Dict, Mapping, List, Attribute)
     try:
-        if isinstance(data, dict):
+        if isinstance(data, (dict, Mapping)):
             value = data.get(key, default)
         elif isinstance(data, (list, tuple)) and key.lstrip("-").isdigit():
             idx = int(key)

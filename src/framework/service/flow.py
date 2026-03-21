@@ -7,6 +7,8 @@ from typing import Any, Callable, List, Dict, Optional, Tuple
 import networkx as nx
 import time
 from collections import ChainMap
+from collections.abc import Mapping
+import framework.service.scheme as scheme
 
 # -- RESULT SYSTEM --------------------------------------------------------------
 
@@ -49,14 +51,28 @@ async def _call_if_coro(fn: Callable, *args, **kwargs):
         return await fn(*args, **kwargs)
     return fn(*args, **kwargs)
 
+def _set_path(data: Dict, path: str, value: Any):
+    if not path: return
+    parts = path.split('.')
+    for part in parts[:-1]:
+        data = data.setdefault(part, {})
+    data[parts[-1]] = value
+
 def _get_node_view(node_def, ctx, results, session_id=None):
     meta_deps = node_def.get("meta_deps", [])
-    if session_id:
-        ctx["session_id"] = session_id
-    if not meta_deps:
-        return ctx
-    meta_subset = {md: results[md] for md in meta_deps if md in results}
-    return ChainMap(meta_subset, ctx)
+    node_path = node_def.get("path") or node_def["name"]
+    node_meta = {"path": node_path, "session_id": session_id} if session_id else {"path": node_path}
+    
+    # Scoped lookup
+    parent_path = ".".join(node_path.split(".")[:-1])
+    parent_scope = scheme.get(ctx, parent_path) if parent_path else {}
+    if not isinstance(parent_scope, Mapping): parent_scope = {}
+
+    view_parts = [node_meta, parent_scope, ctx]
+    if meta_deps:
+        view_parts.insert(1, {md: results[md] for md in meta_deps if md in results})
+    
+    return ChainMap(*view_parts)
 
 def _parse_policy(policy) -> Tuple:
     if policy == "all":
@@ -101,6 +117,7 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
         "timeout":     kwargs.get("timeout"),
         "retries":     kwargs.get("retries", 0),
         "retry_delay": kwargs.get("retry_delay", 0),
+        "path":        kwargs.get("path"),
     }
 
 def foreach(collection, fn, prefix="foreach_node"):
@@ -168,17 +185,24 @@ async def _execute(node_def, ctx, results, view, t0):
     r = await _call_if_coro(node_def["fn"], view)
     result = r if is_result(r) else success(r, t0)
     result["_execution_time"] = time.perf_counter()
-    ctx[node_def["name"]] = result["outputs"]
-    results[node_def["name"]] = result
+    
+    node_name = node_def["name"]
+    node_path = node_def.get("path") or node_name
+    
+    # Store in context (hierarchical)
+    _set_path(ctx, node_path, result["outputs"])
+    # Store in results (flat by internal path name for deps lookup)
+    results[node_name] = result
     return result
 
 # -- RUN NODE -------------------------------------------------------------------
 
 async def _run_node(runner, session_id, node_name):
-    node_def = runner.nodes_map[node_name]
-    ctx      = runner.session_ctx[session_id]
-    results  = runner.session_results[session_id]
-    state    = runner.session_node_state[session_id][node_name]
+    file_name = runner.session_files[session_id]
+    node_def  = runner.nodes_map[file_name][node_name]
+    ctx       = runner.session_ctx[session_id]
+    results   = runner.session_results[session_id]
+    state     = runner.session_node_state[session_id][node_name]
 
     t0 = time.perf_counter()
 
@@ -237,7 +261,8 @@ class DagRunner:
             except asyncio.TimeoutError:
                 continue
 
-            if node_name not in self.nodes_map:
+            file_name = self.session_files.get(session_id)
+            if not file_name or file_name not in self.nodes_map or node_name not in self.nodes_map[file_name]:
                 self.event_queue.task_done()
                 continue
 
@@ -259,10 +284,11 @@ class DagRunner:
 
     async def add_file(self, file_name: str, nodes: List[Dict]):
         G = nx.DiGraph()
+        self.nodes_map[file_name] = {}
 
         for n in nodes:
             name = n["name"]
-            self.nodes_map[name] = n
+            self.nodes_map[file_name][name] = n
             G.add_node(name)
             for d in n.get("deps", []):
                 G.add_edge(d, name)
@@ -310,7 +336,12 @@ class DagRunner:
         res = success(value)
         res["_execution_time"] = time.perf_counter()
 
-        self.session_ctx[session_id][node_name] = value
+        file_name = self.session_files.get(session_id)
+        file_nodes = self.nodes_map.get(file_name, {})
+        node_def = file_nodes.get(node_name, {})
+        node_path = node_def.get("path") or node_name
+
+        _set_path(self.session_ctx[session_id], node_path, value)
         self.session_results[session_id][node_name] = res
 
         self.event_queue.put_nowait((session_id, node_name))

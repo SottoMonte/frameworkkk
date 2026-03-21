@@ -57,9 +57,11 @@ health: {
     gpu(schedule:5) -> random(0,100);
     ram(schedule:5) -> random(0,100);
     disk(schedule:1) -> random(0,100);
-    check(deps_policy:3) -> print("######### CPU:",cpu,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
+    check(deps_policy:3) -> print("######### CPU:",health.cpu,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
     alert(schedule:5,deps:['check'],when: any_crit) -> print("ATTENZIONE: SOGLIA SUPERATA");
 };
+
+ggg(schedule:5) -> print(health.cpu);
 
 tuple:test_suite := (
     { 
