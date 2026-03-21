@@ -49,7 +49,7 @@ function:success_function := (str:y){x:y;}(str:x);
 
 aaa:print(success_function(y:"ciao"));
 
-bios: ["bios_1", "bios_2", "bios_3", "bios_4"] |> print("----->");
+bios: cpu |> print("----->");
 
 health: {
 
@@ -62,6 +62,9 @@ health: {
 };
 
 ggg(schedule:5) -> print(health.cpu);
+zzz(schedule:5) -> bios();
+fff(schedule:5) -> health.cpu|>print("fff----->");
+bdd(schedule:5) -> @health.cpu|>print("bdd----->");
 
 tuple:test_suite := (
     { 

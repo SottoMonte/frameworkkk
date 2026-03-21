@@ -3,6 +3,7 @@ DAG Engine v7 - SESSION-AWARE + FRESHNESS FIXED
 """
 
 import asyncio
+import inspect
 from typing import Any, Callable, List, Dict, Optional, Tuple
 import networkx as nx
 import time
@@ -47,9 +48,10 @@ async def act(s):
 # -- HELPERS --------------------------------------------------------------------
 
 async def _call_if_coro(fn: Callable, *args, **kwargs):
-    if asyncio.iscoroutinefunction(fn):
-        return await fn(*args, **kwargs)
-    return fn(*args, **kwargs)
+    res = fn(*args, **kwargs)
+    if inspect.isawaitable(res):
+        return await res
+    return res
 
 def _set_path(data: Dict, path: str, value: Any):
     if not path: return
@@ -137,15 +139,36 @@ def foreach(collection, fn, prefix="foreach_node"):
         node_name = f"{prefix}_{i}"
         
         async def node_fn(ctx, _item=item, _fn=fn):
-            # fn può essere sync o async
-            val = _fn(_item)
-            if asyncio.iscoroutine(val):
-                val = await val
-            return val
+            return await _call_if_coro(_fn, _item)
 
         nodes.append(node(name=node_name, fn=node_fn))
 
     return nodes
+
+def pipeline(*args):
+    """
+    Crea una pipeline di step. 
+    Supporta: 
+      - pipeline(steps) -> factory che ritorna node_fn(ctx)
+      - pipeline(data, steps) -> esecuzione immediata (utile in |>)
+    """
+    if len(args) == 2:
+        data, steps = args
+        return pipeline(steps)(data)
+    
+    steps = args[0]
+    async def node_fn(*a, **ctx):
+        # Determiniamo l'input iniziale: se a[0] non è un contesto, è il dato
+        res = a[0] if (a and not isinstance(a[0], (dict, ChainMap))) else None
+        runtime_ctx = ctx or (a[0] if (a and isinstance(a[0], (dict, ChainMap))) else {})
+        
+        for i, s in enumerate(steps):
+            step_res = await act(step(s, res, **runtime_ctx))
+            if not step_res["success"]:
+                return step_res 
+            res = step_res["outputs"]
+        return res
+    return node_fn
 
 # -- CORE CHECKS ----------------------------------------------------------------
 
@@ -348,6 +371,18 @@ class DagRunner:
 
     def trigger(self, session_id: str, node_name: str):
         self.event_queue.put_nowait((session_id, node_name))
+
+    async def run_node(self, node_def: Dict, context: Dict):
+        """Esegue un nodo immediatamente usando la logica dell'engine."""
+        t0 = time.perf_counter()
+        # Mocking basic view for immediate execution
+        view = ChainMap(context, {"path": node_def.get("path") or node_def["name"]})
+        res = await _call_if_coro(node_def["fn"], view)
+        return res if is_result(res) else success(res, t0)
+
+    async def invoke(self, fn: Callable, *args, **kwargs):
+        """Esecuzione tracciata di una funzione tramite l'engine."""
+        return await act(step(fn, *args, **kwargs))
 
     async def wait_node(self, session_id: str, node_name: str):
         if session_id not in self.session_node_state:

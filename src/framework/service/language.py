@@ -8,6 +8,7 @@ import operator
 
 from lark import Lark, Transformer, Token, v_args
 from dataclasses import dataclass, field
+from collections import ChainMap
 
 import framework.service.scheme as scheme
 import framework.service.flow as flow
@@ -305,6 +306,26 @@ class Interpreter:
             if cand in available: return cand
         return name
 
+    def _find_vars(self, node):
+        if isinstance(node, dict):
+            if node.get("type") == "var": return {node["name"]}
+            return {v_name for v in node.values() for v_name in self._find_vars(v)}
+        if isinstance(node, (list, tuple)):
+            return {v_name for v in node for v_name in self._find_vars(v)}
+        return set()
+
+    def _register_task(self, node, env, path=None):
+        """Registra un nodo AST come task reattivo nel grafo (Auto-Tasking)."""
+        if "session_id" in env: return # Già in esecuzione
+        meta = node.get("meta", {})
+        name = self._node_name(node)
+        if any(t["name"] == name for t in self._tasks): return
+        self._tasks.append({"name": name, "action": node, "kwargs": {}, "path": path or name})
+
+    def _node_name(self, node):
+        meta = node.get("meta", {})
+        return f"pipe_L{meta.get('line','?')}C{meta.get('column','?')}"
+
     # ── primitivi ─────────────────────────────────────────────────────────────
 
     async def visit_number(self, n, e, path=""):      return n["value"], e
@@ -405,34 +426,27 @@ class Interpreter:
         return result, env
 
     async def visit_pipe(self, node, env, path=""):
-        def make_pipe_lazy(self, steps, pipe_path):
-            async def pipe_fn(ctx):
-                env = ctx
-                val = None
-                for i, step in enumerate(steps):
-                    step_path = f"{pipe_path}[{i}]"
-                    if step.get("type") == "call":
-                        val, _ = await self.visit_call(step, env, path=step_path, args=[val])
-                    else:
-                        val, _ = await self.visit(step, env, path=step_path)
-                return val
-            return pipe_fn
+        async def pipe_step(prev, step_ast, idx, **ctx):
+            e = ChainMap(ctx, env)
+            p = f"{path}[{idx}]"
+            if step_ast.get("type") == "call":
+                res, _ = await self.visit_call(step_ast, e, path=p, args=[prev])
+                return res
+            val, _ = await self.visit(step_ast, ctx, path=p)
+            if callable(val) and not isinstance(val, (dict, list, tuple, type)):
+                 res = await self.invoke(val, [prev], ctx, path=p)
+                 return res["outputs"]
+            return val
 
-        steps = node["steps"]
-        # ── esecuzione immediata ──
-        val, env = await self.visit(steps[0], env, path=path + "[0]")
-
-        for i, step in enumerate(steps[1:], 1):
-            step_path = path + f"[{i}]"
-            if step.get("type") == "call":
-                val, env = await self.visit_call(step, env, path=step_path, args=[val])
-            else:
-                val, env = await self.visit(step, env, path=step_path)
-
-        if len(steps) > 1:
-            self._dag.append(flow.node("pipe_lazy", make_pipe_lazy(self, steps, path), path=path))
+        # Creazione della pipeline e iniezione nel runner
+        steps = [lambda p, s=s, i=i, **kw: pipe_step(p, s, i, **kw) for i, s in enumerate(node["steps"])]
+        node_def = flow.node(name=self._node_name(node), fn=flow.pipeline(steps), path=path)
         
-        return val, env
+        # Esecuzione immediata tracciata dal runner
+        res = await self.runner.run_node(node_def, env)
+        
+        self._register_task(node, env, path)
+        return res["outputs"], env
 
     async def visit_binop(self, node, env, path=""):
         left_path = path + ".left" if path else "left"
@@ -472,15 +486,13 @@ class Interpreter:
         all_args   = list(args) + ast_args
         all_kwargs = {**(kwargs or {}), **ast_kwargs}
         fn = scheme.get(env, str(name))
-        if callable(fn):
-            result = await fn(*all_args, **all_kwargs) if asyncio.iscoroutinefunction(fn) else fn(*all_args, **all_kwargs)
-        elif isinstance(fn, tuple) and len(fn) == 4:
-            result = await self._call_dsl_fn(fn, all_args, all_kwargs, path=call_path)
-        elif isinstance(fn, tuple) and len(fn) == 3: # Backward compatibility
-            result = await self._call_dsl_fn(fn, all_args, all_kwargs, path=call_path)
-        else:
-            raise DSLRuntimeError(f"Funzione sconosciuta: '{name}' in {path}", meta)
-        return result, env
+        
+        # Utilizziamo self.invoke (che gestisce sia Python callables che DSL functions)
+        res = await self.invoke(fn, all_args, all_kwargs or {}, path=call_path)
+        if not res["success"]:
+            raise DSLRuntimeError(f"Errore call '{name}': {res['errors']}", meta)
+            
+        return res["outputs"], env
 
     async def _call_dsl_fn(self, fn_triple, args, kwargs, path=""):
         params_ast, body_ast, return_ast = fn_triple[:3]
@@ -533,29 +545,36 @@ class Interpreter:
 
         for task in self._tasks:
             t_path, action = task.get("path", task["name"]), task["action"]
-            
-            # Resolve dependencies from ARGS and KWARGS of the task action
-            vars_in_args = [a["name"] for a in action["args"] if a["type"] == "var"]
-            vars_in_kwargs = [v["name"] for v in action["kwargs"].values() if isinstance(v, dict) and v.get("type") == "var"]
-            
-            deps = [self._resolve_scope(t_path, d, available) for d in set(vars_in_args + vars_in_kwargs)]
-            
             kw = task.get("kwargs", {})
-            kw['deps'] = list(set(deps + kw.get('deps', [])))
+            
+            # Estrazione sicura e ricorsiva di tutte le dipendenze (incluse quelle nelle pipe)
+            raw_deps = self._find_vars(action) | self._find_vars(kw)
+            deps = {self._resolve_scope(t_path, d, available) for d in raw_deps}
+            kw['deps'] = list(deps)
             
             def make_task_fn(ast, interpreter_ref, t_path):
                 async def task_fn(env_dict):
                     try:
-                        call = scheme.get(env_dict, ast["name"])
-                        args = [(await interpreter_ref.visit(a, env_dict, path=t_path+".args"))[0] for a in ast["args"]]
-                        kwargs = {k: (await interpreter_ref.visit(v, env_dict, path=t_path+"."+k))[0] for k, v in ast["kwargs"].items()}
-                        res = await interpreter_ref.invoke(call, args, kwargs, path=t_path)
+                        # Se l'azione ha un nome, è una chiamata diretta a funzione
+                        if isinstance(ast, dict) and "name" in ast:
+                            call = scheme.get(env_dict, ast["name"])
+                            args = [(await interpreter_ref.visit(a, env_dict, path=t_path+".args"))[0] for a in ast.get("args",[])]
+                            kwargs = {k: (await interpreter_ref.visit(v, env_dict, path=t_path+"."+k))[0] for k, v in ast.get("kwargs",{}).items()}
+                            res = await interpreter_ref.invoke(call, args, kwargs, path=t_path)
+                        else:
+                            # Altrimenti visitiamo l'intero nodo (es. pipe, binop, lambda)
+                            call, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
+                            # Se il risultato è già un valore (non chiamabile), è il nostro output
+                            if not callable(call):
+                                res = flow.success(call)
+                            else:
+                                res = await interpreter_ref.invoke(call, [], {}, path=t_path)
+                        
                         return res.get("outputs", res)
                     except Exception as e: return flow.error(str(e))
                 return task_fn
             
             flow_nodes.append(flow.node(name=t_path, fn=make_task_fn(action, interpreter, t_path), path=t_path, **kw))
-        
         return flow_nodes
  
     # ── entry point ───────────────────────────────────────────────────────────
