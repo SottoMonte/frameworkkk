@@ -416,7 +416,7 @@ def foreach(iterable, fn):
         return results
     return _fn
 
-async def switch(*cases,**kwargs):
+async def switch(data,cases):
     """
     Switch funzionale stile IF / ELIF / ELSE
 
@@ -431,8 +431,8 @@ async def switch(*cases,**kwargs):
     - La prima condizione vera vince
     - 'true' è il default
     """
-    print(cases,"cases")
-    '''default_fn = cases.get(True)
+    
+    default_fn = cases.get(True)
 
     for cond, fn in cases.items():
 
@@ -442,17 +442,22 @@ async def switch(*cases,**kwargs):
 
         try:
             if callable(cond):
-                if cond(**view):   # 🔥 valuta predicate dinamico
-                    return await _call_if_coro(fn, view)
+                if cond(**data):   # 🔥 valuta predicate dinamico
+                    c, _ = await _call_if_coro(fn, data)
+                    return c
             else:
-                if cond:          # es: True / costanti
-                    return await _call_if_coro(fn, view)
+                return fn
 
         except Exception as e:
+            print(e,"e")
             raise RuntimeError(f"switch condition error: {e}")
 
     # default
     if default_fn:
-        return await _call_if_coro(default_fn, view)
+        if callable(default_fn):
+            a,_ = await _call_if_coro(default_fn, data)
+            return a
+        else:
+            return default_fn
 
-    return None'''
+    return None

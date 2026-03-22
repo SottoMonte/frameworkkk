@@ -257,11 +257,15 @@ class ContextVar:
 
 @dataclass(frozen=True)
 class LazyCall:
+    interpreter: object = field(repr=False, compare=False)
     name: str
     call_node: dict = field(repr=False, compare=False)
-    env: dict       = field(repr=False, compare=False)
-    '''def __call__(self, *args, **kwargs):
-        return interpreter.visit(self.call_node, self.env)'''
+    env: dict = field(repr=False, compare=False)
+    '''def __call__(self, env, *args, **kwargs):
+        return self.interpreter.visit_call(self.call_node, env, *args, **kwargs)'''
+    def __call__(self, env, *args, **kwargs):
+        tt = {**self.call_node, "lazy": False}
+        return self.interpreter.visit_call(tt, self.env|env, *args, **kwargs)
     def __repr__(self): return f"@{self.name}(...)"
 
 class DSLRuntimeError(Exception):
@@ -520,7 +524,8 @@ class Interpreter:
     async def visit_call(self, node, env, path="", args=(), kwargs=None):
         name, meta = node.get("name"), node.get("meta")
         if node.get("lazy"):
-            return LazyCall(name, node, env), env
+            #node.pop("lazy", None)
+            return LazyCall(self,name, node, env), env
         call_path  = f"{path}.{name}" if path else str(name)
         ast_args   = [(await self.visit(a, env, path=f"{call_path}[{i}]"))[0] for i, a in enumerate(node.get("args", []))]
         ast_kwargs = {k: (await self.visit(v, env, path=f"{call_path}.{k}"))[0] for k, v in node.get("kwargs", {}).items()}
