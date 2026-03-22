@@ -49,7 +49,7 @@ function:success_function := (str:y){x:y;}(str:x);
 
 aaa:print(success_function(y:"ciao"));
 
-bios: cpu |> print("----->");
+bios: [1,2,3] |> print("----->");
 
 health: {
 
@@ -65,6 +65,25 @@ ggg(schedule:5) -> print(health.cpu);
 zzz(schedule:5) -> bios();
 fff(schedule:5) -> health.cpu|>print("fff----->");
 bdd(schedule:5) -> @health.cpu|>print("bdd----->");
+
+okkk(schedule:5) -> {"cpu":health.cpu;"gpu":health.gpu;"ram":health.ram;"disk":health.disk} |> 
+switch({
+    @health.cpu > limits.cpu: @print("cpu limite superato");
+    @health.gpu > 80:         @print("gpu limite superato");
+    @health.ram > limits.memory: @print("ram limite superato");
+    @health.disk > limits.disk:  @print("disk limite superato");
+    true: @print("situazione nominale");
+}) |> print;
+
+/*statico : switch({
+    @health.cpu > limits.cpu: print("cpu limite superato");
+    @health.gpu > 80:         print("gpu limite superato");
+    @health.ram > limits.memory: print("ram limite superato");
+    @health.disk > limits.disk:  print("disk limite superato");
+    true: print("situazione nominale");
+});*/
+
+
 
 tuple:test_suite := (
     { 

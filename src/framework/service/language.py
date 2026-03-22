@@ -118,6 +118,7 @@ DSL_FUNCTIONS = {
     'random': random.randint,
     'resource': load.resource,
     'foreach': flow.foreach,
+    'switch':  flow.switch,
     'transform': scheme.transform,
     'get': scheme.get,
     'normalize': scheme.normalize,
@@ -209,6 +210,7 @@ class DSLTransformer(Transformer):
 
     def function_call(self, meta, tree):
         fn = tree[0]
+        lazy = fn.get("type") == "context_var"
         inputs = tree[1].get("items",[]) if isinstance(tree[1],dict) and tree[1]["type"] == "sequence" else [tree[1]]
         args, kwargs = [], {}
         for inp in inputs:
@@ -216,7 +218,10 @@ class DSLTransformer(Transformer):
                 kwargs[inp["key"]["name"]] = inp["value"]
             else:
                 args.append(inp)
-        return self._m({"type":"call","name":fn.get("name"),"args":args,"kwargs":kwargs}, meta)
+
+        node = {"type":"call","name":fn.get("name"),"args":args,"kwargs":kwargs}
+        if lazy: node["lazy"] = True
+        return self._m(node, meta)
 
     def binary_op(self, meta, a):
         if len(a) == 2:
@@ -249,6 +254,15 @@ class ContextVar:
     name: str
     def __call__(self, *_, **ctx): return scheme.get(ctx, self.name)
     def __repr__(self):            return self.name
+
+@dataclass(frozen=True)
+class LazyCall:
+    name: str
+    call_node: dict = field(repr=False, compare=False)
+    env: dict       = field(repr=False, compare=False)
+    '''def __call__(self, *args, **kwargs):
+        return interpreter.visit(self.call_node, self.env)'''
+    def __repr__(self): return f"@{self.name}(...)"
 
 class DSLRuntimeError(Exception):
     def __init__(self, message, meta=None):
@@ -300,18 +314,43 @@ class Interpreter:
             self._stack.pop()
 
     def _resolve_scope(self, path, name, available):
+        """
+        Risolve il nome cercando prima nello scope locale (più profondo),
+        poi risalendo verso la radice. Restituisce il path completo se trovato,
+        altrimenti il nome grezzo.
+        
+        es: path="a.b.c", name="x", available={"a.b.x","x"} → "a.b.x"
+        """
         parts = path.split(".")
+        # Scende dal più specifico al più generale
         for i in range(len(parts), -1, -1):
-            cand = ".".join(parts[:i] + [name]) if i > 0 else name
-            if cand in available: return cand
+            candidate = ".".join(parts[:i] + [name]) if i > 0 else name
+            if candidate in available:
+                return candidate
+        # Fallback: cerca per suffisso (es. "x" matcha "a.b.x")
+        for avail in sorted(available, key=len, reverse=True):
+            if avail == name or avail.endswith(f".{name}"):
+                return avail
         return name
 
-    def _find_vars(self, node):
+    def _find_vars(self, node, _seen=None):
+        """Visita ricorsivamente l'AST raccogliendo tutte le var/context_var."""
+        if _seen is None:
+            _seen = set()
         if isinstance(node, dict):
-            if node.get("type") == "var": return {node["name"]}
-            return {v_name for v in node.values() for v_name in self._find_vars(v)}
+            t = node.get("type")
+            if t in ("var", "context_var"):
+                return {node["name"]}
+            # Non scendere dentro function_def (scope separato)
+            if t == "function_def":
+                return set()
+            return {
+                v for key, child in node.items()
+                if key != "meta"
+                for v in self._find_vars(child, _seen)
+            }
         if isinstance(node, (list, tuple)):
-            return {v_name for v in node for v_name in self._find_vars(v)}
+            return {v for child in node for v in self._find_vars(child, _seen)}
         return set()
 
     def _register_task(self, node, env, path=None):
@@ -480,6 +519,8 @@ class Interpreter:
 
     async def visit_call(self, node, env, path="", args=(), kwargs=None):
         name, meta = node.get("name"), node.get("meta")
+        if node.get("lazy"):
+            return LazyCall(name, node, env), env
         call_path  = f"{path}.{name}" if path else str(name)
         ast_args   = [(await self.visit(a, env, path=f"{call_path}[{i}]"))[0] for i, a in enumerate(node.get("args", []))]
         ast_kwargs = {k: (await self.visit(v, env, path=f"{call_path}.{k}"))[0] for k, v in node.get("kwargs", {}).items()}
@@ -519,12 +560,16 @@ class Interpreter:
 
     async def invoke(self, fn, args=(), kwargs={}, path=""):
         """Esegue una funzione dall'esterno (usato dal tester)."""
-        if callable(fn):
+        if isinstance(fn, LazyCall):
+            merged = ChainMap(kwargs, fn.env)
+            res, _ = await self.visit_call(fn.call_node, merged, path=path)
+            return res
+        elif callable(fn):
             s = flow.step(fn, *args, **kwargs)
         elif isinstance(fn, tuple) and (len(fn) == 3 or len(fn) == 4):
             s = flow.step(self._call_dsl_fn, fn, args, kwargs, path)
         else:
-            raise DSLRuntimeError("Funzione sconosciuta")
+            raise DSLRuntimeError("Funzione sconosciuta",fn)
         return await flow.act(s)
 
     async def _check(self, value, expected, meta, name, path=""):
@@ -550,28 +595,38 @@ class Interpreter:
             # Estrazione sicura e ricorsiva di tutte le dipendenze (incluse quelle nelle pipe)
             raw_deps = self._find_vars(action) | self._find_vars(kw)
             deps = {self._resolve_scope(t_path, d, available) for d in raw_deps}
+            print(raw_deps,"raw_deps")
+            print(deps,"deps")
             kw['deps'] = list(deps)
             
             def make_task_fn(ast, interpreter_ref, t_path):
-                async def task_fn(env_dict):
-                    try:
-                        # Se l'azione ha un nome, è una chiamata diretta a funzione
-                        if isinstance(ast, dict) and "name" in ast:
+                if ast.get("type") == "pipe":
+                    async def task_fn(env_dict):
+                        try:
+                            res, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
+                            return res
+                        except Exception as e:
+                            return flow.error(str(e))
+                elif ast.get("type") == "call":
+                    async def task_fn(env_dict):
+                        try:
                             call = scheme.get(env_dict, ast["name"])
                             args = [(await interpreter_ref.visit(a, env_dict, path=t_path+".args"))[0] for a in ast.get("args",[])]
                             kwargs = {k: (await interpreter_ref.visit(v, env_dict, path=t_path+"."+k))[0] for k, v in ast.get("kwargs",{}).items()}
                             res = await interpreter_ref.invoke(call, args, kwargs, path=t_path)
+                            return res.get("outputs", res)
+                        except Exception as e: return flow.error(str(e))
+                else:
+                    async def task_fn(env_dict):
+                        # Altrimenti visitiamo l'intero nodo (es. pipe, binop, lambda)
+                        call, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
+                        # Se il risultato è già un valore (non chiamabile), è il nostro output
+                        #print(call)
+                        if not callable(call):
+                            res = flow.success(call)
                         else:
-                            # Altrimenti visitiamo l'intero nodo (es. pipe, binop, lambda)
-                            call, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
-                            # Se il risultato è già un valore (non chiamabile), è il nostro output
-                            if not callable(call):
-                                res = flow.success(call)
-                            else:
-                                res = await interpreter_ref.invoke(call, [], {}, path=t_path)
-                        
+                            res = await interpreter_ref.invoke(call, [], {}, path=t_path)
                         return res.get("outputs", res)
-                    except Exception as e: return flow.error(str(e))
                 return task_fn
             
             flow_nodes.append(flow.node(name=t_path, fn=make_task_fn(action, interpreter, t_path), path=t_path, **kw))

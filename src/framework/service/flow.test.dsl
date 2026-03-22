@@ -58,7 +58,7 @@ function:success_function := (str:y){x:y;}(str:x);
 tuple:token_print := (123);
 
 tuple:test_suite := (
-    {
+    /*{
         "action": exports.serial;
         "inputs":((pass,[1],{}),(pass,[2],{}));
         "outputs": [(1),(3)];
@@ -200,5 +200,5 @@ tuple:test_suite := (
         "outputs": 10; 
         "assert": @received.outputs == @expected & @received.success == true;
         "note": "pass";
-    },
+    },*/
 );

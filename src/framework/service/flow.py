@@ -85,21 +85,6 @@ def _parse_policy(policy) -> Tuple:
         return ("quorum", policy)
     raise ValueError(f"deps_policy non valida: {policy!r}")
 
-# -- FRESHNESS LOGIC ------------------------------------------------------------
-
-def _get_dep_freshness(dep_name: str, results: dict) -> Tuple[bool, float]:
-    if dep_name not in results:
-        return False, 0.0
-    res = results[dep_name]
-    return True, res.get("_execution_time", 0.0)
-
-def _is_dep_satisfied(dep_name: str, results: dict, node_last_check: float) -> bool:
-    has_result, exec_time = _get_dep_freshness(dep_name, results)
-    if not has_result:
-        return False
-    res = results[dep_name]
-    return res.get("success", False) and (exec_time > node_last_check)
-
 # -- NODE DEFINITION ------------------------------------------------------------
 
 def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
@@ -108,42 +93,20 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
         "name":        name,
         "fn":          fn,
         "deps":        kwargs.get("deps", []),
-        "deps_policy": kwargs.get("deps_policy", "all"),
-        "meta_deps":   kwargs.get("meta", []),
-        "schedule":    kwargs.get("schedule"),
-        "duration":    kwargs.get("duration"),
-        "on_start":    kwargs.get("on_start"),
-        "on_success":  kwargs.get("on_success"),
-        "on_error":    kwargs.get("on_error"),
-        "when":        kwargs.get("when"),
-        "timeout":     kwargs.get("timeout"),
-        "retries":     kwargs.get("retries", 0),
-        "retry_delay": kwargs.get("retry_delay", 0),
-        "path":        kwargs.get("path"),
+        "deps_policy":        kwargs.get("deps_policy", "all"),
+        "ignore_failed_deps": kwargs.get("ignore_failed_deps", False),
+        "meta_deps":          kwargs.get("meta", []),
+        "schedule":           kwargs.get("schedule"),
+        "duration":           kwargs.get("duration"),
+        "on_start":           kwargs.get("on_start"),
+        "on_success":         kwargs.get("on_success"),
+        "on_error":           kwargs.get("on_error"),
+        "when":               kwargs.get("when"),
+        "timeout":            kwargs.get("timeout"),
+        "retries":            kwargs.get("retries", 0),
+        "retry_delay":        kwargs.get("retry_delay", 0),
+        "path":               kwargs.get("path"),
     }
-
-def foreach(collection, fn, prefix="foreach_node"):
-    """
-    collection: list o dict
-    fn: funzione che riceve item e ritorna valore o nodo DAG
-    prefix: prefisso per nomi dei nodi generati
-    """
-    nodes = []
-
-    if isinstance(collection, dict):
-        items = collection.items()
-    else:
-        items = enumerate(collection)
-
-    for i, item in items:
-        node_name = f"{prefix}_{i}"
-        
-        async def node_fn(ctx, _item=item, _fn=fn):
-            return await _call_if_coro(_fn, _item)
-
-        nodes.append(node(name=node_name, fn=node_fn))
-
-    return nodes
 
 def pipeline(*args):
     """
@@ -172,20 +135,38 @@ def pipeline(*args):
 
 # -- CORE CHECKS ----------------------------------------------------------------
 
-async def _check_deps(node_def, results, state, t0):
+async def _check_deps(node_def, results, state, t0, ctx):
     deps = node_def.get("deps", [])
     if not deps:
         return True, False
 
     mode, quorum_n = _parse_policy(node_def.get("deps_policy", "all"))
     last_check = state["last_check"]
+    ignore_failed = node_def.get("ignore_failed_deps", False)
 
-    fresh_ok = [d for d in deps if _is_dep_satisfied(d, results, last_check)]
+    '''def _is_ok(d):
+        has_res, exec_time = _get_dep_freshness(d, results)
+        if not has_res or exec_time <= last_check: return False
+        return ignore_failed or results[d]["success"]'''
+    def _is_ok(d):
+        # 1. nodo dinamico in results
+        if d in results:
+            res_d = results[d]
+            if not (ignore_failed or res_d["success"]):
+                return False
+            if res_d.get("_static"):
+                return True
+            return res_d.get("_execution_time", 0.0) > last_check
+        # 2. dato statico nel context (path annidato es. "health.cpu")
+        return scheme.get(ctx, d) is not None
+
+    fresh_ok = [d for d in deps if _is_ok(d)]
+    
     existing = [d for d in deps if d in results]
     failed   = [d for d in existing if not results[d]["success"]]
 
     if mode == "all":
-        if failed:
+        if failed and not ignore_failed:
             results[node_def["name"]] = error(f"dep failed: {failed}", t0)
             return False, True
         return (len(fresh_ok) == len(deps)), False
@@ -229,23 +210,46 @@ async def _run_node(runner, session_id, node_name):
 
     t0 = time.perf_counter()
 
-    ok, fatal = await _check_deps(node_def, results, state, t0)
-    state["last_check"] = t0
+    ok, fatal = await _check_deps(node_def, results, state, t0, ctx)
 
     if not ok:
         if fatal:
             state["done"].set()
         return
 
+    state["last_check"] = t0
     view = _get_node_view(node_def, ctx, results, session_id)
 
+    # 1. Conditional Execution (WHEN)
+    when_cond = node_def.get("when")
+    if when_cond:
+        try:
+            should_run = when_cond(view) if callable(when_cond) else bool(when_cond)
+        except Exception as e:
+            # Propaghiamo l'errore per debugging
+            results[node_name] = error(f"WHEN condition error: {e}", t0)
+            state["done"].set()
+            return
+
+        if not should_run:
+            res = success(None, t0)
+            res["_skipped"] = True
+            res["_execution_time"] = time.perf_counter()
+            results[node_name] = res
+            
+            # Notifica i successori anche se saltato
+            file_name = runner.session_files[session_id]
+            for succ in runner.graphs[file_name].successors(node_name):
+                await runner.event_queue.put((session_id, succ))
+                
+            state["done"].set()
+            return
+    
     result = await _execute(node_def, ctx, results, view, t0)
 
     # successors dal grafo
     file_name = runner.session_files[session_id]
-    G = runner.graphs[file_name]
-
-    for succ in G.successors(node_name):
+    for succ in runner.graphs[file_name].successors(node_name):
         await runner.event_queue.put((session_id, succ))
 
     # scheduling FIX
@@ -309,12 +313,15 @@ class DagRunner:
         G = nx.DiGraph()
         self.nodes_map[file_name] = {}
 
+        node_names = {n["name"] for n in nodes}
+
         for n in nodes:
             name = n["name"]
             self.nodes_map[file_name][name] = n
             G.add_node(name)
             for d in n.get("deps", []):
-                G.add_edge(d, name)
+                if d in node_names:
+                    G.add_edge(d, name)
 
         if not nx.is_directed_acyclic_graph(G):
             raise ValueError("DAG con cicli")
@@ -347,6 +354,7 @@ class DagRunner:
         for k, v in (context or {}).items():
             r = success(v)
             r["_execution_time"] = 0.0
+            r["_static"] = True
             self.session_results[session_id][k] = r
 
         G = self.graphs[file_name]
@@ -390,3 +398,61 @@ class DagRunner:
         if node_name not in self.session_node_state[session_id]:
             raise KeyError(f"Node {node_name} does not exist in session")
         await self.session_node_state[session_id][node_name]["done"].wait()
+
+# -- DAG EXTENSIONS -----------------------------------------------------------
+
+def foreach(iterable, fn):
+    """
+    Esegue fn per ogni elemento dell'iterabile.
+    Restituisce una lista di risultati.
+    """
+    async def _fn(view):
+        items = view.get("items") or iterable
+        results = []
+        for item in items:
+            new_view = ChainMap(view, {"item": item})
+            res = await _call_if_coro(fn, new_view)
+            results.append(res)
+        return results
+    return _fn
+
+async def switch(*cases,**kwargs):
+    """
+    Switch funzionale stile IF / ELIF / ELSE
+
+    Esempio:
+        switch({
+            cond1: action1,
+            cond2: action2,
+            true:  default
+        })
+
+    - Le chiavi sono condizioni (callable o valori)
+    - La prima condizione vera vince
+    - 'true' è il default
+    """
+    print(cases,"cases")
+    '''default_fn = cases.get(True)
+
+    for cond, fn in cases.items():
+
+        # skip default, lo gestiamo alla fine
+        if cond is True:
+            continue
+
+        try:
+            if callable(cond):
+                if cond(**view):   # 🔥 valuta predicate dinamico
+                    return await _call_if_coro(fn, view)
+            else:
+                if cond:          # es: True / costanti
+                    return await _call_if_coro(fn, view)
+
+        except Exception as e:
+            raise RuntimeError(f"switch condition error: {e}")
+
+    # default
+    if default_fn:
+        return await _call_if_coro(default_fn, view)
+
+    return None'''
