@@ -68,11 +68,11 @@ bdd(schedule:5) -> @health.cpu|>print("bdd----->");
 
 okkk(schedule:5) -> {"cpu":health.cpu;"gpu":health.gpu;"ram":health.ram;"disk":health.disk} |> 
 switch({
-    @cpu > limits.cpu: @print("cpu limite superato");
-    @gpu > 80:         @print("gpu limite superato");
-    @ram > limits.memory: @print("ram limite superato");
-    @disk > limits.disk:  @print("disk limite superato");
-    true: print("situazione nominale");
+    @cpu > limits.cpu: "cpu limite superato";
+    @gpu > 80:         "gpu limite superato";
+    @ram > limits.memory: "ram limite superato";
+    @disk > limits.disk:  "disk limite superato";
+    true: "situazione normale";
 }) |> print("@@@@@@@@@@@@@@@@@@@@");
 
 /*statico : switch({

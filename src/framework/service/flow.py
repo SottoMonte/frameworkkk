@@ -10,6 +10,7 @@ import time
 from collections import ChainMap
 from collections.abc import Mapping
 import framework.service.scheme as scheme
+import traceback
 
 # -- RESULT SYSTEM --------------------------------------------------------------
 
@@ -440,16 +441,24 @@ async def switch(data,cases):
         if cond is True:
             continue
 
+        if not callable(cond):
+            continue
+        else:
+            check = cond(**data)
+
+        if check is not True:
+            continue
+
         try:
-            if callable(cond):
-                if cond(**data):   # 🔥 valuta predicate dinamico
-                    c, _ = await _call_if_coro(fn, data)
-                    return c
+            if callable(fn):
+                c, _ = await _call_if_coro(fn, data)
+                return c
             else:
                 return fn
 
         except Exception as e:
-            print(e,"e")
+            errore_completo = traceback.format_exc()
+            print(errore_completo,"e")
             raise RuntimeError(f"switch condition error: {e}")
 
     # default
