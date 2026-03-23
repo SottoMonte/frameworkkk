@@ -9,7 +9,6 @@ import networkx as nx
 import time
 from collections import ChainMap
 from collections.abc import Mapping
-import framework.service.scheme as scheme
 import traceback
 
 # -- RESULT SYSTEM --------------------------------------------------------------
@@ -30,7 +29,38 @@ error     = lambda err, t0=None: _make_result(False, None, err,  t0)
 is_result = lambda v: isinstance(v, dict) and v.get("_tag") is _TAG
 value_of  = lambda v: v["outputs"] if is_result(v) else v
 
+
+
 # -- DSL UTILITIES --------------------------------------------------------------
+
+def action(custom_filename: str = __file__, app_context = None, **constants):
+    
+    def decorator(function):
+        if asyncio.iscoroutinefunction(function):
+            @functools.wraps(function)
+            async def wrapper(*args, **kwargs):
+                start_time = time.perf_counter()
+                try:
+                    result = await function(*args, **kwargs)
+                    return success(result, start_time)
+                except Exception as e:
+                    return error(e, start_time)
+                finally:
+                    pass
+            return wrapper
+        else:
+            @functools.wraps(function)
+            def wrapper(*args, **kwargs):
+                start_time = time.perf_counter()
+                try:
+                    result = function(*args, **kwargs)
+                    return success(result, start_time)
+                except Exception as e:
+                    return error(e, start_time)
+                finally:
+                    pass
+            return wrapper
+    return decorator    
 
 def step(fn: Callable, *args, **kwargs):
     return (fn, args, kwargs)

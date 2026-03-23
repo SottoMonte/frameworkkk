@@ -10,10 +10,6 @@ from lark import Lark, Transformer, Token, v_args
 from dataclasses import dataclass, field
 from collections import ChainMap
 
-import framework.service.scheme as scheme
-import framework.service.flow as flow
-import framework.service.load as load
-
 import random
 
 # ── Grammar ───────────────────────────────────────────────────────────────────
@@ -116,7 +112,7 @@ CUSTOM_TYPES = {}
 
 DSL_FUNCTIONS = {
     'random': random.randint,
-    'resource': load.resource,
+    #'resource': load.resource,
     'foreach': flow.foreach,
     'switch':  flow.switch,
     'transform': scheme.transform,
@@ -600,8 +596,6 @@ class Interpreter:
             # Estrazione sicura e ricorsiva di tutte le dipendenze (incluse quelle nelle pipe)
             raw_deps = self._find_vars(action) | self._find_vars(kw)
             deps = {self._resolve_scope(t_path, d, available) for d in raw_deps}
-            print(raw_deps,"raw_deps")
-            print(deps,"deps")
             kw['deps'] = list(deps)
             
             def make_task_fn(ast, interpreter_ref, t_path):

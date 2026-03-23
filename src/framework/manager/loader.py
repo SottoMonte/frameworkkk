@@ -1,138 +1,200 @@
-import framework.service.load as load
-from framework.service.context import container
-import framework.service.flow as flow
-import framework.service.language as language
+import os
+import importlib.util
+import asyncio
+from graphlib import TopologicalSorter
+from dependency_injector import containers, providers
+import tomli
 
+class Container(containers.DynamicContainer):
+    config = providers.Configuration()
+    module_cache = providers.Singleton(dict)
+    loading_stack = providers.Singleton(set)
+    # Definiamo i ports come mappe di provider o liste
+    ports = providers.Singleton(dict, 
+        presentation=[], persistence=[], message=[], 
+        authentication=[], actuator=[], authorization=[]
+    )
 
 class loader:
-    """
-    Manager that handles resource loading and bootstrapping by delegating to the load service.
-    Utilizza self.dependencies per orchestrare il caricamento dello strato di servizi core.
-    """
-    def __init__(self, **constants):
-        self.config = constants
-        self.resources = {}
-        self.services = {}
-        # Definizione delle dipendenze dello strato di servizi core
-        self.dependencies = {
-            "context": [],
-            "flow": ["context"],
-            "scheme": ["flow"],
-            "language": ["flow", "scheme"],
-            "load": ["flow", "scheme", "language", "context"],
-            "test": ["flow"],
-            "factory": ["flow"],
-            "diagnostic": ["flow"]
-        }
+    def __init__(self, **config):
+        self.config = config
+        self.container = Container()
+        self.container.config.from_dict(config)
+        # Lista ufficiale dei port supportati
+        self.valid_ports = ["presentation", "persistence", "message", "authentication", "actuator", "authorization"]
 
-    def _get_load_order(self):
-        """Calcola l'ordine di caricamento tramite ordinamento topologico (DFS)."""
-        order = []
-        visited = set()
-        stack = set()
+    def _create_mod(self, name, path):
+        """Crea il modulo senza eseguirlo (per permettere l'iniezione pre-exec)."""
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod = importlib.util.module_from_spec(spec)
+        return spec, mod
 
-        def visit(node):
-            if node in stack:
-                raise RuntimeError(f"Ciclo di dipendenze rilevato: {node}")
-            if node not in visited:
-                stack.add(node)
-                for dep in self.dependencies.get(node, []):
-                    visit(dep)
-                stack.remove(node)
-                visited.add(node)
-                order.append(node)
+    def _get_mod(self, name, path, pre_inject=None):
+        cache = self.container.module_cache()
+        if path not in cache:
+            spec, mod = self._create_mod(name, path)
+            # Inietta le dipendenze PRIMA di exec_module
+            for k, v in (pre_inject or {}).items():
+                setattr(mod, k, v)
+            spec.loader.exec_module(mod)
+            cache[path] = mod
+        return cache[path]
 
-        for node in list(self.dependencies.keys()):
-            visit(node)
-        return order
+    async def _build(self, spec: dict):
+        name, path = spec["name"], spec["path"]
 
-    async def _initialize_services(self):
-        """Carica e inietta le dipendenze nei servizi core nell'ordine corretto."""
-        order = self._get_load_order()
+        # Risoluzione dipendenze
+        deps = {}
+        for d in spec.get("deps", []):
+            if d in self.valid_ports:
+                deps[d] = getattr(self.container, d)
+            else:
+                deps[d] = await self.get(d)
+
+        args = {**deps, **spec.get("config", {})}
+
+        if spec.get("is_class"):
+            # Per le classi: carica il modulo (senza iniezione pre-exec, non necessaria)
+            mod = self._get_mod(name, path)
+            cls = next((v for v in vars(mod).values() if isinstance(v, type) and v.__module__ == mod.__name__), None)
+            return cls(**args) if cls else mod
+
+        # Per i moduli: inietta i dep come globali prima dell'esecuzione
+        mod = self._get_mod(name, path, pre_inject=args)
+        # Aggiorna anche post-exec (per moduli già in cache o aggiornamenti)
+        for k, v in args.items():
+            setattr(mod, k, v)
+        return mod
+
+    async def _setup_batch(self, specs: list[dict]):
+        registry = {s["name"]: s for s in specs}
+        sorter = TopologicalSorter({s["name"]: s.get("deps", []) for s in specs})
         
-        for name in order:
-            path = f"framework/service/{name}.py"
-            # Carichiamo il servizio via load.resource per abilitare proxy e transazioni
-            res = await load.resource(path=path)
+        # Inizializza le liste dei port nel container se non esistono
+        for p in self.valid_ports:
+            if not hasattr(self.container, p):
+                setattr(self.container, p, [])
+
+        for name in sorter.static_order():
+            if name in registry:
+                spec = registry[name]
+                
+                # Istanziazione
+                if name == "container":
+                    obj = self.container
+                elif name == "loader":
+                    obj = self
+                else:
+                    obj = await self._build(spec)
+
+                # 1. Registrazione per nome univoco
+                setattr(self.container, name, obj)
+
+                # 2. Registrazione nel PORT (se specificato)
+                port_name = spec.get("port")
+                if port_name in self.valid_ports:
+                    port_list = getattr(self.container, port_name)
+                    port_list.append(obj)
+                    print(f"[*] Servizio '{name}' registrato nel port '{port_name}'")
+
+    async def get(self, name: str, spec: dict = None) -> any:
+        if hasattr(self.container, name):
+            return getattr(self.container, name)
+        
+        # Se chiedi un port intero che non è ancora stato popolato ma è valido
+        if name in self.valid_ports:
+            return getattr(self.container, name)
+
+        stack = self.container.loading_stack()
+        if name in stack:
+            raise RecursionError(f"Ciclo rilevato: {name}")
+
+        if not spec:
+            raise KeyError(f"Specifica mancante per {name}")
+
+        stack.add(name)
+        try:
+            obj = await self._build(spec)
+            setattr(self.container, name, obj)
+            return obj
+        finally:
+            stack.remove(name)
+
+    def read_config(file_path):
+        """
+        Legge un file TOML e restituisce un dizionario.
+        Gestisce l'assenza del file con un errore descrittivo.
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Configurazione non trovata: {file_path}")
+        
+        try:
+            with open(file_path, "rb") as f:
+                return tomli.load(f)
+        except Exception as e:
+            raise RuntimeError(f"Errore nel parsing del file {file_path}: {e}")
+
+    async def load_project(self, main_config_path: str):
+        # 1. Carica il file principale
+        project_data = read_config(main_config_path)
+        
+        # Inietta la configurazione globale nel container
+        self.container.config.from_dict(project_data)
+        
+        policies = project_data.get("project", {}).get("policy", {})
+        specs = []
+
+        # 2. Cicla sui Port definiti nelle policy
+        for port_name, config_file in policies.items():
+            # Recupera i dati specifici del backend dal file principale
+            # o dal file indicato nella policy (es. web.toml)
+            backend_data = project_data.get(port_name, {}).get("backend", {})
             
-            # Se res è un errore esplicito, logghiamo e proseguiamo (o interrompiamo se critico)
-            if isinstance(res, dict) and res.get('success') is False:
-                print(f"[ERROR] Impossibile caricare il servizio core '{name}': {res.get('errors')}")
+            if not backend_data:
+                # Se il file principale non ha i dati, potresti voler leggere 
+                # il file indicato nella policy: read_config(f"configs/{config_file}")
                 continue
 
-            service_module = res.get('data', res) if isinstance(res, dict) else res
+            adapter = backend_data.get("adapter")
             
-            # Iniezione delle dipendenze dichiarate per questo servizio
-            for dep_name in self.dependencies.get(name, []):
-                if dep_name in self.services:
-                    # Iniezione diretta sul modulo caricato
-                    setattr(service_module, dep_name, self.services[dep_name])
-                    # print(f"[DEBUG] Iniettato {dep_name} in {name}")
-            
-            self.services[name] = service_module
-            self.resources[path] = service_module
-            
-        return self.services
+            # 3. Crea la specifica dinamica
+            spec = {
+                "name": f"{port_name}.{adapter}", # Es: presentation.starlette
+                "port": port_name,
+                "path": f"src/framework/adapters/{port_name}/{adapter}.py",
+                "is_class": True, # Di solito i backend sono classi
+                "deps": [], # Qui puoi logica per aggiungere deps comuni
+                "config": backend_data
+            }
+            specs.append(spec)
 
-    async def resource(self, **kwargs):
-        """
-        Carica una risorsa delegando al servizio load (iniettato o globale).
-        """
-        load_service = self.services.get('load', load)
-        
-        path = kwargs.get('path')
-        if not path:
-            return {"success": False, "errors": ["Missing path"]}
-
-        if path in self.resources:
-            return {"success": True, "data": self.resources[path]}
-        
-        res = await load_service.resource(**kwargs)
-        
-        if isinstance(res, dict) and res.get('success') is False:
-            return res
-            
-        data = res.get('data', res) if isinstance(res, dict) else res
-        self.resources[path] = data
-        return {"success": True, "data": data}
+        # 4. Avvia il caricamento batch
+        await self._setup_batch(specs)
+        return project_data
 
     async def bootstrap(self):
-        """
-        Bootstraps il framework inizializzando prima i servizi e poi eseguendo bootstrap.dsl.
-        """
-        # 1. Inizializzazione servizi core ordinata
-        #await self._initialize_services()
+        services = [
+            {"name": "container", "path": "src/framework/service/container.py", "deps": [], "is_class": False, "config": {}},
+            {"name": "scheme", "path": "src/framework/service/scheme.py", "deps": [], "is_class": False, "config": {}},
+            {"name": "flow", "path": "src/framework/service/flow.py", "deps": ["scheme"], "is_class": False, "config": {}},
+            {"name": "language", "path": "src/framework/service/language.py", "deps": ["scheme", "flow"], "is_class": False, "config": {}},
+        ]
 
-        print(self.services,"<----")
+        managers = [
+            {"name": "loader", "path": "src/framework/manager/loader.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "messenger", "path": "src/framework/manager/messenger.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "tester", "path": "src/framework/manager/tester.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "sensor", "path": "src/framework/manager/sensor.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "presenter", "path": "src/framework/manager/presenter.py", "deps": ["container"], "is_class": True, "config": {}},
+            #{"name": "inferencer", "path": "src/framework/manager/inferencer.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "executor", "path": "src/framework/manager/executor.py", "deps": ["defender"], "is_class": True, "config": {}},
+            {"name": "defender", "path": "src/framework/manager/defender.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "actuator", "path": "src/framework/manager/actuator.py", "deps": ["container"], "is_class": True, "config": {}},
+        ]
         
-        # 2. Caricamento ed esecuzione del bootstrap applicativo
-        print("[INFO] Avvio Bootstrap dello strato applicativo (DSL)...")
-        import framework.manager.tester as tester
-        ok = tester.tester()
-
-        gg = await ok.run()
-
-        print(gg)
-        return gg
-        '''
-        res = await self.resource(path="framework/service/bootstrap.dsl")
-        
-        if res.get('success'):
-            dsl_content = res.get('data')
-            # Usiamo il servizio language iniettato se disponibile
-            lang_service = self.services.get('language')
-            if lang_service and hasattr(lang_service, 'execute_dsl_file'):
-                return await lang_service.execute_dsl_file(dsl_content)
-            else:
-                return await language.execute_dsl_file(dsl_content)
-        
-        return res'''
-
-    async def register(self, **kwargs):
-        """Registra un servizio o manager nel Dependency Injection container."""
-        return await flow.pipe(
-            step_load_service_module,
-            step_validate_registration,
-            step_inject_and_register,
-            context=config
-        )
+        await self._setup_batch(services)  
+        flow_obj = await self.get("flow")
+        print(f"Flow caricato correttamente: {flow_obj}")
+        return {"success": True}
+    

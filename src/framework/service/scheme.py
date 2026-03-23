@@ -6,7 +6,6 @@ import copy
 from urllib.parse import urlparse, urlencode
 from jinja2 import Environment
 from cerberus import Validator
-from framework.service.diagnostic import LogReportEncoder, framework_log, buffered_log, _load_resource
 from collections.abc import Mapping
 
 mappa = {
@@ -15,7 +14,7 @@ mappa = {
     (str,str,''): lambda v: v,
     (str,dict,'json'): lambda v: json.loads(v) if isinstance(v, str) else v if isinstance(v, dict) else {},
     (dict,dict,'json'): lambda v: v,
-    (dict,str,'json'): lambda v: json.dumps(v,indent=4,cls=LogReportEncoder) if isinstance(v, dict) else v if isinstance(v, str) else '',
+    (dict,str,'json'): lambda v: json.dumps(v,indent=4) if isinstance(v, dict) else v if isinstance(v, str) else '',
     (str,str,'json'): lambda v: v,
     (str,str,'hash'): lambda v: hashlib.sha256(v.encode('utf-8')).hexdigest() if isinstance(v, str) else '',
     (str,dict,'toml'): lambda content: tomli.loads(content) if isinstance(content, str) else content if isinstance(content, dict) else {},
@@ -90,7 +89,7 @@ async def normalize(value, schema, mode='full'):
     v = Validator(schema,allow_unknown=True)
 
     if not v.validate(processed_value):
-        framework_log("WARNING", f"Errore di validazione: {v.errors}", emoji="⚠️", data=processed_value)
+        #framework_log("WARNING", f"Errore di validazione: {v.errors}", emoji="⚠️", data=processed_value)
         raise ValueError(f"⚠️ Errore di validazione: {v.errors} | data:{processed_value}")
 
     final_output = v.document

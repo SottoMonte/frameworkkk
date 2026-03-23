@@ -134,11 +134,11 @@ tuple:test_suite := (
         "assert": @received.outputs.result == @expected.result;
         "note": "Normalizzazione transazione: filtro di elementi non dizionari";
     },
-    /*{
+    {
         "action": repository.parameters;
         "inputs": richiesta;
         "outputs": richiesta |> union({'location':"repos/SottoMonte/framework"});
         "assert": @received.outputs == @expected;
         "note": "Orchestratore: generazione path finale e provider corretto"; 
-    }*/
+    }
 );
