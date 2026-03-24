@@ -315,23 +315,33 @@ class Interpreter:
 
     def _resolve_scope(self, path, name, available):
         """
-        Risolve il nome cercando prima nello scope locale (più profondo),
-        poi risalendo verso la radice. Restituisce il path completo se trovato,
-        altrimenti il nome grezzo.
-        
-        es: path="a.b.c", name="x", available={"a.b.x","x"} → "a.b.x"
+        Risolve il nome cercando la corrispondenza più specifica tra i task.
+        Esempio: name="health.cpu.usage" -> prova "health.cpu.usage", poi "health.cpu", poi "health".
         """
-        parts = path.split(".")
-        # Scende dal più specifico al più generale
-        for i in range(len(parts), -1, -1):
-            candidate = ".".join(parts[:i] + [name]) if i > 0 else name
-            if candidate in available:
-                return candidate
-        # Fallback: cerca per suffisso (es. "x" matcha "a.b.x")
-        for avail in sorted(available, key=len, reverse=True):
-            if avail == name or avail.endswith(f".{name}"):
-                return avail
-        return name
+        parts = name.split(".")
+        
+        # Prova a ridurre il nome da destra a sinistra (es: health.cpu.usage -> health.cpu -> health)
+        for i in range(len(parts), 0, -1):
+            candidate_name = ".".join(parts[:i])
+            
+            # Ora applichiamo la tua logica originale di risalita dello scope (dal locale al globale)
+            path_parts = path.split(".") if path else []
+            
+            for j in range(len(path_parts), -1, -1):
+                # Costruisce il path potenziale: es. "scope.sotto_scope.candidate_name"
+                prefix = ".".join(path_parts[:j])
+                full_candidate = f"{prefix}.{candidate_name}" if prefix else candidate_name
+                
+                if full_candidate in available:
+                    return full_candidate
+                    
+            # Fallback: se non lo trova nel path specifico, cerca se esiste un task 
+            # con quel nome in assoluto (o che finisce con quel nome)
+            for avail in sorted(available, key=len, reverse=True):
+                if avail == candidate_name or avail.endswith(f".{candidate_name}"):
+                    return avail
+                    
+        return name # Se non trova nulla, restituisce il nome originale (sarà una variabile di env)
 
     def _find_vars(self, node, _seen=None):
         """Visita ricorsivamente l'AST raccogliendo tutte le var/context_var."""

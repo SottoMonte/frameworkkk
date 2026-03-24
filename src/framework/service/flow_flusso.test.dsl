@@ -54,4 +54,4 @@ data(meta:true) -> data;
 
 
 //pppp() -> print(get(integration_test,"outputs")) ;
-integration_test() -> data |> get("outputs") |> print("zzz----->") ;
+integration_test() -> data.outputs |> print("zzz----->") ;
