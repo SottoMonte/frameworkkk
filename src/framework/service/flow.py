@@ -137,8 +137,7 @@ async def _fire_hook(hook, view, result=None, *, runner=None, session_id=None, n
             # Inietta nel result chi ha triggerato questo hook
             payload = dict(result) if result is not None else {}
             payload["trigger"] = node_def["name"] if node_def else None
-            
-            await runner.trigger(session_id, hook, payload)
+            runner.push_event(session_id, hook, payload)
             return
 
         # -- forma callable --
@@ -180,30 +179,6 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
         "path":               kwargs.get("path"),
         "default":            kwargs.get("default"),
     }
-
-def pipeline(*args):
-    """
-    Crea una pipeline di step.
-    Supporta:
-      - pipeline(steps) -> factory che ritorna node_fn(ctx)
-      - pipeline(data, steps) -> esecuzione immediata (utile in |>)
-    """
-    if len(args) == 2:
-        data, steps = args
-        return pipeline(steps)(data)
-
-    steps = args[0]
-    async def node_fn(*a, **ctx):
-        res = a[0] if (a and not isinstance(a[0], (dict, ChainMap))) else None
-        runtime_ctx = ctx or (a[0] if (a and isinstance(a[0], (dict, ChainMap))) else {})
-
-        for i, s in enumerate(steps):
-            step_res = await act(step(s, res, **runtime_ctx))
-            if not step_res["success"]:
-                return step_res
-            res = step_res["outputs"]
-        return res
-    return node_fn
 
 # -- CORE CHECKS ----------------------------------------------------------------
 
@@ -500,52 +475,6 @@ class DagRunner:
 
         self.event_queue.put_nowait((session_id, node_name))
 
-    async def trigger(self, session_id: str, node_name: str, payload=None):
-        """
-        Esegue subito il nodo, ignorando dipendenze e queue, aggiornando context e risultati.
-        Funziona anche se il nodo è già stato eseguito prima.
-        """
-        file_name = self.session_files.get(session_id)
-        if not file_name:
-            return
-
-        node_def = self.nodes_map[file_name].get(node_name)
-        if not node_def:
-            return
-
-        # Reset stato done in modo da poter ri-eseguire il nodo
-        state = self.session_node_state[session_id][node_name]
-        state["done"].clear()
-        state["last_check"] = time.perf_counter()
-
-        ctx = self.session_ctx[session_id]
-        results = self.session_results[session_id]
-
-        # Inietta payload nel context
-        if payload is not None:
-            node_path = node_def.get("path") or node_name
-            _set_path(ctx, node_path, payload)
-
-            res = success(payload)
-            res["_execution_time"] = time.perf_counter()
-            results[node_name] = res
-
-        # Costruisci view
-        view = _get_node_view(node_def, ctx, results, session_id)
-
-        # Esegui nodo immediatamente
-        result = await _execute(node_def, ctx, results, view, time.perf_counter(),
-                                runner=self, session_id=session_id)
-
-        # Notifica successori nella queue
-        for succ in self.graphs[file_name].successors(node_name):
-            await self.event_queue.put((session_id, succ))
-
-        # Setta l'evento done
-        state["done"].set()
-
-        return result
-
     async def run_node(self, node_def: Dict, context: Dict):
         """Esegue un nodo immediatamente usando la logica dell'engine."""
         t0 = time.perf_counter()
@@ -580,6 +509,20 @@ def foreach(iterable, fn):
             results.append(res)
         return results
     return _fn
+
+async def pipeline(steps):
+    """
+    Crea una pipeline di step.
+    Supporta:
+      - pipeline(steps) -> factory che ritorna node_fn(ctx)
+      - pipeline(data, steps) -> esecuzione immediata (utile in |>)
+    """
+    result = steps[0]
+    for step in steps[1:]:
+        result = await act(step(result))
+        if not result["success"]:
+            return result
+    return result
 
 async def switch(data, cases):
     """

@@ -465,27 +465,11 @@ class Interpreter:
         return result, env
 
     async def visit_pipe(self, node, env, path=""):
-        async def pipe_step(prev, step_ast, idx, **ctx):
-            e = ChainMap(ctx, env)
-            p = f"{path}[{idx}]"
-            if step_ast.get("type") == "call":
-                res, _ = await self.visit_call(step_ast, e, path=p, args=[prev])
-                return res
-            val, _ = await self.visit(step_ast, ctx, path=p)
-            if callable(val) and not isinstance(val, (dict, list, tuple, type)):
-                 res = await self.invoke(val, [prev], ctx, path=p)
-                 return res["outputs"]
-            return val
-
-        # Creazione della pipeline e iniezione nel runner
-        steps = [lambda p, s=s, i=i, **kw: pipe_step(p, s, i, **kw) for i, s in enumerate(node["steps"])]
-        node_def = flow.node(name=self._node_name(node), fn=flow.pipeline(steps), path=path)
-        
-        # Esecuzione immediata tracciata dal runner
-        res = await self.runner.run_node(node_def, env)
-        
-        self._register_task(node, env, path)
-        return res["outputs"], env
+        steps = node["steps"]
+        val, env = await self.visit(steps[0], env, path)
+        for step in steps[1:]:
+            val, env = await self.visit_call(step, env, path, args=[val])
+        return val, env
 
     async def visit_binop(self, node, env, path=""):
         left_path = path + ".left" if path else "left"
@@ -605,8 +589,7 @@ class Interpreter:
                 if ast.get("type") == "pipe":
                     async def task_fn(env_dict):
                         try:
-                            res, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
-                            return res
+                            return await interpreter_ref.visit(ast, env_dict, path=t_path)
                         except Exception as e:
                             return flow.error(str(e))
                 elif ast.get("type") == "call":

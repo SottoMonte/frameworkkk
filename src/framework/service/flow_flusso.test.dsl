@@ -47,11 +47,11 @@ switch({
 }) |> print("@@@@@@@@@@@@@@@@@@@@");*/
 
 //ggg(schedule:5) -> print(health.cpu);
-test_schedule_duration(schedule:5,duration:10,default:0,on_close:integration_test) -> test_schedule_duration + 1;
+test_schedule_duration(schedule:2,duration:10,default:0,on_close:data) -> test_schedule_duration + 1;
 
-test:{
-    test_schedule_duration:{'outputs':2;'assert':true};
-};
 
-integration_test(default:test,meta:true) -> print("[*] Running integration test...",integration_test,"/100");
+data(meta:true) -> data;
 
+
+//pppp() -> print(get(integration_test,"outputs")) ;
+integration_test() -> data |> get("outputs") |> print("zzz----->") ;
