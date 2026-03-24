@@ -570,7 +570,7 @@ class Interpreter:
         elif isinstance(fn, tuple) and (len(fn) == 3 or len(fn) == 4):
             s = flow.step(self._call_dsl_fn, fn, args, kwargs, path)
         else:
-            raise DSLRuntimeError("Funzione sconosciuta",fn)
+            raise DSLRuntimeError(f"{fn} Funzione sconosciuta")
         return await flow.act(s)
 
     async def _check(self, value, expected, meta, name, path=""):
@@ -590,12 +590,15 @@ class Interpreter:
         available = {t["path"] for t in self._tasks}
 
         for task in self._tasks:
-            t_path, action = task.get("path", task["name"]), task["action"]
+            name = task.get("name")
+            t_path, action = task.get("path", name), task["action"]
             kw = task.get("kwargs", {})
             
             # Estrazione sicura e ricorsiva di tutte le dipendenze (incluse quelle nelle pipe)
             raw_deps = self._find_vars(action) | self._find_vars(kw)
             deps = {self._resolve_scope(t_path, d, available) for d in raw_deps}
+            if name in deps:
+                deps.remove(name)
             kw['deps'] = list(deps)
             
             def make_task_fn(ast, interpreter_ref, t_path):

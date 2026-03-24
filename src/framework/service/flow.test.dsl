@@ -1,5 +1,5 @@
 imports: {
-    'flow':resource("framework/service/flow." + extension);
+    'flow':resource("src/framework/service/flow." + extension);
 };
 
 exports: {

@@ -166,6 +166,15 @@ class loader:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Risorsa non trovata: {path}")
         
+        if path.endswith(".py"):
+            cache = self.container.module_cache()
+            if path not in cache:
+                name = os.path.splitext(os.path.basename(path))[0]
+                spec, mod = self._create_mod(name, path)
+                spec.loader.exec_module(mod)
+                cache[path] = mod
+            return cache[path]
+        
         try:
             with open(path, "r") as f:
                 return f.read()
@@ -247,6 +256,14 @@ class loader:
             loop.add_signal_handler(sig, handle_exit)
 
         try:
+            # Avvia i manager che hanno un lifecycle
+            for name in ["tester", "messenger"]:
+                obj = self.get_sync(name)
+                if hasattr(obj, "start"):
+                    await obj.start()
             await self._stop_event.wait()
+
+        except Exception as e:
+            print(f"[!] Framework spento con errore: {e}")
         finally:
             print("[*] Framework spento correttamente.")

@@ -1,6 +1,6 @@
 any:extension := "py";
 imports: {
-    'factory':resource("framework/service/factory." + extension);
+    'factory':resource("src/framework/service/factory." + extension);
 };
 
 exports: {

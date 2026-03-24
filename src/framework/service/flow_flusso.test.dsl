@@ -1,22 +1,3 @@
-imports: {
-    'flow':resource("framework/service/flow." + extension);
-};
-
-exports: {
-    'assert': imports.flow.assertt;
-    'foreach': imports.flow.foreach;
-    'pass': imports.flow.passs;
-    'catch':  imports.flow.catch;
-    'serial': imports.flow.serial;
-    'parallel': imports.flow.parallel;
-    'retry': imports.flow.retry;
-    'pipeline': imports.flow.pipeline;
-    'guard': imports.flow.guard;
-    'switch': imports.flow.switch;
-    'when': imports.flow.when;
-    'timeout': imports.flow.timeout;
-};
-
 // soglie e configurazione
 dict:limits := {
     "cpu":    80;
@@ -41,56 +22,36 @@ any:status := all_ok == true & messages.ok
            | any_crit == false & messages.critical
            | messages.warning;
 
-function:error_function := (str:y){
-    x:y/2;
-}(str:x);
-
-function:success_function := (str:y){x:y;}(str:x);
-
-aaa:print(success_function(y:"ciao"));
-
-bios: [1,2,3] |> print("----->");
-
 health: {
 
     cpu(schedule:5) -> random(0,100);
     gpu(schedule:5) -> random(0,100);
     ram(schedule:5) -> random(0,100);
     disk(schedule:1) -> random(0,100);
-    check(deps_policy:3) -> print("######### CPU:",health.cpu,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
-    alert(schedule:5,deps:['check'],when: any_crit) -> print("ATTENZIONE: SOGLIA SUPERATA");
+    //check(deps_policy:3) -> print("######### CPU:",health.cpu,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
+    //alert(schedule:5,deps:['check'],when: any_crit) -> print("ATTENZIONE: SOGLIA SUPERATA");
 };
 
-ggg(schedule:5) -> print(health.cpu);
+/*ggg(schedule:5) -> print(health.cpu);
 zzz(schedule:5) -> bios();
 fff(schedule:5) -> health.cpu|>print("fff----->");
-bdd(schedule:5) -> @health.cpu|>print("bdd----->");
+bdd(schedule:5) -> @health.cpu|>print("bdd----->");*/
 
-okkk(schedule:5) -> {"cpu":health.cpu;"gpu":health.gpu;"ram":health.ram;"disk":health.disk} |> 
+/*pipeline_(schedule:5) -> {"cpu":health.cpu;"gpu":health.gpu;"ram":health.ram;"disk":health.disk} |> 
 switch({
     @cpu > limits.cpu: "cpu limite superato";
     @gpu > 80:         "gpu limite superato";
     @ram > limits.memory: "ram limite superato";
     @disk > limits.disk:  "disk limite superato";
     true: "situazione normale";
-}) |> print("@@@@@@@@@@@@@@@@@@@@");
+}) |> print("@@@@@@@@@@@@@@@@@@@@");*/
 
-/*statico : switch({
-    @health.cpu > limits.cpu: print("cpu limite superato");
-    @health.gpu > 80:         print("gpu limite superato");
-    @health.ram > limits.memory: print("ram limite superato");
-    @health.disk > limits.disk:  print("disk limite superato");
-    true: print("situazione nominale");
-});*/
+//ggg(schedule:5) -> print(health.cpu);
+test_schedule_duration(schedule:5,duration:10,default:0,on_close:integration_test) -> test_schedule_duration + 1;
 
+test:{
+    test_schedule_duration:{'outputs':2;'assert':true};
+};
 
+integration_test(default:test,meta:true) -> print("[*] Running integration test...",integration_test,"/100");
 
-tuple:test_suite := (
-    { 
-        "action": exports.assert;
-        "inputs":(@numero <= 50, {numero:60});
-        "outputs": None;
-        "assert": @received.outputs == @expected & @received.success == false;
-        "note": "assert false + context"; 
-    },
-);

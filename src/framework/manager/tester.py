@@ -5,8 +5,11 @@ class tester:
     def __init__(self, **config):
         self.args = config.get('args')
         self.loader = config.get('loader')
+
+    async def start(self):
         if '--test' in self.args:
-            asyncio.create_task(self.run())
+            await self.run()
+        
 
     async def run(self, **constants):
         diagnostic.log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
@@ -36,7 +39,7 @@ class tester:
             return {"success": False, "errors": [str(ast)]}
 
         # ── esecuzione ────────────────────────────────────────────────────────
-        ctx    = await interp.run(path, ast,"tester", env=language.DSL_FUNCTIONS) or {}
+        ctx    = await interp.run(path, ast,"tester", env=language.DSL_FUNCTIONS|{'resource':self.loader.resource}) or {}
         
         '''errors = [
             err

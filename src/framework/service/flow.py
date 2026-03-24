@@ -1,5 +1,5 @@
 """
-DAG Engine v7 - SESSION-AWARE + FRESHNESS FIXED
+DAG Engine v7 - SESSION-AWARE + FRESHNESS FIXED + LIFECYCLE HOOKS
 """
 
 import asyncio
@@ -31,15 +31,9 @@ is_result = lambda v: isinstance(v, dict) and v.get("_tag") is _TAG
 value_of  = lambda v: v["outputs"] if is_result(v) else v
 
 
-
 # -- DSL UTILITIES --------------------------------------------------------------
 
-def action(custom_filename: str = __file__, app_context = None, **constants):
-    '''injection_args = []
-    for key in constants.get('managers',[]):
-        injection_args.append(loader.get_sync(key))
-
-    print(injection_args)'''
+def action(custom_filename: str = __file__, app_context=None, **constants):
     def decorator(function):
         if asyncio.iscoroutinefunction(function):
             @functools.wraps(function)
@@ -50,8 +44,6 @@ def action(custom_filename: str = __file__, app_context = None, **constants):
                     return success(result, start_time)
                 except Exception as e:
                     return error(e, start_time)
-                finally:
-                    pass
             return wrapper
         else:
             @functools.wraps(function)
@@ -62,10 +54,9 @@ def action(custom_filename: str = __file__, app_context = None, **constants):
                     return success(result, start_time)
                 except Exception as e:
                     return error(e, start_time)
-                finally:
-                    pass
             return wrapper
-    return decorator    
+    return decorator
+
 
 def step(fn: Callable, *args, **kwargs):
     return (fn, args, kwargs)
@@ -97,19 +88,20 @@ def _set_path(data: Dict, path: str, value: Any):
     data[parts[-1]] = value
 
 def _get_node_view(node_def, ctx, results, session_id=None):
-    meta_deps = node_def.get("meta_deps", [])
+    meta = node_def.get("meta", False)
     node_path = node_def.get("path") or node_def["name"]
     node_meta = {"path": node_path, "session_id": session_id} if session_id else {"path": node_path}
-    
-    # Scoped lookup
+
     parent_path = ".".join(node_path.split(".")[:-1])
     parent_scope = scheme.get(ctx, parent_path) if parent_path else {}
     if not isinstance(parent_scope, Mapping): parent_scope = {}
 
     view_parts = [node_meta, parent_scope, ctx]
-    if meta_deps:
-        view_parts.insert(1, {md: results[md] for md in meta_deps if md in results})
-    
+    if isinstance(meta, list):
+        view_parts.insert(1, {md: results[md] for md in meta if md in results})
+    elif meta:
+        view_parts.insert(1, dict(results))
+
     return ChainMap(*view_parts)
 
 def _parse_policy(policy) -> Tuple:
@@ -121,50 +113,94 @@ def _parse_policy(policy) -> Tuple:
         return ("quorum", policy)
     raise ValueError(f"deps_policy non valida: {policy!r}")
 
+# -- LIFECYCLE HOOK RUNNER ------------------------------------------------------
+
+async def _fire_hook(hook, view, result=None, *, runner=None, session_id=None, node_def=None):
+    """
+    Esegue un lifecycle hook in modo sicuro. Supporta due forme:
+
+      - stringa  → triggera il nodo con quel nome nella sessione corrente,
+                   iniettando il result nel context prima di triggerare
+      - callable → chiamato con (view) oppure (view, result) in base alla firma
+    """
+    if hook is None:
+        return
+
+    try:
+        # -- forma stringa: triggera un nodo nel DAG --
+        if isinstance(hook, str):
+            if runner is None or session_id is None:
+                return
+            # push_event inietta result come valore del nodo stesso,
+            # così il nodo hook lo riceve pulito nel proprio view
+            # es: view["outputs"], view["success"], view["errors"]
+            # Inietta nel result chi ha triggerato questo hook
+            payload = dict(result) if result is not None else {}
+            payload["trigger"] = node_def["name"] if node_def else None
+            
+            await runner.trigger(session_id, hook, payload)
+            return
+
+        # -- forma callable --
+        sig = inspect.signature(hook)
+        params = list(sig.parameters)
+        if result is not None and len(params) >= 2:
+            await _call_if_coro(hook, view, result)
+        else:
+            await _call_if_coro(hook, view)
+
+    except Exception:
+        # I lifecycle hook non devono mai far crashare il nodo
+        pass
+
+
 # -- NODE DEFINITION ------------------------------------------------------------
 
 def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
     _parse_policy(kwargs.get("deps_policy", "all"))
     return {
-        "name":        name,
-        "fn":          fn,
-        "deps":        kwargs.get("deps", []),
+        "name":               name,
+        "fn":                 fn,
+        "deps":               kwargs.get("deps", []),
         "deps_policy":        kwargs.get("deps_policy", "all"),
         "ignore_failed_deps": kwargs.get("ignore_failed_deps", False),
-        "meta_deps":          kwargs.get("meta", []),
+        "meta":               kwargs.get("meta", False),
         "schedule":           kwargs.get("schedule"),
         "duration":           kwargs.get("duration"),
-        "on_start":           kwargs.get("on_start"),
-        "on_success":         kwargs.get("on_success"),
-        "on_error":           kwargs.get("on_error"),
+        # --- Lifecycle hooks ---
+        "on_start":           kwargs.get("on_start"),    # chiamato prima dell'esecuzione
+        "on_success":         kwargs.get("on_success"),  # chiamato se il nodo ha successo
+        "on_error":           kwargs.get("on_error"),    # chiamato se il nodo fallisce
+        "on_close":           kwargs.get("on_close"),    # chiamato sempre alla fine (success o error)
+        # -----------------------
         "when":               kwargs.get("when"),
         "timeout":            kwargs.get("timeout"),
         "retries":            kwargs.get("retries", 0),
         "retry_delay":        kwargs.get("retry_delay", 0),
         "path":               kwargs.get("path"),
+        "default":            kwargs.get("default"),
     }
 
 def pipeline(*args):
     """
-    Crea una pipeline di step. 
-    Supporta: 
+    Crea una pipeline di step.
+    Supporta:
       - pipeline(steps) -> factory che ritorna node_fn(ctx)
       - pipeline(data, steps) -> esecuzione immediata (utile in |>)
     """
     if len(args) == 2:
         data, steps = args
         return pipeline(steps)(data)
-    
+
     steps = args[0]
     async def node_fn(*a, **ctx):
-        # Determiniamo l'input iniziale: se a[0] non è un contesto, è il dato
         res = a[0] if (a and not isinstance(a[0], (dict, ChainMap))) else None
         runtime_ctx = ctx or (a[0] if (a and isinstance(a[0], (dict, ChainMap))) else {})
-        
+
         for i, s in enumerate(steps):
             step_res = await act(step(s, res, **runtime_ctx))
             if not step_res["success"]:
-                return step_res 
+                return step_res
             res = step_res["outputs"]
         return res
     return node_fn
@@ -180,12 +216,7 @@ async def _check_deps(node_def, results, state, t0, ctx):
     last_check = state["last_check"]
     ignore_failed = node_def.get("ignore_failed_deps", False)
 
-    '''def _is_ok(d):
-        has_res, exec_time = _get_dep_freshness(d, results)
-        if not has_res or exec_time <= last_check: return False
-        return ignore_failed or results[d]["success"]'''
     def _is_ok(d):
-        # 1. nodo dinamico in results
         if d in results:
             res_d = results[d]
             if not (ignore_failed or res_d["success"]):
@@ -193,11 +224,10 @@ async def _check_deps(node_def, results, state, t0, ctx):
             if res_d.get("_static"):
                 return True
             return res_d.get("_execution_time", 0.0) > last_check
-        # 2. dato statico nel context (path annidato es. "health.cpu")
         return scheme.get(ctx, d) is not None
 
     fresh_ok = [d for d in deps if _is_ok(d)]
-    
+
     existing = [d for d in deps if d in results]
     failed   = [d for d in existing if not results[d]["success"]]
 
@@ -221,18 +251,63 @@ async def _check_deps(node_def, results, state, t0, ctx):
 
 # -- EXECUTION ------------------------------------------------------------------
 
-async def _execute(node_def, ctx, results, view, t0):
-    r = await _call_if_coro(node_def["fn"], view)
-    result = r if is_result(r) else success(r, t0)
+async def _execute(node_def, ctx, results, view, t0, *, runner=None, session_id=None):
+    """
+    Esegue fn con supporto a retries, timeout e lifecycle hooks completi:
+      on_start   → prima dell'esecuzione
+      on_success → se il nodo termina con successo
+      on_error   → se il nodo fallisce (anche dopo tutti i retry)
+      on_close   → sempre, al termine (sia success che error)
+
+    I hooks accettano:
+      - stringa  → nome di un nodo da triggerare nella sessione corrente
+      - callable → fn(view) oppure fn(view, result)
+    """
+    node_name   = node_def["name"]
+    node_path   = node_def.get("path") or node_name
+    retries     = node_def.get("retries", 0)
+    retry_delay = node_def.get("retry_delay", 0)
+    timeout     = node_def.get("timeout")
+    hook_kw = {"runner": runner, "session_id": session_id, "node_def": node_def}
+
+    # --- on_start ---
+    await _fire_hook(node_def.get("on_start"), view, **hook_kw)
+
+    result = None
+
+    for attempt in range(retries + 1):
+        try:
+            if timeout:
+                r = await asyncio.wait_for(_call_if_coro(node_def["fn"], view), timeout=timeout)
+            else:
+                r = await _call_if_coro(node_def["fn"], view)
+
+            result = r if is_result(r) else success(r, t0)
+            break  # successo: usciamo dal loop retry
+
+        except asyncio.TimeoutError:
+            result = error(f"timeout after {timeout}s (attempt {attempt+1})", t0)
+        except Exception as e:
+            result = error(e, t0)
+
+        if attempt < retries:
+            await asyncio.sleep(retry_delay)
+
     result["_execution_time"] = time.perf_counter()
-    
-    node_name = node_def["name"]
-    node_path = node_def.get("path") or node_name
-    
-    # Store in context (hierarchical)
+
+    # --- on_success / on_error ---
+    if result["success"]:
+        await _fire_hook(node_def.get("on_success"), view, result, **hook_kw)
+    else:
+        await _fire_hook(node_def.get("on_error"), view, result, **hook_kw)
+
+    # --- on_close: chiamato SEMPRE, sia success che error ---
+    await _fire_hook(node_def.get("on_close"), view, result, **hook_kw)
+
+    # Aggiorna context e results
     _set_path(ctx, node_path, result["outputs"])
-    # Store in results (flat by internal path name for deps lookup)
     results[node_name] = result
+
     return result
 
 # -- RUN NODE -------------------------------------------------------------------
@@ -262,7 +337,6 @@ async def _run_node(runner, session_id, node_name):
         try:
             should_run = when_cond(view) if callable(when_cond) else bool(when_cond)
         except Exception as e:
-            # Propaghiamo l'errore per debugging
             results[node_name] = error(f"WHEN condition error: {e}", t0)
             state["done"].set()
             return
@@ -272,26 +346,32 @@ async def _run_node(runner, session_id, node_name):
             res["_skipped"] = True
             res["_execution_time"] = time.perf_counter()
             results[node_name] = res
-            
-            # Notifica i successori anche se saltato
-            file_name = runner.session_files[session_id]
+
+            # Notifica successori anche se saltato
             for succ in runner.graphs[file_name].successors(node_name):
                 await runner.event_queue.put((session_id, succ))
-                
+
             state["done"].set()
             return
-    
-    result = await _execute(node_def, ctx, results, view, t0)
 
-    # successors dal grafo
-    file_name = runner.session_files[session_id]
+    result = await _execute(node_def, ctx, results, view, t0, runner=runner, session_id=session_id)
+
+    # Notifica successori
     for succ in runner.graphs[file_name].successors(node_name):
         await runner.event_queue.put((session_id, succ))
 
-    # scheduling FIX
+    # Rescheduling
     if node_def.get("schedule"):
+        if state["start_time"] is None:
+            state["start_time"] = time.perf_counter()
+
+        duration = node_def.get("duration")
         async def resched():
             await asyncio.sleep(node_def["schedule"])
+            if duration is not None:
+                elapsed = time.perf_counter() - state["start_time"]
+                if elapsed >= duration:
+                    return
             await runner.event_queue.put((session_id, node_name))
         asyncio.create_task(resched())
 
@@ -365,14 +445,14 @@ class DagRunner:
         self.graphs[file_name] = G
         self.files[file_name]  = [n["name"] for n in nodes]
 
-        # Sync sessions that use this file
         for sid, fname in self.session_files.items():
             if fname == file_name:
                 for n_name in self.files[file_name]:
                     if n_name not in self.session_node_state[sid]:
                         self.session_node_state[sid][n_name] = {
                             "last_check": -1.0,
-                            "done": asyncio.Event()
+                            "done":       asyncio.Event(),
+                            "start_time": None,
                         }
 
     def create_session(self, session_id: str, file_name: str, context=None):
@@ -382,9 +462,16 @@ class DagRunner:
         self.session_node_state[session_id] = {}
 
         for n in self.files[file_name]:
+            node_def = self.nodes_map[file_name][n]
+            if node_def.get("default") is not None:
+                node_path = node_def.get("path") or n
+                _set_path(self.session_ctx[session_id], node_path, node_def["default"])
+
+        for n in self.files[file_name]:
             self.session_node_state[session_id][n] = {
                 "last_check": -1.0,
-                "done": asyncio.Event()
+                "done":       asyncio.Event(),
+                "start_time": None,
             }
 
         for k, v in (context or {}).items():
@@ -413,13 +500,55 @@ class DagRunner:
 
         self.event_queue.put_nowait((session_id, node_name))
 
-    def trigger(self, session_id: str, node_name: str):
-        self.event_queue.put_nowait((session_id, node_name))
+    async def trigger(self, session_id: str, node_name: str, payload=None):
+        """
+        Esegue subito il nodo, ignorando dipendenze e queue, aggiornando context e risultati.
+        Funziona anche se il nodo è già stato eseguito prima.
+        """
+        file_name = self.session_files.get(session_id)
+        if not file_name:
+            return
+
+        node_def = self.nodes_map[file_name].get(node_name)
+        if not node_def:
+            return
+
+        # Reset stato done in modo da poter ri-eseguire il nodo
+        state = self.session_node_state[session_id][node_name]
+        state["done"].clear()
+        state["last_check"] = time.perf_counter()
+
+        ctx = self.session_ctx[session_id]
+        results = self.session_results[session_id]
+
+        # Inietta payload nel context
+        if payload is not None:
+            node_path = node_def.get("path") or node_name
+            _set_path(ctx, node_path, payload)
+
+            res = success(payload)
+            res["_execution_time"] = time.perf_counter()
+            results[node_name] = res
+
+        # Costruisci view
+        view = _get_node_view(node_def, ctx, results, session_id)
+
+        # Esegui nodo immediatamente
+        result = await _execute(node_def, ctx, results, view, time.perf_counter(),
+                                runner=self, session_id=session_id)
+
+        # Notifica successori nella queue
+        for succ in self.graphs[file_name].successors(node_name):
+            await self.event_queue.put((session_id, succ))
+
+        # Setta l'evento done
+        state["done"].set()
+
+        return result
 
     async def run_node(self, node_def: Dict, context: Dict):
         """Esegue un nodo immediatamente usando la logica dell'engine."""
         t0 = time.perf_counter()
-        # Mocking basic view for immediate execution
         view = ChainMap(context, {"path": node_def.get("path") or node_def["name"]})
         res = await _call_if_coro(node_def["fn"], view)
         return res if is_result(res) else success(res, t0)
@@ -452,7 +581,7 @@ def foreach(iterable, fn):
         return results
     return _fn
 
-async def switch(data,cases):
+async def switch(data, cases):
     """
     Switch funzionale stile IF / ELIF / ELSE
 
@@ -467,15 +596,11 @@ async def switch(data,cases):
     - La prima condizione vera vince
     - 'true' è il default
     """
-    
     default_fn = cases.get(True)
 
     for cond, fn in cases.items():
-
-        # skip default, lo gestiamo alla fine
         if cond is True:
             continue
-
         if not callable(cond):
             continue
         else:
@@ -490,16 +615,14 @@ async def switch(data,cases):
                 return c
             else:
                 return fn
-
         except Exception as e:
             errore_completo = traceback.format_exc()
-            print(errore_completo,"e")
+            print(errore_completo, "e")
             raise RuntimeError(f"switch condition error: {e}")
 
-    # default
     if default_fn:
         if callable(default_fn):
-            a,_ = await _call_if_coro(default_fn, data)
+            a, _ = await _call_if_coro(default_fn, data)
             return a
         else:
             return default_fn
