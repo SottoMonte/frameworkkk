@@ -10,6 +10,7 @@ import time
 from collections import ChainMap
 from collections.abc import Mapping
 import traceback
+import functools
 
 # -- RESULT SYSTEM --------------------------------------------------------------
 
@@ -34,7 +35,11 @@ value_of  = lambda v: v["outputs"] if is_result(v) else v
 # -- DSL UTILITIES --------------------------------------------------------------
 
 def action(custom_filename: str = __file__, app_context = None, **constants):
-    
+    '''injection_args = []
+    for key in constants.get('managers',[]):
+        injection_args.append(loader.get_sync(key))
+
+    print(injection_args)'''
     def decorator(function):
         if asyncio.iscoroutinefunction(function):
             @functools.wraps(function)

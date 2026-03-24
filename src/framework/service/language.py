@@ -634,13 +634,13 @@ class Interpreter:
     # ── entry point ───────────────────────────────────────────────────────────
     async def start(self):
         await self.runner.start()
-        await self.runner.add_file('interpreter', [])
-        self.runner.create_session('interpreter', 'interpreter', {})
+        #await self.runner.add_file('interpreter', [])
+        #self.runner.create_session('interpreter', 'interpreter', {})
 
     async def stop(self):
         await self.runner.stop()
 
-    async def run(self, name, ast, env={}):
+    async def run(self, name, ast, session, env={}):
         self._tasks = [] # Reset tasks for this run
         self._stack = []
         self._dag = []
@@ -648,7 +648,7 @@ class Interpreter:
         flow_nodes = await self._build_flow_nodes(env|result)
         #print("\n\n###############################FLOW NODES",flow_nodes)
         await self.runner.add_file(name,flow_nodes)
-        self.runner.create_session("user_1",name,env|result)
+        self.runner.create_session(session,name,env|result)
         return result
  
 

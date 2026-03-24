@@ -4,17 +4,15 @@ import asyncio
 class messenger():
 
     def __init__(self,**constants):
-        #print('MES-',constants)
-        self.providers = constants.get('providers', {}).get('message', [])
+        self.executor = constants.get('executor')
+        self.providers = constants.get('message', [])
         pass
 
-    @flow.asynchronous(inputs='messenger',managers=('executor',))
-    async def post(self, executor, **constants):
+    async def post(self, **constants):
         for provider in self.providers:
             await provider.post(**constants)
 
-    @flow.asynchronous(inputs='messenger',managers=('executor',))
-    async def read(self, executor, **constants):
+    async def read(self, **constants):
         prohibited = constants['prohibited'] if 'prohibited' in constants else []
         allowed = constants['allowed'] if 'allowed' in constants else ['FAST']
         operations = []

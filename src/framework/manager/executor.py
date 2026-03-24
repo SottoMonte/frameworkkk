@@ -2,19 +2,22 @@ import asyncio
 from typing import List, Dict, Any, Callable
 import re
 import traceback
-from framework.service.diagnostic import framework_log
 
 class executor:
     def __init__(self, **constants):
-        # actuator
-        self.sessions: Dict[str, Any] = {}
-        providers_data = constants.get('providers', [])
-        if isinstance(providers_data, dict):
-            self.providers = providers_data.get('actuator', [])
-        else:
-            self.providers = providers_data
+        self.defender = constants.get('defender')
+        self.language = constants.get('language')
+        self.interpreter = self.language.Interpreter()
+        self.parser = self.language.create_parser()
+        #self.ast    = self.language.parse(source, parser)
+        asyncio.create_task(self.interpreter.start())
+
+    async def dsl(self, name, source, session):
+        ast = self.language.parse(source, self.parser)
+        return await self.interpreter.run(name, ast, session, env=self.language.DSL_FUNCTIONS)
+        
     
-    @flow.asynchronous(managers=('messenger',))
+    '''@flow.asynchronous(managers=('messenger',))
     async def action(self, messenger, **constants):
         #await asyncio.sleep(5)
         
@@ -224,4 +227,4 @@ class executor:
         except Exception as e:
             error_msg = f"❌ Errore in together_completed: {str(e)}"
             await messenger.post(domain='debug', message=error_msg)
-            return {"state": False, "result": None, "error": error_msg}
+            return {"state": False, "result": None, "error": error_msg}'''

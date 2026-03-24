@@ -1,13 +1,15 @@
 import os
-import framework.service.language as language
-import framework.service.flow as flow
-from framework.service.diagnostic import framework_log
 import asyncio
 
 class tester:
+    def __init__(self, **config):
+        self.args = config.get('args')
+        self.loader = config.get('loader')
+        if '--test' in self.args:
+            asyncio.create_task(self.run())
 
     async def run(self, **constants):
-        framework_log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
+        diagnostic.log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
         interp = language.Interpreter()
         await interp.start()
         for root, _, files in os.walk('./src'):
@@ -17,25 +19,24 @@ class tester:
         
 
     async def dsl(self, interp, **kwargs):
-        from framework.service.load import resource
 
         path = kwargs.get('path')
-
+        diagnostic.log("INFO", f"Esecuzione test DSL in {path}", emoji="🧪")
         # ── caricamento e parsing ─────────────────────────────────────────────
-        res    = await resource(path)
+        res    = self.loader.resource(path)
         source = flow.value_of(res) if flow.is_result(res) else res
         if not isinstance(source, str):
-            framework_log("ERROR", f"Risorsa non stringa per {path}", emoji="❌")
+            diagnostic.log("ERROR", f"Risorsa non stringa per {path}", emoji="❌")
             return {"success": False, "errors": ["risorsa non valida"]}
 
         parser = language.create_parser()
         ast    = language.parse(source, parser)
         if isinstance(ast, Exception):
-            framework_log("ERROR", f"Errore di parsing DSL in {path}: {ast}", emoji="❌")
+            diagnostic.log("ERROR", f"Errore di parsing DSL in {path}: {ast}", emoji="❌")
             return {"success": False, "errors": [str(ast)]}
 
         # ── esecuzione ────────────────────────────────────────────────────────
-        ctx    = await interp.run(path, ast, env=language.DSL_FUNCTIONS) or {}
+        ctx    = await interp.run(path, ast,"tester", env=language.DSL_FUNCTIONS) or {}
         
         '''errors = [
             err
@@ -44,7 +45,7 @@ class tester:
             for err in v["errors"]
         ]
         if errors:
-            framework_log("ERROR", f"Errore in {path}: {errors}", emoji="❌")
+            diagnostic.log("ERROR", f"Errore in {path}: {errors}", emoji="❌")
             return {"success": False, "errors": errors}'''
 
         # ── esecuzione test suite ─────────────────────────────────────────────
@@ -71,14 +72,14 @@ class tester:
                 if assert_(received=received, expected=expected):
                     results["passed"] += 1
                     results["details"].append({"target": target, "status": "OK"})
-                    framework_log("INFO", f"OK - Test N.{i}: {test['note']}", emoji="✅")
+                    diagnostic.log("INFO", f"OK - Test N.{i}: {test['note']}", emoji="✅")
                 else:
                     results["failed"] += 1
                     results["details"].append({
                         "target": target, "status": "FAIL",
                         "expected": expected, "received": received,
                     })
-                    framework_log("WARNING", f"FAIL - Test N.{i}: {test['note']}",
+                    diagnostic.log("WARNING", f"FAIL - Test N.{i}: {test['note']}",
                                   affirmed=assert_, expected=expected,
                                   received=received, emoji="❌")
 
@@ -86,10 +87,10 @@ class tester:
                 results["failed"] += 1
                 results["errors"].append({"target": target, "error": str(e)})
                 results["details"].append({"target": target, "status": "ERROR", "message": str(e)})
-                framework_log("ERROR", f"Test N.{i}: ERROR", error=str(e), emoji="⚠️")
+                diagnostic.log("ERROR", f"Test N.{i}: ERROR", error=str(e), emoji="⚠️")
 
         status = "PASSED" if results["failed"] == 0 else "FAILED"
-        framework_log("INFO", f"DSL Test {path or 'Inline'}: {status}",
+        diagnostic.log("INFO", f"DSL Test {path or 'Inline'}: {status}",
                       total=results["total"], passed=results["passed"],
                       failed=results["failed"])
 
