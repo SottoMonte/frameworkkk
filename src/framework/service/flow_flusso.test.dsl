@@ -46,13 +46,13 @@ switch({
 }) |> print("@@@@@@@@@@@@@@@@@@@@");*/
 
 //ggg(schedule:5) -> print(health.cpu);
-test_schedule_duration(schedule:5,duration:10,default:0,on_close:data) -> test_schedule_duration + 1;
+test_schedule_duration(schedule:2,duration:10,default:2,on_close:data) -> test_schedule_duration + 1;
 
 
 data(meta:true) -> data;
 
-test:{
-    test_schedule_duration:{'outputs':2;'assert':@outputs == 10 | @loop ==2;'loop':0};
+tests:{
+    test_schedule_duration:{'outputs':2;'assert':@loop ==5;'loop':1;'max_loop':5};
 };
 
 /*integration_test() -> integration_test |> switch({
@@ -62,6 +62,21 @@ test:{
 
 //integration_test(default:test) -> integration_test |> get(data.trigger) |> sentry(get(integration_test,data.trigger+".assert"))
 
-integration_test(default:test) -> integration_test |> test:get(data.trigger) |> assert:get("assert") |> print(step_assert);
+/*integration_test(default:test) -> integration_test |> test:get(data.trigger) |> assert:get("assert") 
+|> 
+branch(step_test,{
+    false: integration_test|>put(data.trigger+".loop",get(integration_test,data.trigger+".loop")+ 1);
+    true: "[O] test superato" + data.trigger;
+});*/
+
+integration_test(default:tests) -> integration_test |> test:get(data.trigger)
+|> 
+switch({
+    @assert: test;
+    @loop == @max_loop: "test fallito";
+    true: integration_test |> put(data.trigger+".loop", test.loop + 1);
+});
+
+//zio() -> data |> trigger:get("trigger") |> print({trigger:trigger},"@@@@@@@@@@@@@@@@@@@@");
 
 aaa() -> print(integration_test);

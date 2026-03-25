@@ -118,6 +118,7 @@ DSL_FUNCTIONS = {
     'switch':  flow.switch,
     'when': flow.when,
     'sentry': flow.sentry,
+    'branch': flow.branch,
     'transform': scheme.transform,
     'get': scheme.get,
     'normalize': scheme.normalize,
@@ -504,40 +505,23 @@ class Interpreter:
                 result[key] = val
         return result, env
 
-    async def visit_pipe2(self, node, env, path=""):
-        steps = node["steps"]
-        val, env = await self.visit(steps[0], env, path)
-        for step in steps[1:]:
-            val, env = await self.visit_call(step, env, path, args=[val])
-        return val, env
-
     async def visit_pipe(self, node, env, path=""):
         steps = node["steps"]
         # 1. Valutiamo il primo step (l'input della pipe)
         val, env = await self.visit(steps[0], env, path)
-        
+        pipe_vars = {"_": val}
         # 2. Cicliamo sugli step successivi
         for i, step in enumerate(steps[1:]):
             name = i
             if step.get("type") == "pair":
                 name = step["key"].get("name",i)
                 step = step["value"]
-                
-            # Creiamo un nome per il valore intermedio basato sull'indice o sul nome dello step
-            # Questo permette alle context_var di accedere ai risultati precedenti
-            step_name = f"step_{name}"
-            
-            # Aggiorniamo l'ambiente locale con il valore corrente
-            # Usiamo ChainMap o una copia per non sporcare l'env globale se non desiderato
-            local_env = env | {"_": val, step_name: val} 
-            
-            # 3. Eseguiamo la chiamata passandogli il valore corrente come primo argomento
-            # Passiamo local_env così i parametri dello step possono referenziare i valori salvati
+
+            pipe_vars["_"] = val
+            local_env = env | pipe_vars
+
             val, _ = await self.visit_call(step, local_env, path, args=[val])
-            
-            # (Opzionale) Se vuoi che ogni step sia salvato permanentemente nell'env 
-            # per gli step successivi della stessa pipe:
-            env = env | {step_name: val}
+            pipe_vars[name] = val 
 
         return val, env
 
@@ -571,7 +555,7 @@ class Interpreter:
 
     # ── chiamate a funzione ───────────────────────────────────────────────────
 
-    async def visit_call(self, node, env, path="", args=(), kwargs=None):
+    async def visit_call(self, node, env, path="", args=(), kwargs={}):
         name, meta = node.get("name"), node.get("meta")
         if node.get("lazy"):
             #node.pop("lazy", None)
@@ -580,14 +564,13 @@ class Interpreter:
         ast_args   = [(await self.visit(a, env, path=f"{call_path}[{i}]"))[0] for i, a in enumerate(node.get("args", []))]
         ast_kwargs = {k: (await self.visit(v, env, path=f"{call_path}.{k}"))[0] for k, v in node.get("kwargs", {}).items()}
         all_args   = list(args) + ast_args
-        all_kwargs = {**(kwargs or {}), **ast_kwargs}
+        all_kwargs = {**kwargs, **ast_kwargs}
         fn = scheme.get(env, str(name))
-        
+
         # Utilizziamo self.invoke (che gestisce sia Python callables che DSL functions)
-        res = await self.invoke(fn, all_args, all_kwargs or {}, path=call_path)
+        res = await self.invoke(fn, all_args, all_kwargs, path=call_path)
         if not res["success"]:
             raise DSLRuntimeError(f"Errore call '{name}': {res['errors']}", meta)
-            
         return res["outputs"], env
 
     async def _call_dsl_fn(self, fn_triple, args, kwargs, path=""):
@@ -650,14 +633,18 @@ class Interpreter:
             
             # Estrazione sicura e ricorsiva di tutte le dipendenze (incluse quelle nelle pipe)
             raw_deps = self._find_vars(action) | self._find_vars(kw)
-            #deps = {self._resolve_scope(t_path, d, available) for d in raw_deps}
-            deps = {
-                self._resolve_scope(t_path, d, available) 
-                for d in raw_deps 
-                if not d.startswith("step_") and d != "_"
-            }
-            if name in deps:
-                deps.remove(name)
+            deps = set()
+            for d in raw_deps:
+                resolved = self._resolve_scope(t_path, d, available)
+                if resolved in available:
+                    deps.add(resolved)
+                else:
+                    #print(f"[deps] '{d}' -> '{resolved}' non trovato in available, ignorato")
+                    pass
+
+            if t_path in deps:
+                deps.discard(t_path)
+
             kw['deps'] = list(deps)
             
             def make_task_fn(ast, interpreter_ref, t_path):

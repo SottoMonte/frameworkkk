@@ -498,17 +498,21 @@ class DagRunner:
 @action()
 async def sentry(context=dict(), condition=lambda x: False):
     print("Sentry", context, condition)
-    if condition(context):
+    if condition(**context):
         return True
     else:
         return False
 
-async def branch(condition,context, vero, falso):
-    print("Branch", context, condition)
-    if condition:
-        return vero(context)
+async def branch(condition,context, branchs):
+    #print("##############", context, condition,condition(**context),"\n\n")
+    if isinstance(condition, bool):
+        check = condition
     else:
-        return falso(context)
+        check = condition(**context)
+    if check:
+        return branchs[True]
+    else:
+        return branchs[False]
 
 async def when(condition, step, context=dict()):
     # Se la condizione (funzione o booleano) è vera, esegue lo step
@@ -564,11 +568,17 @@ async def switch(data, cases):
     """
     default_fn = cases.get(True)
 
+    #print("################", data, cases, "\n\n")
+
     for cond, fn in cases.items():
+        #print("################", type(cond), cond, fn, "\n\n")
         if cond is True:
             continue
         if not callable(cond):
             continue
+        elif "ContextVar" in str(type(cond)):
+            condizione = cond(**data)
+            check = condizione(**data)
         else:
             check = cond(**data)
 
