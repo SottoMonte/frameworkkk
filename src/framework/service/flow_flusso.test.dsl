@@ -29,7 +29,6 @@ health: {
     ram(schedule:5) -> random(0,100);
     disk(schedule:1) -> random(0,100);
     //check(deps_policy:3) -> print("######### CPU:",health.cpu,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
-    //alert(schedule:5,deps:['check'],when: any_crit) -> print("ATTENZIONE: SOGLIA SUPERATA");
 };
 
 /*ggg(schedule:5) -> print(health.cpu);
@@ -47,11 +46,22 @@ switch({
 }) |> print("@@@@@@@@@@@@@@@@@@@@");*/
 
 //ggg(schedule:5) -> print(health.cpu);
-test_schedule_duration(schedule:2,duration:10,default:0,on_close:data) -> test_schedule_duration + 1;
+test_schedule_duration(schedule:5,duration:10,default:0,on_close:data) -> test_schedule_duration + 1;
 
 
 data(meta:true) -> data;
 
+test:{
+    test_schedule_duration:{'outputs':2;'assert':@outputs == 10 | @loop ==2;'loop':0};
+};
 
-//pppp() -> print(get(integration_test,"outputs")) ;
-integration_test() -> data.outputs |> print("zzz----->") ;
+/*integration_test() -> integration_test |> switch({
+    integration_test.assert:
+    true: put(data.trigger+".loop",get(integration_test,data.trigger+".loop")+ 1);
+}) |> print("[*] Test completato");*/
+
+//integration_test(default:test) -> integration_test |> get(data.trigger) |> sentry(get(integration_test,data.trigger+".assert"))
+
+integration_test(default:test) -> integration_test |> get(data.trigger) |> get("assert") |> print(step_get)
+
+aaa() -> print(integration_test);

@@ -495,6 +495,29 @@ class DagRunner:
 
 # -- DAG EXTENSIONS -----------------------------------------------------------
 
+@action()
+async def sentry(context=dict(), condition=lambda x: False):
+    print("Sentry", context, condition)
+    if condition(context):
+        return True
+    else:
+        return False
+
+async def branch(condition,context, vero, falso):
+    print("Branch", context, condition)
+    if condition:
+        return vero(context)
+    else:
+        return falso(context)
+
+async def when(condition, step, context=dict()):
+    # Se la condizione (funzione o booleano) è vera, esegue lo step
+    should_run = await sentry(context, condition)
+    if should_run.get('success', False):
+        return await act(step, context)
+    else:
+        return should_run
+
 def foreach(iterable, fn):
     """
     Esegue fn per ogni elemento dell'iterabile.

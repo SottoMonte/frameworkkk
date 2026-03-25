@@ -115,6 +115,8 @@ DSL_FUNCTIONS = {
     #'resource': load.resource,
     'foreach': flow.foreach,
     'switch':  flow.switch,
+    'when': flow.when,
+    'sentry': flow.sentry,
     'transform': scheme.transform,
     'get': scheme.get,
     'normalize': scheme.normalize,
@@ -474,11 +476,36 @@ class Interpreter:
                 result[key] = val
         return result, env
 
-    async def visit_pipe(self, node, env, path=""):
+    async def visit_pipe2(self, node, env, path=""):
         steps = node["steps"]
         val, env = await self.visit(steps[0], env, path)
         for step in steps[1:]:
             val, env = await self.visit_call(step, env, path, args=[val])
+        return val, env
+
+    async def visit_pipe(self, node, env, path=""):
+        steps = node["steps"]
+        # 1. Valutiamo il primo step (l'input della pipe)
+        val, env = await self.visit(steps[0], env, path)
+        
+        # 2. Cicliamo sugli step successivi
+        for i, step in enumerate(steps[1:]):
+            # Creiamo un nome per il valore intermedio basato sull'indice o sul nome dello step
+            # Questo permette alle context_var di accedere ai risultati precedenti
+            step_name = f"step_{step.get('name', i)}"
+            
+            # Aggiorniamo l'ambiente locale con il valore corrente
+            # Usiamo ChainMap o una copia per non sporcare l'env globale se non desiderato
+            local_env = env | {"_": val, step_name: val} 
+            
+            # 3. Eseguiamo la chiamata passandogli il valore corrente come primo argomento
+            # Passiamo local_env così i parametri dello step possono referenziare i valori salvati
+            val, _ = await self.visit_call(step, local_env, path, args=[val])
+            
+            # (Opzionale) Se vuoi che ogni step sia salvato permanentemente nell'env 
+            # per gli step successivi della stessa pipe:
+            env = env | {step_name: val}
+        print(val)
         return val, env
 
     async def visit_binop(self, node, env, path=""):
@@ -590,7 +617,12 @@ class Interpreter:
             
             # Estrazione sicura e ricorsiva di tutte le dipendenze (incluse quelle nelle pipe)
             raw_deps = self._find_vars(action) | self._find_vars(kw)
-            deps = {self._resolve_scope(t_path, d, available) for d in raw_deps}
+            #deps = {self._resolve_scope(t_path, d, available) for d in raw_deps}
+            deps = {
+                self._resolve_scope(t_path, d, available) 
+                for d in raw_deps 
+                if not d.startswith("step_") and d != "_"
+            }
             if name in deps:
                 deps.remove(name)
             kw['deps'] = list(deps)
@@ -599,7 +631,8 @@ class Interpreter:
                 if ast.get("type") == "pipe":
                     async def task_fn(env_dict):
                         try:
-                            return await interpreter_ref.visit(ast, env_dict, path=t_path)
+                            val,_ = await interpreter_ref.visit(ast, env_dict, path=t_path)
+                            return val
                         except Exception as e:
                             return flow.error(str(e))
                 elif ast.get("type") == "call":
