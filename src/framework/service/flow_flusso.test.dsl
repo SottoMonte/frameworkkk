@@ -46,37 +46,28 @@ switch({
 }) |> print("@@@@@@@@@@@@@@@@@@@@");*/
 
 //ggg(schedule:5) -> print(health.cpu);
-test_schedule_duration(schedule:2,duration:10,default:2,on_close:data) -> test_schedule_duration + 1;
+test_schedule_duration(schedule:2,duration:10,default:1,on_close:data,on_end:report) -> test_schedule_duration + 1;
 
 
 data(meta:true) -> data;
 
 tests:{
-    test_schedule_duration:{'outputs':2;'assert':@loop ==5;'loop':1;'max_loop':5};
+    test_schedule_duration:{'outputs':2;'assert':@loop == 5 & @outputs == 6;'loop':0;'max_loop':5};
 };
 
-/*integration_test() -> integration_test |> switch({
-    integration_test.assert:
-    true: put(data.trigger+".loop",get(integration_test,data.trigger+".loop")+ 1);
-}) |> print("[*] Test completato");*/
-
-//integration_test(default:test) -> integration_test |> get(data.trigger) |> sentry(get(integration_test,data.trigger+".assert"))
-
-/*integration_test(default:test) -> integration_test |> test:get(data.trigger) |> assert:get("assert") 
-|> 
-branch(step_test,{
-    false: integration_test|>put(data.trigger+".loop",get(integration_test,data.trigger+".loop")+ 1);
-    true: "[O] test superato" + data.trigger;
-});*/
-
-integration_test(default:tests) -> integration_test |> test:get(data.trigger)
-|> 
+integration_test(default:tests) -> integration_test |> test:get(data.trigger) |> reset(integration_test) |> put(data.trigger+".loop", test.loop + 1) |> put(data.trigger+".outputs", data.outputs);
+/*|> 
 switch({
-    @assert: test;
-    @loop == @max_loop: "test fallito";
-    true: integration_test |> put(data.trigger+".loop", test.loop + 1);
+    //@assert: @reset(print("[O] test superato "+data.trigger),integration_test);
+    //@loop == @max_loop: @reset(print("[X] test fallito "+data.trigger),integration_test);
+    true: integration_test 
+});*/
+// put(data.trigger+".loop", test.loop + 1)
+
+report(default:tests) -> integration_test |> test:get(data.trigger) |> 
+switch({
+    @assert: @print("[O] test superato "+data.trigger);
+    @loop == @max_loop: @print("[X] test fallito "+data.trigger);
 });
 
-//zio() -> data |> trigger:get("trigger") |> print({trigger:trigger},"@@@@@@@@@@@@@@@@@@@@");
-
-aaa() -> print(integration_test);
+//aaa() -> print(integration_test);

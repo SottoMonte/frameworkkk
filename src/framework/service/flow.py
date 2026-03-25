@@ -171,6 +171,7 @@ def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
         "on_success":         kwargs.get("on_success"),  # chiamato se il nodo ha successo
         "on_error":           kwargs.get("on_error"),    # chiamato se il nodo fallisce
         "on_close":           kwargs.get("on_close"),    # chiamato sempre alla fine (success o error)
+        "on_end":             kwargs.get("on_end"),      # chiamato quando il nodo termina
         # -----------------------
         "when":               kwargs.get("when"),
         "timeout":            kwargs.get("timeout"),
@@ -343,10 +344,25 @@ async def _run_node(runner, session_id, node_name):
         duration = node_def.get("duration")
         async def resched():
             await asyncio.sleep(node_def["schedule"])
+            
+            should_terminate = False
             if duration is not None:
                 elapsed = time.perf_counter() - state["start_time"]
                 if elapsed >= duration:
-                    return
+                    should_terminate = True
+
+            if should_terminate:
+                # ESEGUIAMO ON_END SOLO QUI (FINE VITA)
+                last_res = results.get(node_name)
+                await _fire_hook(
+                    node_def.get("on_end"), 
+                    view, 
+                    last_res, 
+                    runner=runner, 
+                    session_id=session_id, 
+                    node_def=node_def
+                )
+                return
             await runner.event_queue.put((session_id, node_name))
         asyncio.create_task(resched())
 
@@ -522,22 +538,58 @@ async def when(condition, step, context=dict()):
     else:
         return should_run
 
-def foreach(iterable, fn):
+def foreach(iterable, fn,args=()):
     """
     Esegue fn per ogni elemento dell'iterabile.
     Restituisce una lista di risultati.
     """
     async def _fn(view):
         items = view.get("items") or iterable
+        
         results = []
-        for item in items:
-            new_view = ChainMap(view, {"item": item})
-            res = await _call_if_coro(fn, new_view)
-            results.append(res)
+        for arg in args:
+            for item in items:
+                #new_view = ChainMap(view, {"item": item})
+                res = await _call_if_coro(fn, view,arg)
+                results.append(res)
+        print("results", results)
         return results
     return _fn
 
-async def pipeline(steps):
+def pipeline(iterable, acts, *args, **kwargs):
+    """
+    Esegue fn per ogni elemento dell'iterabile.
+    Restituisce una lista di risultati.
+    """
+    async def _fn(view):
+        result = view.get("items") or iterable
+        
+        for arg in args:
+            result = await act(step(acts,result,*arg))
+            
+            if not result["success"]:
+                return result
+            result = result.get("outputs")
+        print("results", result)
+        return result
+    return _fn
+
+def reset(data,new):
+    return new
+
+async def parallel(dato,*acts):
+    """
+    Crea una pipeline di step.
+    Supporta:
+      - pipeline(steps) -> factory che ritorna node_fn(ctx)
+      - pipeline(data, steps) -> esecuzione immediata (utile in |>)
+    """
+    tasks = []
+    for act in acts:
+        tasks.append(act)
+    return await asyncio.gather(*tasks)
+
+async def pipeline2(steps):
     """
     Crea una pipeline di step.
     Supporta:
