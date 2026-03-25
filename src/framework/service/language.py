@@ -28,7 +28,8 @@ item: (pair|type_sequence) ASSIGN_OP sequence ";"?
 
 ?expr: pipe
 ?pipe: logic
-     | logic (PIPE logic)+ -> pipe_node
+     | logic (PIPE (pair|logic))+ -> pipe_node
+     #| logic (PIPE (identifier ":")? logic)+ -> pipe_node
 
 ?logic: comparison
       | ("not" | "!") logic        -> not_op
@@ -234,7 +235,29 @@ class DSLTransformer(Transformer):
     def or_op(self, meta, a):   return self._m({"type":"binop","op":"or", "left":a[0],"right":a[1]}, meta)
 
     def pipe_node(self, meta, items):
-        return self._m({"type":"pipe","steps":[i for i in items if not isinstance(i, Token)]}, meta)
+        # Il primo elemento è sempre lo step iniziale (senza alias)
+        items = [i for i in items if not isinstance(i, Token) and i is not None]
+        return self._m({"type":"pipe","steps":items}, meta)
+        '''steps = [{"alias": None, "step": items[0]}]
+        
+        # Iteriamo sul resto degli elementi
+        it = iter(items[1:])
+        for item in it:
+            # Se l'item è un identificatore (il nostro alias), 
+            # allora il PROSSIMO item nell'iteratore è lo step.
+            if isinstance(item, dict) and item.get("type") == "var":
+                alias = item["name"]
+                try:
+                    step = next(it)
+                    steps.append({"alias": alias, "step": step})
+                except StopIteration:
+                    # Caso limite: alias senza step (non dovrebbe accadere con LALR)
+                    steps.append({"alias": alias, "step": None})
+            else:
+                # È uno step senza alias
+                steps.append({"alias": None, "step": item})
+                
+        return self._m({"type": "pipe", "steps": steps}, meta)'''
 
     def start(self, meta, items): return items[0]
 
@@ -347,10 +370,15 @@ class Interpreter:
 
     def _find_vars(self, node, _seen=None):
         """Visita ricorsivamente l'AST raccogliendo tutte le var/context_var."""
-        if _seen is None:
-            _seen = set()
+        if _seen is None: _seen = set()
         if isinstance(node, dict):
             t = node.get("type")
+            # Se è un pair che viene usato come ALIAS in una pipe, 
+            # non dobbiamo estrarre il nome della chiave come dipendenza.
+            if t == "pair" and isinstance(node.get("key"), dict) and node["key"].get("type") == "var":
+                # Estrai variabili solo dal VALORE (la funzione), non dalla CHIAVE (l'alias)
+                return self._find_vars(node["value"], _seen)
+            # --------------------
             if t in ("var", "context_var"):
                 return {node["name"]}
             # Non scendere dentro function_def (scope separato)
@@ -490,9 +518,14 @@ class Interpreter:
         
         # 2. Cicliamo sugli step successivi
         for i, step in enumerate(steps[1:]):
+            name = i
+            if step.get("type") == "pair":
+                name = step["key"].get("name",i)
+                step = step["value"]
+                
             # Creiamo un nome per il valore intermedio basato sull'indice o sul nome dello step
             # Questo permette alle context_var di accedere ai risultati precedenti
-            step_name = f"step_{step.get('name', i)}"
+            step_name = f"step_{name}"
             
             # Aggiorniamo l'ambiente locale con il valore corrente
             # Usiamo ChainMap o una copia per non sporcare l'env globale se non desiderato
@@ -505,7 +538,7 @@ class Interpreter:
             # (Opzionale) Se vuoi che ogni step sia salvato permanentemente nell'env 
             # per gli step successivi della stessa pipe:
             env = env | {step_name: val}
-        print(val)
+
         return val, env
 
     async def visit_binop(self, node, env, path=""):

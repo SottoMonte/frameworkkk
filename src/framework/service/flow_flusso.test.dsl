@@ -62,6 +62,6 @@ test:{
 
 //integration_test(default:test) -> integration_test |> get(data.trigger) |> sentry(get(integration_test,data.trigger+".assert"))
 
-integration_test(default:test) -> integration_test |> get(data.trigger) |> get("assert") |> print(step_get)
+integration_test(default:test) -> integration_test |> test:get(data.trigger) |> assert:get("assert") |> print(step_assert);
 
 aaa() -> print(integration_test);
