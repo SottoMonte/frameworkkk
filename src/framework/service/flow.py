@@ -4,6 +4,7 @@ import asyncio, inspect, time
 from typing import Any, Dict, Callable, List
 import networkx as nx
 import functools
+import uuid
 
 # ─────────────────────────────────────────────
 # RESULT
@@ -16,6 +17,8 @@ def _res(ok, value=None, errors=None, t0=None):
         "outputs": value if ok else None,
         "errors": errors if isinstance(errors, list) else ([str(errors)] if errors else []),
         "time": (time.perf_counter() - t0) if t0 else 0.0,
+        "updated_at": time.time(), # Timestamp assoluto
+        "version": str(uuid.uuid4())[:8] # ID univoco del run
     }
 
 def success(v, t0=None): return _res(True, v, None, t0)
@@ -316,6 +319,7 @@ class DagRunner:
         if not deps:
             return success(d)
 
+        # 1. Check di Sincronizzazione (Eventi)
         not_ready = [dep for dep in deps if dep in session["done"] and not session["done"][dep].is_set()]
 
         if not_ready and not use_cache:
@@ -331,6 +335,28 @@ class DagRunner:
             # Interrompiamo la pipeline corrente con un errore "silenzioso" 
             # o uno stato che fermi l'esecuzione attuale senza loggare disastri.
             return error(f"Waiting for deps: {not_ready}")
+
+        # 2. Check di Freschezza (Timestamp/Version)
+        # Se il figlio è schedulato, non vogliamo che giri 100 volte sullo stesso dato del padre
+        if not use_cache:
+            my_last_run_time = res.get(node_name, {}).get("updated_at", 0)
+            
+            # Controlliamo se almeno un padre ha un dato più nuovo della nostra ultima esecuzione
+            fresh_data = False
+            for dep in deps:
+                if dep in res:
+                    if res[dep]["updated_at"] > my_last_run_time:
+                        fresh_data = True
+                        break
+            
+            # Se siamo già stati eseguiti una volta e nessun padre ha dati nuovi...
+            if node_name in res and not fresh_data:
+                # Rimettiamo in coda silenziosamente (aspettando il prossimo battito del padre)
+                async def _wait_for_fresh():
+                    await asyncio.sleep(0.5)
+                    self.queue.put_nowait((sid, node_name))
+                asyncio.create_task(_wait_for_fresh())
+                return error("No fresh data from parents yet.")
 
         completed = [dep for dep in deps if dep in res]
         succeeded = [dep for dep in completed if res[dep]["success"]]
@@ -404,10 +430,16 @@ class DagRunner:
     @action()
     async def _save_step(self, d):
         nd, result = d["node"], d["result"]
-        # Persistenza nel contesto globale tramite il path DSL
+        sid = d["sid"]
+        session = self.sessions[sid]
+        
+        # Salvataggio standard
         _set(d["ctx"], nd.get("path"), result["outputs"])
-        # Persistenza nella tabella dei risultati per i nodi figli
-        d["results"][nd["name"]] = result
+        session["results"][nd["name"]] = result
+        
+        # Registriamo che questo nodo ha appena prodotto questa versione
+        session.setdefault("last_seen", {})[nd["name"]] = result["version"]
+        
         return success(d)
 
     @action()
