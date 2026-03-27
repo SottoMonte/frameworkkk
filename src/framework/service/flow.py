@@ -46,7 +46,7 @@ def node(name: str, fn: Callable, **kw):
         "trigger": kw.get("trigger"),
         "schedule":  kw.get("schedule"),
         "duration":  kw.get("duration"),
-        "timeout": kw.get("timeout"),
+        "timeout": kw.get("timeout",30),
         "retries": kw.get("retries", 0),
         "retry_delay": kw.get("retry_delay", 0),
         "when": kw.get("when"),
@@ -316,17 +316,21 @@ class DagRunner:
         if not deps:
             return success(d)
 
-        if not use_cache:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*[
-                        session["done"][dep].wait()
-                        for dep in deps if dep in session["done"]
-                    ]),
-                    timeout=d["node"].get("timeout", 30)
-                )
-            except asyncio.TimeoutError:
-                return error(f"Dependency timeout for {node_name}")
+        not_ready = [dep for dep in deps if dep in session["done"] and not session["done"][dep].is_set()]
+
+        if not_ready and not use_cache:
+            # Se i padri non sono pronti, rilasciamo il worker!
+            # Aspettiamo un pochino e rimettiamo il nodo in coda.
+            async def _retry_later():
+                print(f"[Session {sid}] Waiting for deps: {not_ready}")
+                await asyncio.sleep(0.5) # Piccolo delay per non floodare la coda
+                self.queue.put_nowait((sid, node_name))
+            
+            asyncio.create_task(_retry_later())
+            
+            # Interrompiamo la pipeline corrente con un errore "silenzioso" 
+            # o uno stato che fermi l'esecuzione attuale senza loggare disastri.
+            return error(f"Waiting for deps: {not_ready}")
 
         completed = [dep for dep in deps if dep in res]
         succeeded = [dep for dep in completed if res[dep]["success"]]
