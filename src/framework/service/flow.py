@@ -51,6 +51,7 @@ def node(name: str, fn: Callable, **kw):
         "retry_delay": kw.get("retry_delay", 0),
         "when": kw.get("when"),
         "path": kw.get("path", name),
+        "cache": kw.get("cache", False),
         "on_start": kw.get("on_start"),
         "on_success": kw.get("on_success"),
         "on_error": kw.get("on_error"),
@@ -310,23 +311,22 @@ class DagRunner:
         policy   = d["node"].get("policy", "all")
         res      = d["results"]
         session  = self.sessions[sid]
-
+        use_cache = d["node"].get("cache", False)
         # 1. Se non ci sono dipendenze, via liberi
         if not deps:
             return success(d)
 
-        # Se il nodo è schedulato e ha già un risultato, ignoriamo le deps 
-        # (permette i cicli temporali senza restare bloccati dai padri)
-        if d["node"].get("schedule") and node_name in res:
-            return success(d)
-
-        # 2. Attendi che tutte le dipendenze siano completate
-        '''await asyncio.gather(*[
-            session["done"][dep].wait()
-            for dep in deps
-            if dep in session["done"]
-        ])'''
-        # -----------------------------------------------------------------
+        if not use_cache:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*[
+                        session["done"][dep].wait()
+                        for dep in deps if dep in session["done"]
+                    ]),
+                    timeout=d["node"].get("timeout", 30)
+                )
+            except asyncio.TimeoutError:
+                return error(f"Dependency timeout for {node_name}")
 
         completed = [dep for dep in deps if dep in res]
         succeeded = [dep for dep in completed if res[dep]["success"]]
@@ -413,8 +413,14 @@ class DagRunner:
         session = self.sessions[sid]
         interval = d["node"].get("schedule")
         
-        # 1. Trigger classici del DAG
+        # 1. Trigger e Reset Successori
         for nxt in self.graphs[session["file"]].successors(node_name):
+            nxt_node = self.nodes[session["file"]][nxt]
+            
+            # Se il FIGLIO vuole dati freschi (cache=False), resettiamo il suo 'done'
+            if not nxt_node.get("cache") and nxt in session["done"]:
+                session["done"][nxt].clear()
+            
             self.queue.put_nowait((sid, nxt))
 
         # 2. Reactive triggers

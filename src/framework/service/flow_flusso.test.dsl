@@ -78,5 +78,5 @@ switch({
 });*/
 
 //aaa() -> print(data) |> print("@@@@@@@@@@@@@@@@@@@@");
-cpu(schedule:1) -> random(0,100);
+cpu(schedule:5) -> random(0,100);
 
