@@ -1,37 +1,70 @@
-"""
-DAG Engine v7 - SESSION-AWARE + FRESHNESS FIXED + LIFECYCLE HOOKS
-"""
+"""DAG Engine v11 - deps_policy + reactive triggers"""
 
-import asyncio
-import inspect
-from typing import Any, Callable, List, Dict, Optional, Tuple
+import asyncio, inspect, time
+from typing import Any, Dict, Callable, List
 import networkx as nx
-import time
-from collections import ChainMap
-from collections.abc import Mapping
-import traceback
 import functools
 
-# -- RESULT SYSTEM --------------------------------------------------------------
+# ─────────────────────────────────────────────
+# RESULT
+# ─────────────────────────────────────────────
 
-_TAG = object()
-
-def _make_result(success: bool, value=None, errors=None, t0=None):
+def _res(ok, value=None, errors=None, t0=None):
     return {
-        "success": success,
-        "outputs": value if success else None,
-        "errors":  errors if isinstance(errors, list) else ([str(errors)] if errors else []),
-        "time":    (time.perf_counter() - t0) if t0 else 0.0,
-        "_tag":    _TAG
+        "action": None,
+        "success": ok,
+        "outputs": value if ok else None,
+        "errors": errors if isinstance(errors, list) else ([str(errors)] if errors else []),
+        "time": (time.perf_counter() - t0) if t0 else 0.0,
     }
 
-success   = lambda out, t0=None: _make_result(True,  out,  None, t0)
-error     = lambda err, t0=None: _make_result(False, None, err,  t0)
-is_result = lambda v: isinstance(v, dict) and v.get("_tag") is _TAG
-value_of  = lambda v: v["outputs"] if is_result(v) else v
+def success(v, t0=None): return _res(True, v, None, t0)
+def error(e, t0=None):   return _res(False, None, e, t0)
+def output(v):           return v.get("outputs") if isinstance(v, dict) and v.get("success") is not None else v
+def is_result(v):        return isinstance(v, dict) and v.get("success") is not None
 
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
 
-# -- DSL UTILITIES --------------------------------------------------------------
+def _set(ctx, path, val):
+    parts = path.split(".")
+    for p in parts[:-1]:
+        ctx = ctx.setdefault(p, {})
+    ctx[parts[-1]] = val
+
+# ─────────────────────────────────────────────
+# NODE DSL
+# ─────────────────────────────────────────────
+
+def node(name: str, fn: Callable, **kw):
+    return {
+        "name": name,
+        "fn": fn,
+        "deps": kw.get("deps", []),
+        "policy": kw.get("policy", "all"),
+        "trigger": kw.get("trigger"),
+        "schedule":  kw.get("schedule"),
+        "duration":  kw.get("duration"),
+        "timeout": kw.get("timeout"),
+        "retries": kw.get("retries", 0),
+        "retry_delay": kw.get("retry_delay", 0),
+        "when": kw.get("when"),
+        "path": kw.get("path", name),
+        "on_start": kw.get("on_start"),
+        "on_success": kw.get("on_success"),
+        "on_error": kw.get("on_error"),
+    }
+
+# ── DSL ───────────────────────────────────────────────────────────────────────
+
+def step(fn, *a, **kw): return (fn, a, kw)
+
+async def _call(fn, *a, **kw):
+    if callable(fn):
+        r = fn(*a, **kw)
+        return await r if inspect.isawaitable(r) else r
+    return fn
 
 def action(custom_filename: str = __file__, app_context=None, **constants):
     def decorator(function):
@@ -41,25 +74,21 @@ def action(custom_filename: str = __file__, app_context=None, **constants):
                 start_time = time.perf_counter()
                 try:
                     result = await function(*args, **kwargs)
-                    return success(result, start_time)
+                    return result|{"action": function.__name__, "time": start_time}
                 except Exception as e:
-                    return error(e, start_time)
+                    return error(e, start_time)|{"action": function.__name__, "time": start_time}
             return wrapper
         else:
             @functools.wraps(function)
             def wrapper(*args, **kwargs):
                 start_time = time.perf_counter()
                 try:
-                    result = function(*args, **kwargs)
-                    return success(result, start_time)
+                    result = function(*args, **kwargs)|{"action": function.__name__, "time": start_time}
+                    return result|{"action": function.__name__, "time": start_time}
                 except Exception as e:
-                    return error(e, start_time)
+                    return error(e, start_time)|{"action": function.__name__, "time": start_time}
             return wrapper
     return decorator
-
-
-def step(fn: Callable, *args, **kwargs):
-    return (fn, args, kwargs)
 
 async def act(s):
     t0 = time.perf_counter()
@@ -67,592 +96,381 @@ async def act(s):
         return error("invalid step", t0)
     fn, args, kwargs = s
     try:
-        r = await _call_if_coro(fn, *args, **kwargs)
+        r = await _call(fn, *args, **kwargs)
         return r if is_result(r) else success(r, t0)
     except Exception as e:
         return error(e, t0)
 
-# -- HELPERS --------------------------------------------------------------------
+# ── EXTENSIONS ────────────────────────────────────────────────────────────────
 
-async def _call_if_coro(fn: Callable, *args, **kwargs):
-    res = fn(*args, **kwargs)
-    if inspect.isawaitable(res):
-        return await res
-    return res
+async def branch(cond, ctx, branches):
+    return branches[cond if isinstance(cond, bool) else cond(**ctx)]
 
-def _set_path(data: Dict, path: str, value: Any):
-    if not path: return
-    parts = path.split('.')
-    for part in parts[:-1]:
-        data = data.setdefault(part, {})
-    data[parts[-1]] = value
+def foreach(iterable, fn, args=()):
+    async def _fn(view):
+        items = view.get("items") or iterable
+        return [await _call(fn, view, arg) for arg in args for _ in items]
+    return _fn
 
-def _get_node_view(node_def, ctx, results, session_id=None):
-    meta = node_def.get("meta", False)
-    node_path = node_def.get("path") or node_def["name"]
-    node_meta = {"path": node_path, "session_id": session_id} if session_id else {"path": node_path}
+@action()
+async def pipeline(iterable, *functions):
+    r = iterable
+    print("\n #################### NODE_NAME:",iterable["node"]["name"])
+    for fn in functions:
+        r = await fn(r)
+        print(r.get("errors"),r.get("action"))
+        if not r["success"]: return error(r["errors"], r["time"])
+        r = output(r)
+    return success(r)
 
-    parent_path = ".".join(node_path.split(".")[:-1])
-    parent_scope = scheme.get(ctx, parent_path) if parent_path else {}
-    if not isinstance(parent_scope, Mapping): parent_scope = {}
+async def reset(old,new):
+    return new
 
-    view_parts = [node_meta, parent_scope, ctx]
-    if isinstance(meta, list):
-        view_parts.insert(1, {md: results[md] for md in meta if md in results})
-    elif meta:
-        view_parts.insert(1, dict(results))
+async def switch(data, cases):
+    for cond, fn in cases.items():
+        if cond is True: continue
+        if callable(cond) and cond(**data) is True:
+            return (await _call(fn, data))[0] if callable(fn) else fn
+    default = cases.get(True)
+    if default: return (await _call(default, data))[0] if callable(default) else default
 
-    return ChainMap(*view_parts)
-
-def _parse_policy(policy) -> Tuple:
-    if policy == "all":
-        return ("all", None)
-    if policy == "any":
-        return ("any", None)
-    if isinstance(policy, int) and policy >= 1:
-        return ("quorum", policy)
-    raise ValueError(f"deps_policy non valida: {policy!r}")
-
-# -- LIFECYCLE HOOK RUNNER ------------------------------------------------------
-
-async def _fire_hook(hook, view, result=None, *, runner=None, session_id=None, node_def=None):
-    """
-    Esegue un lifecycle hook in modo sicuro. Supporta due forme:
-
-      - stringa  → triggera il nodo con quel nome nella sessione corrente,
-                   iniettando il result nel context prima di triggerare
-      - callable → chiamato con (view) oppure (view, result) in base alla firma
-    """
-    if hook is None:
-        return
-
-    try:
-        # -- forma stringa: triggera un nodo nel DAG --
-        if isinstance(hook, str):
-            if runner is None or session_id is None:
-                return
-            # push_event inietta result come valore del nodo stesso,
-            # così il nodo hook lo riceve pulito nel proprio view
-            # es: view["outputs"], view["success"], view["errors"]
-            # Inietta nel result chi ha triggerato questo hook
-            payload = dict(result) if result is not None else {}
-            payload["trigger"] = node_def["name"] if node_def else None
-            runner.push_event(session_id, hook, payload)
-            return
-
-        # -- forma callable --
-        sig = inspect.signature(hook)
-        params = list(sig.parameters)
-        if result is not None and len(params) >= 2:
-            await _call_if_coro(hook, view, result)
-        else:
-            await _call_if_coro(hook, view)
-
-    except Exception:
-        # I lifecycle hook non devono mai far crashare il nodo
-        pass
-
-
-# -- NODE DEFINITION ------------------------------------------------------------
-
-def node(name: str, fn: Callable, **kwargs) -> Dict[str, Any]:
-    _parse_policy(kwargs.get("deps_policy", "all"))
-    return {
-        "name":               name,
-        "fn":                 fn,
-        "deps":               kwargs.get("deps", []),
-        "deps_policy":        kwargs.get("deps_policy", "all"),
-        "ignore_failed_deps": kwargs.get("ignore_failed_deps", False),
-        "meta":               kwargs.get("meta", False),
-        "schedule":           kwargs.get("schedule"),
-        "duration":           kwargs.get("duration"),
-        # --- Lifecycle hooks ---
-        "on_start":           kwargs.get("on_start"),    # chiamato prima dell'esecuzione
-        "on_success":         kwargs.get("on_success"),  # chiamato se il nodo ha successo
-        "on_error":           kwargs.get("on_error"),    # chiamato se il nodo fallisce
-        "on_close":           kwargs.get("on_close"),    # chiamato sempre alla fine (success o error)
-        "on_end":             kwargs.get("on_end"),      # chiamato quando il nodo termina
-        # -----------------------
-        "when":               kwargs.get("when"),
-        "timeout":            kwargs.get("timeout"),
-        "retries":            kwargs.get("retries", 0),
-        "retry_delay":        kwargs.get("retry_delay", 0),
-        "path":               kwargs.get("path"),
-        "default":            kwargs.get("default"),
-    }
-
-# -- CORE CHECKS ----------------------------------------------------------------
-
-async def _check_deps(node_def, results, state, t0, ctx):
-    deps = node_def.get("deps", [])
-    if not deps:
-        return True, False
-
-    mode, quorum_n = _parse_policy(node_def.get("deps_policy", "all"))
-    last_check = state["last_check"]
-    ignore_failed = node_def.get("ignore_failed_deps", False)
-
-    def _is_ok(d):
-        if d in results:
-            res_d = results[d]
-            if not (ignore_failed or res_d["success"]):
-                return False
-            if res_d.get("_static"):
-                return True
-            return res_d.get("_execution_time", 0.0) > last_check
-        return scheme.get(ctx, d) is not None
-
-    fresh_ok = [d for d in deps if _is_ok(d)]
-
-    existing = [d for d in deps if d in results]
-    failed   = [d for d in existing if not results[d]["success"]]
-
-    if mode == "all":
-        if failed and not ignore_failed:
-            results[node_def["name"]] = error(f"dep failed: {failed}", t0)
-            return False, True
-        return (len(fresh_ok) == len(deps)), False
-
-    if mode == "any":
-        if fresh_ok:
-            return True, False
-        if len(existing) == len(deps) and len(failed) == len(deps):
-            return False, True
-        return False, False
-
-    if mode == "quorum":
-        return (len(fresh_ok) >= quorum_n), False
-
-    return False, False
-
-# -- EXECUTION ------------------------------------------------------------------
-
-async def _execute(node_def, ctx, results, view, t0, *, runner=None, session_id=None):
-    """
-    Esegue fn con supporto a retries, timeout e lifecycle hooks completi:
-      on_start   → prima dell'esecuzione
-      on_success → se il nodo termina con successo
-      on_error   → se il nodo fallisce (anche dopo tutti i retry)
-      on_close   → sempre, al termine (sia success che error)
-
-    I hooks accettano:
-      - stringa  → nome di un nodo da triggerare nella sessione corrente
-      - callable → fn(view) oppure fn(view, result)
-    """
-    node_name   = node_def["name"]
-    node_path   = node_def.get("path") or node_name
-    retries     = node_def.get("retries", 0)
-    retry_delay = node_def.get("retry_delay", 0)
-    timeout     = node_def.get("timeout")
-    hook_kw = {"runner": runner, "session_id": session_id, "node_def": node_def}
-
-    # --- on_start ---
-    await _fire_hook(node_def.get("on_start"), view, **hook_kw)
-
-    result = None
-
-    for attempt in range(retries + 1):
-        try:
-            if timeout:
-                r = await asyncio.wait_for(_call_if_coro(node_def["fn"], view), timeout=timeout)
-            else:
-                r = await _call_if_coro(node_def["fn"], view)
-
-            result = r if is_result(r) else success(r, t0)
-            break  # successo: usciamo dal loop retry
-
-        except asyncio.TimeoutError:
-            result = error(f"timeout after {timeout}s (attempt {attempt+1})", t0)
-        except Exception as e:
-            result = error(e, t0)
-
-        if attempt < retries:
-            await asyncio.sleep(retry_delay)
-
-    result["_execution_time"] = time.perf_counter()
-
-    # --- on_success / on_error ---
-    if result["success"]:
-        await _fire_hook(node_def.get("on_success"), view, result, **hook_kw)
-    else:
-        await _fire_hook(node_def.get("on_error"), view, result, **hook_kw)
-
-    # --- on_close: chiamato SEMPRE, sia success che error ---
-    await _fire_hook(node_def.get("on_close"), view, result, **hook_kw)
-
-    # Aggiorna context e results
-    _set_path(ctx, node_path, result["outputs"])
-    results[node_name] = result
-
-    return result
-
-# -- RUN NODE -------------------------------------------------------------------
-
-async def _run_node(runner, session_id, node_name):
-    file_name = runner.session_files[session_id]
-    node_def  = runner.nodes_map[file_name][node_name]
-    ctx       = runner.session_ctx[session_id]
-    results   = runner.session_results[session_id]
-    state     = runner.session_node_state[session_id][node_name]
-
-    t0 = time.perf_counter()
-
-    ok, fatal = await _check_deps(node_def, results, state, t0, ctx)
-
-    if not ok:
-        if fatal:
-            state["done"].set()
-        return
-
-    state["last_check"] = t0
-    view = _get_node_view(node_def, ctx, results, session_id)
-
-    # 1. Conditional Execution (WHEN)
-    when_cond = node_def.get("when")
-    if when_cond:
-        try:
-            should_run = when_cond(view) if callable(when_cond) else bool(when_cond)
-        except Exception as e:
-            results[node_name] = error(f"WHEN condition error: {e}", t0)
-            state["done"].set()
-            return
-
-        if not should_run:
-            res = success(None, t0)
-            res["_skipped"] = True
-            res["_execution_time"] = time.perf_counter()
-            results[node_name] = res
-
-            # Notifica successori anche se saltato
-            for succ in runner.graphs[file_name].successors(node_name):
-                await runner.event_queue.put((session_id, succ))
-
-            state["done"].set()
-            return
-
-    result = await _execute(node_def, ctx, results, view, t0, runner=runner, session_id=session_id)
-
-    # Notifica successori
-    for succ in runner.graphs[file_name].successors(node_name):
-        await runner.event_queue.put((session_id, succ))
-
-    # Rescheduling
-    if node_def.get("schedule"):
-        if state["start_time"] is None:
-            state["start_time"] = time.perf_counter()
-
-        duration = node_def.get("duration")
-        async def resched():
-            await asyncio.sleep(node_def["schedule"])
-            
-            should_terminate = False
-            if duration is not None:
-                elapsed = time.perf_counter() - state["start_time"]
-                if elapsed >= duration:
-                    should_terminate = True
-
-            if should_terminate:
-                # ESEGUIAMO ON_END SOLO QUI (FINE VITA)
-                last_res = results.get(node_name)
-                await _fire_hook(
-                    node_def.get("on_end"), 
-                    view, 
-                    last_res, 
-                    runner=runner, 
-                    session_id=session_id, 
-                    node_def=node_def
-                )
-                return
-            await runner.event_queue.put((session_id, node_name))
-        asyncio.create_task(resched())
-
-    state["done"].set()
-
-# -- DAGRUNNER ------------------------------------------------------------------
+# ─────────────────────────────────────────────
+# ENGINE
+# ─────────────────────────────────────────────
 
 class DagRunner:
 
-    def __init__(self, num_workers: int = 3):
-        self.num_workers = num_workers
-        self.nodes_map   = {}
-        self.graphs      = {}
-        self.files       = {}
+    def __init__(self, workers=3):
+        self.workers = workers
 
-        self.session_ctx        = {}
-        self.session_results    = {}
-        self.session_files      = {}
-        self.session_node_state = {}
+        self.graphs = {}
+        self.nodes = {}
 
-        self.event_queue = asyncio.Queue()
-        self.tasks       = []
-        self._running    = False
-        self._stop_event = None
+        self.sessions = {}
 
-    async def _worker(self, wid):
-        while self._running and not self._stop_event.is_set():
-            try:
-                session_id, node_name = await asyncio.wait_for(self.event_queue.get(), 0.2)
-            except asyncio.TimeoutError:
-                continue
+        self.queue = asyncio.Queue()
+        self.tasks = []
+        self.running = False
 
-            file_name = self.session_files.get(session_id)
-            if not file_name or file_name not in self.nodes_map or node_name not in self.nodes_map[file_name]:
-                self.event_queue.task_done()
-                continue
+        # 🔥 reactive index
+        self.triggers = {}  # node_name -> [listeners]
+        self.cancelled_sessions: set = set() 
 
-            await _run_node(self, session_id, node_name)
+    # ─────────────────────────────────────────
+    # FILE
+    # ─────────────────────────────────────────
 
-            self.event_queue.task_done()
-
-    async def start(self):
-        self._running = True
-        self._stop_event = asyncio.Event()
-        for i in range(self.num_workers):
-            self.tasks.append(asyncio.create_task(self._worker(i)))
-
-    async def stop(self):
-        self._running = False
-        self._stop_event.set()
-        for t in self.tasks:
-            t.cancel()
-
-    async def add_file(self, file_name: str, nodes: List[Dict]):
+    async def add_file(self, name: str, nodes: List[Dict]):
         G = nx.DiGraph()
-        self.nodes_map[file_name] = {}
+        nm = {n["name"]: n for n in nodes}
 
-        node_names = {n["name"] for n in nodes}
+        self.triggers[name] = {}
 
         for n in nodes:
-            name = n["name"]
-            self.nodes_map[file_name][name] = n
-            G.add_node(name)
+            G.add_node(n["name"])
+
+            # deps graph
             for d in n.get("deps", []):
-                if d in node_names:
-                    G.add_edge(d, name)
+                if d in nm:
+                    G.add_edge(d, n["name"])
+
+            # 🔥 trigger graph
+            trg = n.get("trigger")
+            if trg:
+                self.triggers[name].setdefault(trg, []).append(n["name"])
 
         if not nx.is_directed_acyclic_graph(G):
             raise ValueError("DAG con cicli")
 
-        self.graphs[file_name] = G
-        self.files[file_name]  = [n["name"] for n in nodes]
+        self.graphs[name] = G
+        self.nodes[name] = nm
 
-        for sid, fname in self.session_files.items():
-            if fname == file_name:
-                for n_name in self.files[file_name]:
-                    if n_name not in self.session_node_state[sid]:
-                        self.session_node_state[sid][n_name] = {
-                            "last_check": -1.0,
-                            "done":       asyncio.Event(),
-                            "start_time": None,
-                        }
+    # ─────────────────────────────────────────
+    # SESSION
+    # ─────────────────────────────────────────
 
-    def create_session(self, session_id: str, file_name: str, context=None):
-        self.session_ctx[session_id]     = dict(context or {})
-        self.session_results[session_id] = {}
-        self.session_files[session_id]   = file_name
-        self.session_node_state[session_id] = {}
+    def create_session(self, sid: str, fname: str, ctx=None):
+        ctx = dict(ctx or {})
 
-        for n in self.files[file_name]:
-            node_def = self.nodes_map[file_name][n]
-            if node_def.get("default") is not None:
-                node_path = node_def.get("path") or n
-                _set_path(self.session_ctx[session_id], node_path, node_def["default"])
+        self.sessions[sid] = {
+            "file": fname,
+            "ctx": ctx,
+            "results": {},
+            "done": {n: asyncio.Event() for n in self.nodes[fname]},
+            "schedulers": {}
+        }
 
-        for n in self.files[file_name]:
-            self.session_node_state[session_id][n] = {
-                "last_check": -1.0,
-                "done":       asyncio.Event(),
-                "start_time": None,
-            }
+        for n in self.graphs[fname].nodes:
+            if self.graphs[fname].in_degree(n) == 0:
+                self.queue.put_nowait((sid, n))
 
-        for k, v in (context or {}).items():
-            r = success(v)
-            r["_execution_time"] = 0.0
-            r["_static"] = True
-            self.session_results[session_id][k] = r
+    async def close_session(self, sid: str):
+        """
+        Rimuove la sessione e pulisce le risorse.
+        """
+        if sid not in self.sessions:
+            return
 
-        G = self.graphs[file_name]
-        roots = [n for n in G.nodes if G.in_degree(n) == 0]
+        # 1. Marca come cancellata — i worker la ignoreranno
+        session = self.sessions[sid]
+        self.cancelled_sessions.add(sid)
 
-        for r in roots:
-            self.event_queue.put_nowait((session_id, r))
+        for task in session["schedulers"].values():
+            task.cancel()
 
-    def push_event(self, session_id: str, node_name: str, value: Any):
-        res = success(value)
-        res["_execution_time"] = time.perf_counter()
+        # 2. Sblocca i wait_node pendenti
+        for event in session["done"].values():
+            if not event.is_set():
+                event.set()
 
-        file_name = self.session_files.get(session_id)
-        file_nodes = self.nodes_map.get(file_name, {})
-        node_def = file_nodes.get(node_name, {})
-        node_path = node_def.get("path") or node_name
-
-        _set_path(self.session_ctx[session_id], node_path, value)
-        self.session_results[session_id][node_name] = res
-
-        self.event_queue.put_nowait((session_id, node_name))
-
-    async def run_node(self, node_def: Dict, context: Dict):
-        """Esegue un nodo immediatamente usando la logica dell'engine."""
-        t0 = time.perf_counter()
-        view = ChainMap(context, {"path": node_def.get("path") or node_def["name"]})
-        res = await _call_if_coro(node_def["fn"], view)
-        return res if is_result(res) else success(res, t0)
-
-    async def invoke(self, fn: Callable, *args, **kwargs):
-        """Esecuzione tracciata di una funzione tramite l'engine."""
-        return await act(step(fn, *args, **kwargs))
-
-    async def wait_node(self, session_id: str, node_name: str):
-        if session_id not in self.session_node_state:
-            raise KeyError(f"Session {session_id} does not exist")
-        if node_name not in self.session_node_state[session_id]:
-            raise KeyError(f"Node {node_name} does not exist in session")
-        await self.session_node_state[session_id][node_name]["done"].wait()
-
-# -- DAG EXTENSIONS -----------------------------------------------------------
-
-@action()
-async def sentry(context=dict(), condition=lambda x: False):
-    print("Sentry", context, condition)
-    if condition(**context):
-        return True
-    else:
-        return False
-
-async def branch(condition,context, branchs):
-    #print("##############", context, condition,condition(**context),"\n\n")
-    if isinstance(condition, bool):
-        check = condition
-    else:
-        check = condition(**context)
-    if check:
-        return branchs[True]
-    else:
-        return branchs[False]
-
-async def when(condition, step, context=dict()):
-    # Se la condizione (funzione o booleano) è vera, esegue lo step
-    should_run = await sentry(context, condition)
-    if should_run.get('success', False):
-        return await act(step, context)
-    else:
-        return should_run
-
-def foreach(iterable, fn,args=()):
-    """
-    Esegue fn per ogni elemento dell'iterabile.
-    Restituisce una lista di risultati.
-    """
-    async def _fn(view):
-        items = view.get("items") or iterable
+        # 3. Rimuovi i dati della sessione
+        del self.sessions[sid]
         
-        results = []
-        for arg in args:
-            for item in items:
-                #new_view = ChainMap(view, {"item": item})
-                res = await _call_if_coro(fn, view,arg)
-                results.append(res)
-        print("results", results)
-        return results
-    return _fn
+        # 4. Pulisci il tombstone dopo un po'
+        async def _cleanup_tombstone():
+            await asyncio.sleep(60)
+            self.cancelled_sessions.discard(sid)
 
-def pipeline(iterable, acts, *args, **kwargs):
-    """
-    Esegue fn per ogni elemento dell'iterabile.
-    Restituisce una lista di risultati.
-    """
-    async def _fn(view):
-        result = view.get("items") or iterable
+        asyncio.create_task(_cleanup_tombstone())
+        print(f"[Session {sid}] Cleaned up successfully.")
+
+    async def clear_all_sessions(self):
+        """Rimuove tutte le sessioni attive."""
+        sids = list(self.sessions.keys())
+        for sid in sids:
+            await self.close_session(sid)
+
+    # ─────────────────────────────────────────
+    # WORKERS
+    # ─────────────────────────────────────────
+
+    async def start(self):
+        self.running = True
+        self.tasks = [asyncio.create_task(self._worker()) for _ in range(self.workers)]
+
+    async def stop(self):
+        self.running = False
+        for t in self.tasks:
+            t.cancel()
+
+    async def _worker(self):
+        while self.running:
+            try:
+                sid, name = await asyncio.wait_for(self.queue.get(), 0.2)
+            except asyncio.TimeoutError:
+                continue
+
+            # scarta silenziosamente i task di sessioni chiuse
+            if sid in self.cancelled_sessions:
+                self.queue.task_done()
+                continue
+            await self._run_node(sid, name)
+            self.queue.task_done()
+
+    # ─────────────────────────────────────────
+    # CORE
+    # ─────────────────────────────────────────
+
+    async def _run_node(self, sid: str, name: str):
+        session = self.sessions[sid]
+        nd = self.nodes[session["file"]][name]
+
+        # Inizializziamo il pacchetto dati che viaggerà nella pipeline
+        d = {
+            "sid": sid,
+            "node": nd,
+            "ctx": session["ctx"],
+            "results": session["results"],
+            "result": None,
+            "t0": time.perf_counter()
+        }
+
+        # Esecuzione a tappe
+        await pipeline(d,
+            self._check_deps,      # 1. Verifica dipendenze e policy
+            self._check_when,      # 2. Verifica pre-condizioni logiche
+            self._on_start_step,   # 3. Hook d'inizio
+            self._execute_step,    # 4. Esecuzione (con retry interno)
+            self._on_finish_step,  # 5. Hook di fine (successo/errore)
+            self._save_step,       # 6. Scrittura risultati nel contesto
+            self._dispatch         # 7. Trigger successori
+        )
+
+        session["done"][name].set()
+
+    # ─────────────────────────────────────────
+    # OPS
+    # ─────────────────────────────────────────
+
+    @action()
+    async def _check_deps(self, d):
+        sid      = d["sid"]
+        deps     = d["node"].get("deps", [])
+        node_name = d["node"]["name"]
+        policy   = d["node"].get("policy", "all")
+        res      = d["results"]
+        session  = self.sessions[sid]
+
+        # 1. Se non ci sono dipendenze, via liberi
+        if not deps:
+            return success(d)
+
+        # Se il nodo è schedulato e ha già un risultato, ignoriamo le deps 
+        # (permette i cicli temporali senza restare bloccati dai padri)
+        if d["node"].get("schedule") and node_name in res:
+            return success(d)
+
+        # 2. Attendi che tutte le dipendenze siano completate
+        '''await asyncio.gather(*[
+            session["done"][dep].wait()
+            for dep in deps
+            if dep in session["done"]
+        ])'''
+        # -----------------------------------------------------------------
+
+        completed = [dep for dep in deps if dep in res]
+        succeeded = [dep for dep in completed if res[dep]["success"]]
+
+        if policy == "all":
+            if len(succeeded) == len(deps):
+                return success(d)
+            failed = [dep for dep in completed if not res[dep]["success"]]
+            return error(f"policy=all failed: {failed}")
+
+        if policy == "any":
+            if len(succeeded) >= 1:
+                return success(d)
+            return error("policy=any failed")
+
+        if isinstance(policy, int):
+            if len(succeeded) >= policy:
+                return success(d)
+            return error(f"policy={policy} >= ({len(succeeded)} succeeded)")
+
+        return error(f"unknown policy: {policy!r}")
+
+    @action()
+    async def _check_when(self, d):
+        fn = d["node"].get("when")
+        if not fn:
+            return success(d)
+        #print(fn(d["ctx"] | d["results"]))
+        if bool(fn(d["ctx"] | d["results"])):
+            return success(d)
+        return error("Invalid when")
+
+    @action()
+    async def _on_start_step(self, d):
+        await self._hook(d["node"].get("on_start"), d)
+        return success(d)
+
+    @action()
+    async def _execute_step(self, d):
+        nd, ctx, res = d["node"], d["ctx"], d["results"]
+        retries = nd.get("retries", 0)
+        delay = nd.get("retry_delay", 0)
         
-        for arg in args:
-            result = await act(step(acts,result,*arg))
+        # Prepariamo gli input: ctx globale + risultati dei nodi dipendenti
+        inputs = ctx | {k: v["outputs"] for k, v in res.items()}
+        
+        last_result = None
+        for i in range(retries + 1):
+            try:
+                # Esecuzione della funzione core
+                r = await _call(nd["fn"], inputs)
+                last_result = r if is_result(r) else success(r, d["t0"])
+                if last_result["success"]:
+                    break
+            except Exception as e:
+                last_result = error(e, d["t0"])
             
-            if not result["success"]:
-                return result
-            result = result.get("outputs")
-        print("results", result)
-        return result
-    return _fn
+            if i < retries:
+                await asyncio.sleep(delay)
+        
+        d["result"] = last_result
+        return success(d)
 
-def reset(data,new):
-    return new
+    @action()
+    async def _on_finish_step(self, d):
+        nd, result = d["node"], d["result"]
+        hook_name = "on_success" if result["success"] else "on_error"
+        await self._hook(nd.get(hook_name), d, result)
+        return success(d)
 
-async def parallel(dato,*acts):
-    """
-    Crea una pipeline di step.
-    Supporta:
-      - pipeline(steps) -> factory che ritorna node_fn(ctx)
-      - pipeline(data, steps) -> esecuzione immediata (utile in |>)
-    """
-    tasks = []
-    for act in acts:
-        tasks.append(act)
-    return await asyncio.gather(*tasks)
+    @action()
+    async def _save_step(self, d):
+        nd, result = d["node"], d["result"]
+        # Persistenza nel contesto globale tramite il path DSL
+        _set(d["ctx"], nd.get("path"), result["outputs"])
+        # Persistenza nella tabella dei risultati per i nodi figli
+        d["results"][nd["name"]] = result
+        return success(d)
 
-async def pipeline2(steps):
-    """
-    Crea una pipeline di step.
-    Supporta:
-      - pipeline(steps) -> factory che ritorna node_fn(ctx)
-      - pipeline(data, steps) -> esecuzione immediata (utile in |>)
-    """
-    result = steps[0]
-    for step in steps[1:]:
-        result = await act(step(result))
-        if not result["success"]:
-            return result
-    return result
+    @action()
+    async def _dispatch(self, d):
+        sid = d["sid"]
+        node_name = d["node"]["name"]
+        session = self.sessions[sid]
+        interval = d["node"].get("schedule")
+        
+        # 1. Trigger classici del DAG
+        for nxt in self.graphs[session["file"]].successors(node_name):
+            self.queue.put_nowait((sid, nxt))
 
-async def switch(data, cases):
-    """
-    Switch funzionale stile IF / ELIF / ELSE
+        # 2. Reactive triggers
+        for trg in self.triggers[session["file"]].get(node_name, []):
+            self.queue.put_nowait((sid, trg))
 
-    Esempio:
-        switch({
-            cond1: action1,
-            cond2: action2,
-            true:  default
-        })
+        # 2. AUTO-SCHEDULAZIONE PERSISTENTE
+        if interval and node_name not in session["schedulers"]:
+            
+            async def _heartbeat():
+                try:
+                    while sid in self.sessions and sid not in self.cancelled_sessions:
+                        await asyncio.sleep(interval)
+                        
+                        # Reset dell'evento per permettere una nuova esecuzione pulita
+                        if node_name in session["done"]:
+                            session["done"][node_name].clear()
+                        
+                        # Rimettiamo il nodo in coda per i worker
+                        self.queue.put_nowait((sid, node_name))
+                        
+                        # Opzionale: attendiamo che il nodo finisca prima di far ripartire il timer 
+                        # (per evitare accumuli se l'esecuzione dura più dell'intervallo)
+                        await session["done"][node_name].wait()
+                        
+                except asyncio.CancelledError:
+                    pass
+            # Crea il task UNA SOLA VOLTA per tutta la durata della sessione
+            session["schedulers"][node_name] = asyncio.create_task(_heartbeat())
 
-    - Le chiavi sono condizioni (callable o valori)
-    - La prima condizione vera vince
-    - 'true' è il default
-    """
-    default_fn = cases.get(True)
+        return success(d)
 
-    #print("################", data, cases, "\n\n")
+    # ─────────────────────────────────────────
+    # REACTIVE API
+    # ─────────────────────────────────────────
 
-    for cond, fn in cases.items():
-        #print("################", type(cond), cond, fn, "\n\n")
-        if cond is True:
-            continue
-        if not callable(cond):
-            continue
-        elif "ContextVar" in str(type(cond)):
-            condizione = cond(**data)
-            check = condizione(**data)
-        else:
-            check = cond(**data)
+    def emit(self, sid: str, name: str, value: Any = None):
+        """Trigger manuale (event sourcing light)"""
+        session = self.sessions[sid]
 
-        if check is not True:
-            continue
+        if value is not None:
+            _set(session["ctx"], name, value)
 
+        self.queue.put_nowait((sid, name))
+
+    # ─────────────────────────────────────────
+    # HOOKS
+    # ─────────────────────────────────────────
+
+    async def _hook(self, fn, d, result=None):
+        if not fn:
+            return
         try:
-            if callable(fn):
-                c, _ = await _call_if_coro(fn, data)
-                return c
-            else:
-                return fn
-        except Exception as e:
-            errore_completo = traceback.format_exc()
-            print(errore_completo, "e")
-            raise RuntimeError(f"switch condition error: {e}")
+            await _call(fn, d, result)
+        except:
+            pass
 
-    if default_fn:
-        if callable(default_fn):
-            a, _ = await _call_if_coro(default_fn, data)
-            return a
-        else:
-            return default_fn
-
-    return None
+    async def wait_node(self, sid, name):
+        await self.sessions[sid]["done"][name].wait()

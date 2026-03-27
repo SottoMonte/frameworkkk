@@ -22,19 +22,27 @@ any:status := all_ok == true & messages.ok
            | any_crit == false & messages.critical
            | messages.warning;
 
-health: {
+/*health: {
 
     cpu(schedule:5) -> random(0,100);
     gpu(schedule:5) -> random(0,100);
     ram(schedule:5) -> random(0,100);
     disk(schedule:1) -> random(0,100);
     //check(deps_policy:3) -> print("######### CPU:",health.cpu,"% GPU:",gpu,"% RAM:",ram,"% DISK:",disk,"%");
-};
+};*/
 
 /*ggg(schedule:5) -> print(health.cpu);
 zzz(schedule:5) -> bios();
 fff(schedule:5) -> health.cpu|>print("fff----->");
 bdd(schedule:5) -> @health.cpu|>print("bdd----->");*/
+
+/*|> 
+switch({
+    //@assert: @reset(print("[O] test superato "+data.trigger),integration_test);
+    //@loop == @max_loop: @reset(print("[X] test fallito "+data.trigger),integration_test);
+    true: integration_test 
+});*/
+// put(data.trigger+".loop", test.loop + 1)
 
 /*pipeline_(schedule:5) -> {"cpu":health.cpu;"gpu":health.gpu;"ram":health.ram;"disk":health.disk} |> 
 switch({
@@ -46,28 +54,29 @@ switch({
 }) |> print("@@@@@@@@@@@@@@@@@@@@");*/
 
 //ggg(schedule:5) -> print(health.cpu);
-test_schedule_duration(schedule:2,duration:10,default:1,on_close:data,on_end:report) -> test_schedule_duration + 1;
-
-
-data(meta:true) -> data;
-
+/*test_schedule_duration(schedule:2,duration:10,default:0,on_close:data) -> test_schedule_duration + 1;
+//test_manual_dependence(deps:['test_schedule_duration'],default:10,on_close:data,on_end:report) -> test_manual_dependence - 1;
+test_no_dependence(schedule:2,duration:10,default:10,on_close:data,on_end:report) -> test_no_dependence - 1;
 tests:{
-    test_schedule_duration:{'outputs':2;'assert':@loop == 5 & @outputs == 6;'loop':0;'max_loop':5};
-};
+    test_schedule_duration:{'outputs':2;'assert': @outputs == 6;'loop':0;'max_loop':5};
+    test_manual_dependence:{'outputs':2;'assert':@loop == 5 & @outputs == 6;'loop':0;'max_loop':5};
+    test_no_dependence:{'outputs':2;'assert':@loop == 5 & @outputs == 6;'loop':0;'max_loop':5};
+};*/
 
-integration_test(default:tests) -> integration_test |> test:get(data.trigger) |> reset(integration_test) |> put(data.trigger+".loop", test.loop + 1) |> put(data.trigger+".outputs", data.outputs);
-/*|> 
-switch({
-    //@assert: @reset(print("[O] test superato "+data.trigger),integration_test);
-    //@loop == @max_loop: @reset(print("[X] test fallito "+data.trigger),integration_test);
-    true: integration_test 
-});*/
-// put(data.trigger+".loop", test.loop + 1)
+data() -> data;
+aaa() -> print("@@@@@@@@@@@@@@@@@@@@",data);
+fff() -> print(cpu);
+//aaa(schedule:2) -> print("ciao");
+//coda(default:[]) -> [data] + coda;
 
-report(default:tests) -> integration_test |> test:get(data.trigger) |> 
+// tests |> test:get(data.trigger) |> reset(tests) |> put(data.trigger+".loop", test.loop + 1) |> put(data.trigger+".outputs", data.outputs)
+
+/*report(default:tests) -> tests |> test:get(data.trigger) |> 
 switch({
     @assert: @print("[O] test superato "+data.trigger);
-    @loop == @max_loop: @print("[X] test fallito "+data.trigger);
-});
+    @loop == @max_loop: @print("[X] test fallito "+data.trigger+" outputs: ",data.outputs);
+});*/
 
-//aaa() -> print(integration_test);
+//aaa() -> print(data) |> print("@@@@@@@@@@@@@@@@@@@@");
+cpu(schedule:1) -> random(0,100);
+

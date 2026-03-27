@@ -116,11 +116,11 @@ DSL_FUNCTIONS = {
     #'resource': load.resource,
     'foreach': flow.foreach,
     'switch':  flow.switch,
-    'when': flow.when,
-    'sentry': flow.sentry,
-    'branch': flow.branch,
-    'pipeline': flow.pipeline,
-    'parallel': flow.parallel,
+    #'when': flow.when,
+    #'sentry': flow.sentry,
+    #'branch': flow.branch,
+    #'pipeline': flow.pipeline,
+    #'parallel': flow.parallel,
     'reset': flow.reset,
     'transform': scheme.transform,
     'get': scheme.get,
@@ -648,7 +648,7 @@ class Interpreter:
             if t_path in deps:
                 deps.discard(t_path)
 
-            kw['deps'] = list(deps)
+            kw['deps'] = list(deps) + kw.get('deps', [])
             
             def make_task_fn(ast, interpreter_ref, t_path):
                 if ast.get("type") == "pipe":
