@@ -440,19 +440,36 @@ class DagRunner:
     @action()
     async def _run_hook(self, d, hook_name: str):
         nd = d["node"]
-        fn = nd.get(hook_name)
+        hook_val = nd.get(hook_name)
+        sid = d["sid"]
         
-        if not fn:
-            return success(d) # Se l'hook non esiste, passa oltre senza fare nulla
-    
+        if not hook_val:
+            return success(d)
+
         try:
-            # Eseguiamo l'hook passando il contesto attuale e l'eventuale risultato
-            await _call(fn, d, d.get("result"))
+            # GESTIONE STRINGA O LISTA DI STRINGHE (TRIGGER REATTIVI)
+            if isinstance(hook_val, (str, list)):
+                # Normalizziamo in una lista per iterare
+                targets = [hook_val] if isinstance(hook_val, str) else hook_val
+                
+                for target_node in targets:
+                    if target_node in self.sessions[sid]["done"]:
+                        # Reset dell'evento: permette al nodo di essere eseguito di nuovo
+                        self.sessions[sid]["done"][target_node].clear()
+                        print(f"🔄 [Hook {hook_name}] Reset & Trigger: '{target_node}'")
+                    else:
+                        print(f"🚀 [Hook {hook_name}] First Trigger: '{target_node}'")
+                    
+                    # Mettiamo il nodo in coda per i worker
+                    self.queue.put_nowait((sid, target_node))
+
+            # GESTIONE FUNZIONE (LOGICA CUSTOM)
+            elif callable(hook_val):
+                await _call(hook_val, d, d.get("result"))
+                
             return success(d)
         except Exception as e:
-            # Gli hook di solito non dovrebbero bloccare il DAG, 
-            # ma qui decidiamo di loggare l'errore.
-            print(f"Errore nell'hook {hook_name} del nodo {nd['name']}: {e}")
+            print(f"❌ Errore nell'hook {hook_name} di {nd['name']}: {e}")
             return success(d)
 
     @action()

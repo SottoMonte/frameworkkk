@@ -78,5 +78,7 @@ switch({
 });*/
 
 //aaa() -> print(data) |> print("@@@@@@@@@@@@@@@@@@@@");
-cpu(schedule:5) -> random(0,100);
+cpu(schedule:5,on_end:"zio") -> random(0,100);
+
+zio() -> print("uscita!");
 
