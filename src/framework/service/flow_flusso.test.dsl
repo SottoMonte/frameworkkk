@@ -63,7 +63,7 @@ tests:{
     test_no_dependence:{'outputs':2;'assert':@loop == 5 & @outputs == 6;'loop':0;'max_loop':5};
 };*/
 
-data() -> data;
+data() -> "100";
 aaa(schedule:5,meta:true,cache:true) -> print("@@@@@@@@@@@@@@@@@@@@",data);
 fff() -> print(cpu);
 //aaa(schedule:2) -> print("ciao");

@@ -18,7 +18,8 @@ def _res(ok, value=None, errors=None, t0=None):
         "errors": errors if isinstance(errors, list) else ([str(errors)] if errors else []),
         "time": (time.perf_counter() - t0) if t0 else 0.0,
         "updated_at": time.time(), # Timestamp assoluto
-        "version": str(uuid.uuid4())[:8] # ID univoco del run
+        "version": str(uuid.uuid4())[:8], # ID univoco del run
+        "duration": 0, # Durata del nodo
     }
 
 def success(v, t0=None): return _res(True, v, None, t0)
@@ -291,16 +292,29 @@ class DagRunner:
             "t0": time.perf_counter()
         }
 
+        # 1. Verifica dipendenze e policy
+        steps = [self._check_deps]
+
+        # 2. Controllo Quota Tempo (Storico)
+        if nd.get("duration"):    steps.append(self._handle_duration)
+        # 3. Verifica pre-condizioni logiche
+        if nd.get("when"):        steps.append(self._check_when)
+        # 4. Hook d'inizio
+        if nd.get("on_start"): steps.append(functools.partial(self._run_hook, hook_name="on_start"))
+        # 5. Esecuzione (con retry interno)
+        steps.append(self._execute_step)
+        # 6. Hook di fine (successo/errore)
+        if nd.get("on_success"): steps.append(functools.partial(self._run_hook, hook_name="on_success"))
+        if nd.get("on_error"): steps.append(functools.partial(self._run_hook, hook_name="on_error"))
+        # 7. Hook di fine
+        if nd.get("on_end"): steps.append(functools.partial(self._run_hook, hook_name="on_end"))
+        # 8. Scrittura risultati nel contesto
+        steps.append(self._save_step)
+        # 9. Trigger successori
+        steps.append(self._dispatch)
+
         # Esecuzione a tappe
-        await pipeline(d,
-            self._check_deps,      # 1. Verifica dipendenze e policy
-            self._check_when,      # 2. Verifica pre-condizioni logiche
-            self._on_start_step,   # 3. Hook d'inizio
-            self._execute_step,    # 4. Esecuzione (con retry interno)
-            self._on_finish_step,  # 5. Hook di fine (successo/errore)
-            self._save_step,       # 6. Scrittura risultati nel contesto
-            self._dispatch         # 7. Trigger successori
-        )
+        await pipeline(d, *steps)
 
         session["done"][name].set()
 
@@ -392,11 +406,6 @@ class DagRunner:
         return error("Invalid when")
 
     @action()
-    async def _on_start_step(self, d):
-        await self._hook(d["node"].get("on_start"), d)
-        return success(d)
-
-    @action()
     async def _execute_step(self, d):
         nd, ctx, res = d["node"], d["ctx"], d["results"]
         retries = nd.get("retries", 0)
@@ -429,15 +438,34 @@ class DagRunner:
         return success(d)
 
     @action()
-    async def _on_finish_step(self, d):
-        nd, result = d["node"], d["result"]
+    async def _run_hook(self, d, hook_name: str):
+        nd = d["node"]
+        fn = nd.get(hook_name)
         
-        # 1. Hook condizionale (successo o errore)
-        hook_name = "on_success" if result["success"] else "on_error"
-        await self._hook(nd.get(hook_name), d, result)
-        
-        # 2. Hook finale (sempre eseguito)
-        await self._hook(nd.get("on_end"), d, result)
+        if not fn:
+            return success(d) # Se l'hook non esiste, passa oltre senza fare nulla
+    
+        try:
+            # Eseguiamo l'hook passando il contesto attuale e l'eventuale risultato
+            await _call(fn, d, d.get("result"))
+            return success(d)
+        except Exception as e:
+            # Gli hook di solito non dovrebbero bloccare il DAG, 
+            # ma qui decidiamo di loggare l'errore.
+            print(f"Errore nell'hook {hook_name} del nodo {nd['name']}: {e}")
+            return success(d)
+
+    @action()
+    async def _handle_duration(self, d):
+        nd = d["node"]
+        max_dur = nd.get("duration")
+        if not max_dur: return success(d)
+
+        # Recuperiamo quanto tempo ha accumulato il nodo finora nella sessione
+        current_total = d["results"].get(nd["name"], {}).get("duration", 0.0)
+
+        if current_total >= max_dur:
+            return error(f"Quota temporale esaurita ({current_total:.2f}s >= {max_dur}s)")
         
         return success(d)
 
@@ -453,6 +481,8 @@ class DagRunner:
         
         # Registriamo che questo nodo ha appena prodotto questa versione
         session.setdefault("last_seen", {})[nd["name"]] = result["version"]
+
+        result["duration"] += result["time"]
         
         return success(d)
 
