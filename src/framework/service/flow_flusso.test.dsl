@@ -64,7 +64,7 @@ tests:{
 };*/
 
 data() -> data;
-aaa() -> print("@@@@@@@@@@@@@@@@@@@@",data);
+aaa(schedule:5,meta:true,cache:true) -> print("@@@@@@@@@@@@@@@@@@@@",data);
 fff() -> print(cpu);
 //aaa(schedule:2) -> print("ciao");
 //coda(default:[]) -> [data] + coda;

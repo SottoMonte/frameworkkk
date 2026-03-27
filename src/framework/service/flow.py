@@ -46,6 +46,7 @@ def node(name: str, fn: Callable, **kw):
         "fn": fn,
         "deps": kw.get("deps", []),
         "policy": kw.get("policy", "all"),
+        "meta": kw.get("meta", False),
         "trigger": kw.get("trigger"),
         "schedule":  kw.get("schedule"),
         "duration":  kw.get("duration"),
@@ -58,6 +59,7 @@ def node(name: str, fn: Callable, **kw):
         "on_start": kw.get("on_start"),
         "on_success": kw.get("on_success"),
         "on_error": kw.get("on_error"),
+        "on_end": kw.get("on_end"),
     }
 
 # ── DSL ───────────────────────────────────────────────────────────────────────
@@ -401,7 +403,13 @@ class DagRunner:
         delay = nd.get("retry_delay", 0)
         
         # Prepariamo gli input: ctx globale + risultati dei nodi dipendenti
-        inputs = ctx | {k: v["outputs"] for k, v in res.items()}
+        #inputs = ctx | {k: v["outputs"] for k, v in res.items()}
+        if nd.get("meta"):
+            # Passa l'intero oggetto Result per ogni dipendenza
+            inputs = ctx | {k: v for k, v in res.items()}
+        else:
+            # Comportamento standard: passa solo il valore prodotto
+            inputs = ctx | {k: v["outputs"] for k, v in res.items()}
         
         last_result = None
         for i in range(retries + 1):
@@ -423,8 +431,14 @@ class DagRunner:
     @action()
     async def _on_finish_step(self, d):
         nd, result = d["node"], d["result"]
+        
+        # 1. Hook condizionale (successo o errore)
         hook_name = "on_success" if result["success"] else "on_error"
         await self._hook(nd.get(hook_name), d, result)
+        
+        # 2. Hook finale (sempre eseguito)
+        await self._hook(nd.get("on_end"), d, result)
+        
         return success(d)
 
     @action()
