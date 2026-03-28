@@ -240,7 +240,7 @@ class loader:
             # {"name": "actuator", "path": "src/framework/manager/actuator.py", "deps": ["container"], "is_class": True, "config": {}},
         ]
         
-        await self._setup_batch(services+managers)  
+        await self._setup_batch(services+managers)
 
         self._stop_event = asyncio.Event()
 
@@ -257,8 +257,8 @@ class loader:
 
         try:
             # Avvia i manager che hanno un lifecycle
-            for name in ["tester", "messenger"]:
-                obj = self.get_sync(name)
+            for manager in managers:
+                obj = self.get_sync(manager["name"])
                 if hasattr(obj, "start"):
                     await obj.start()
             await self._stop_event.wait()
@@ -266,4 +266,8 @@ class loader:
         except Exception as e:
             print(f"[!] Framework spento con errore: {e}")
         finally:
+            for manager in managers:
+                obj = self.get_sync(manager["name"])
+                if hasattr(obj, "stop"):
+                    await obj.stop()
             print("[*] Framework spento correttamente.")

@@ -265,6 +265,19 @@ class DSLTransformer(Transformer):
 
     def start(self, meta, items): return items[0]
 
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def create_parser():
+    return Lark(GRAMMAR, parser='lalr', propagate_positions=True)
+
+def parse(source: str, parser: Lark) -> dict:
+    return DSLTransformer().transform(parser.parse(source))
+
+async def execute(name, ast, functions, parser=None):
+    if parser is None: parser = create_parser()
+    ast = parse(ast, parser) if isinstance(ast, str) else ast
+    return await Interpreter().run(name, ast, env=functions)
+
 # ── Runtime helpers ───────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -323,6 +336,8 @@ class Interpreter:
         self._tasks = []
         self._dag = []
         self.runner = flow.DagRunner()
+        self.parser = create_parser()
+        self.cache_ast = {}
 
     # ── visita generica ───────────────────────────────────────────────────────
 
@@ -702,18 +717,20 @@ class Interpreter:
         await self.runner.add_file(name,flow_nodes)
         self.runner.create_session(session,name,env|result)
         return result
- 
 
+    async def add_file(self, name, code):
+        self._tasks = [] # Reset tasks for this run
+        self._stack = []
+        self._dag = []
+        self.cache_ast[name] = parse(code, self.parser)
+        flow_nodes = await self._build_flow_nodes(env|result)
+        await self.runner.add_file(name,flow_nodes)
 
-# ── Public API ────────────────────────────────────────────────────────────────
+    async def create_session(self, name, session, env={}):
+        ast = self.cache_ast.get(name)
+        if not ast:
+            raise DSLRuntimeError(f"File {name} non trovato")
+        self.runner.create_session(session,name,env)
 
-def create_parser():
-    return Lark(GRAMMAR, parser='lalr', propagate_positions=True)
-
-def parse(source: str, parser: Lark) -> dict:
-    return DSLTransformer().transform(parser.parse(source))
-
-async def execute(name, ast, functions, parser=None):
-    if parser is None: parser = create_parser()
-    ast = parse(ast, parser) if isinstance(ast, str) else ast
-    return await Interpreter().run(name, ast, env=functions)
+    async def run_session(self, file,session):
+        result , _ = await self.visit(self.cache_ast[file], env, path="")

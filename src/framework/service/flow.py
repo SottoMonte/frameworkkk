@@ -192,6 +192,14 @@ class DagRunner:
         self.graphs[name] = G
         self.nodes[name] = nm
 
+    async def delete_file(self, name: str):
+        if name in self.graphs:
+            del self.graphs[name]
+        if name in self.nodes:
+            del self.nodes[name]
+        if name in self.triggers:
+            del self.triggers[name]
+
     # ─────────────────────────────────────────
     # SESSION
     # ─────────────────────────────────────────
@@ -207,9 +215,27 @@ class DagRunner:
             "schedulers": {}
         }
 
+    async def run_session(self, sid: str):
+        if sid not in self.sessions:
+            raise ValueError(f"Sessione {sid} non trovata")
+
+        session = self.sessions[sid]
+
+        if not self.running:
+            await self.start()
+
+        fname = session["file"]
         for n in self.graphs[fname].nodes:
             if self.graphs[fname].in_degree(n) == 0:
                 self.queue.put_nowait((sid, n))
+
+        one_shot = [
+            event for name, event in session["done"].items()
+            if not self.nodes[fname][name].get("schedule")
+        ]
+        await asyncio.gather(*one_shot)
+
+        return session["results"]
 
     async def close_session(self, sid: str):
         """
@@ -456,10 +482,6 @@ class DagRunner:
                     if target_node in self.sessions[sid]["done"]:
                         # Reset dell'evento: permette al nodo di essere eseguito di nuovo
                         self.sessions[sid]["done"][target_node].clear()
-                        print(f"🔄 [Hook {hook_name}] Reset & Trigger: '{target_node}'")
-                    else:
-                        print(f"🚀 [Hook {hook_name}] First Trigger: '{target_node}'")
-                    
                     # Mettiamo il nodo in coda per i worker
                     self.queue.put_nowait((sid, target_node))
 

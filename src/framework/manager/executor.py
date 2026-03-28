@@ -10,7 +10,12 @@ class executor:
         self.interpreter = self.language.Interpreter()
         self.parser = self.language.create_parser()
         #self.ast    = self.language.parse(source, parser)
-        asyncio.create_task(self.interpreter.start())
+
+    async def stop(self):
+        await self.interpreter.stop()
+    
+    async def start(self):
+        await self.interpreter.start()
 
     async def dsl(self, name, source, session):
         ast = self.language.parse(source, self.parser)
