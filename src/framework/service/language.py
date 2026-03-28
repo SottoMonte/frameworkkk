@@ -290,7 +290,7 @@ class LazyBinOp:
 @dataclass(frozen=True)
 class ContextVar:
     name: str
-    def __call__(self, *_, **ctx): return scheme.get(ctx, self.name)
+    def __call__(self, *_, **ctx): return flow.output(scheme.get(ctx, self.name))
     def __repr__(self):            return self.name
 
 @dataclass(frozen=True)
@@ -315,6 +315,115 @@ class DSLRuntimeError(Exception):
                 message += f" ({loc})"
         super().__init__(message)
 
+
+class FlowNodeBuilder:
+    """
+    Classe di supporto per costruire flow nodes da un AST
+    senza dover valutare l'intero AST.
+    """
+
+    def __init__(self, interpreter):
+        """
+        :param interpreter: istanza dell'Interpreter (per visit_call, visit, ecc.)
+        """
+        self.interpreter = interpreter
+
+    async def build(self, ast, env=None):
+        """
+        Costruisce i flow nodes dall'AST.
+        Non valuta l'AST, usa solo _tasks registrati dentro l'AST.
+        """
+        env = env or {}
+        self._tasks = []
+        await self._collect_tasks(ast, env=env)
+        return await self._build_flow_nodes(env)
+
+    async def _collect_tasks(self, node, path="", env=None):
+        """
+        Visita ricorsiva dell'AST per registrare i task
+        """
+        if isinstance(node, dict):
+            t = node.get("type")
+            if t == "task":
+                task_name = node['trigger']['name']
+                task_path = f"{path}.{task_name}" if path else task_name
+                kwargs = {}
+                for k, v in node['trigger'].get("kwargs", {}).items():
+                    # Usiamo l'interprete per valutare i valori dei kwargs (es. schedule: 5)
+                    # Forniamo DSL_FUNCTIONS come ambiente base per costanti e tipi.
+                    try:
+                        val, _ = await self.interpreter.visit(v, env or {})
+                        kwargs[k] = val
+                    except:
+                        # Se non riusciamo a valutarlo subito (es. dipende da var non ancora definite),
+                        # lo teniamo come AST o lo ignoriamo? Per ora lo ignoriamo o mettiamo None
+                        kwargs[k] = None
+
+                self._tasks.append({
+                    "name": task_name,
+                    "action": node['action'],
+                    "kwargs": kwargs,
+                    "path": task_path
+                })
+            # Ricorsione su tutti i figli
+            for k, v in node.items():
+                if k != "meta":
+                    await self._collect_tasks(v, path, env=env)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                await self._collect_tasks(item, path, env=env)
+
+    async def _build_flow_nodes(self, env):
+        """
+        Converte i task registrati in flow nodes.
+        """
+        flow_nodes = []
+        available = {t["path"] for t in self._tasks}
+
+        for task in self._tasks:
+            name = task["name"]
+            t_path = task["path"]
+            action = task["action"]
+            kw = task.get("kwargs", {})
+
+            # Calcolo dipendenze
+            raw_deps = self.interpreter._find_vars(action) | self.interpreter._find_vars(kw)
+            deps = set()
+            for d in raw_deps:
+                resolved = self.interpreter._resolve_scope(t_path, d, available)
+                if resolved in available and resolved != t_path:
+                    deps.add(resolved)
+            kw['deps'] = list(deps) + kw.get('deps', [])
+
+            # Funzione nodo
+            def make_task_fn(ast, interpreter_ref, t_path):
+                async def task_fn(env_dict):
+                    try:
+                        if ast.get("type") == "pipe":
+                            val, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
+                            return val
+                        elif ast.get("type") == "call":
+                            call = scheme.get(env_dict, ast["name"])
+                            args = [(await interpreter_ref.visit(a, env_dict, path=f"{t_path}.args[{i}]"))[0]
+                                    for i, a in enumerate(ast.get("args", []))]
+                            kwargs = {k: (await interpreter_ref.visit(v, env_dict, path=f"{t_path}.{k}"))[0]
+                                      for k, v in ast.get("kwargs", {}).items()}
+                            res = await interpreter_ref.invoke(call, args, kwargs, path=t_path)
+                            return res if not isinstance(res, dict) else res.get("outputs", res)
+                        else:
+                            val, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
+                            if callable(val):
+                                res = await interpreter_ref.invoke(val, [], {}, path=t_path)
+                                return res.get("outputs", res)
+                            return val
+                    except Exception as e:
+                        return flow.error(str(e))
+                return task_fn
+
+            flow_nodes.append(flow.node(name=t_path, fn=make_task_fn(action, self.interpreter, t_path), path=t_path, **kw))
+
+        return flow_nodes
+
 # ── Interpreter ───────────────────────────────────────────────────────────────
 #
 # visit_dict usa due path distinti:
@@ -338,6 +447,8 @@ class Interpreter:
         self.runner = flow.DagRunner()
         self.parser = create_parser()
         self.cache_ast = {}
+        self.builder = FlowNodeBuilder(self)
+
 
     # ── visita generica ───────────────────────────────────────────────────────
 
@@ -431,7 +542,7 @@ class Interpreter:
     async def visit_bool(self, n, e, path=""):        return n["value"], e
     async def visit_any(self, n, e, path=""):         return None, e
     async def visit_identifier(self, n, e, path=""):  return n["name"], e
-    async def visit_var(self, n, e, path=""):         return scheme.get(e, n["name"], n["name"]), e
+    async def visit_var(self, n, e, path=""):         return flow.output(scheme.get(e, n["name"], n["name"])), e
     async def visit_context_var(self, n, e, path=""): return ContextVar(n["name"]), e
 
     async def visit_function_def(self, n, e, path=""):
@@ -726,17 +837,22 @@ class Interpreter:
         if isinstance(ast, Exception):
             print("ERROR", f"Errore di parsing DSL in {name}: {ast}")
             return
+        self.cache_ast[name] = ast
         print("OK")
-        result , _ = await self.visit(ast, DSL_FUNCTIONS, path="")
+        #result , _ = await self.visit(ast, DSL_FUNCTIONS, path="")
         print("OK")
-        flow_nodes = await self._build_flow_nodes(DSL_FUNCTIONS|result)
+        #flow_nodes = await self._build_flow_nodes(DSL_FUNCTIONS)
+        flow_nodes = await self.builder.build(ast, env=DSL_FUNCTIONS)
+        print("OK")
+        #print(flow_nodes)
+        
         await self.runner.add_file(name,flow_nodes)
 
     async def create_session(self, session, env={}):
         self.runner.create_session(session,env)
 
     async def run_session(self, session, file, env={}):
-        print("OK")
+        print("RUN")
         result , _ = await self.visit(self.cache_ast[file], env, path="")
-        result |= await self.runner.run_file(file,session,env)
+        result |= await self.runner.run_file(session,file,env|result)
         return result

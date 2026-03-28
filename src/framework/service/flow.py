@@ -56,6 +56,7 @@ def node(name: str, fn: Callable, **kw):
     return {
         "name":        name,
         "fn":          fn,
+        "default":     kw.get("default"),
         "deps":        kw.get("deps", []),
         "policy":      kw.get("policy", "all"),
         "meta":        kw.get("meta", False),
@@ -218,7 +219,7 @@ class DagRunner:
             "running_files": set(),    # fname attualmente in esecuzione
         }
 
-    async def run_file(self, fname: str, sid: str, ctx_update: Optional[Dict] = None):
+    async def run_file(self, sid: str, fname: str, ctx_update: Optional[Dict] = None):
         """
         Esegue un file specifico sulla sessione esistente.
 

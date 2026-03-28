@@ -29,8 +29,7 @@ class tester:
 
     async def dsl(self, interp, path):
         # ── esecuzione ────────────────────────────────────────────────────────
-        ctx    = await interp.run_session("tester", path)
-        print(ctx)
+        ctx    = await interp.run_session("tester", path,env=language.DSL_FUNCTIONS|{'resource':self.loader.resource})
         
         '''errors = [
             err
