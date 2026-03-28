@@ -15,31 +15,22 @@ class tester:
         diagnostic.log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
         interp = language.Interpreter()
         await interp.start()
+        await interp.create_session("tester", env=language.DSL_FUNCTIONS|{'resource':self.loader.resource})
         for root, _, files in os.walk('./src'):
             for file in files:
                 if file.endswith('.test.dsl'):
-                    await self.dsl(interp, path=os.path.join(root, file).replace('./', ''))
+                    path = os.path.join(root, file).replace('./', '')
+                    print(path)
+                    res    = self.loader.resource(path)
+                    source = flow.value_of(res) if flow.is_result(res) else res
+                    await interp.add_file(path, source)
+                    await self.dsl(interp, path)
         
 
-    async def dsl(self, interp, **kwargs):
-
-        path = kwargs.get('path')
-        diagnostic.log("INFO", f"Esecuzione test DSL in {path}", emoji="🧪")
-        # ── caricamento e parsing ─────────────────────────────────────────────
-        res    = self.loader.resource(path)
-        source = flow.value_of(res) if flow.is_result(res) else res
-        if not isinstance(source, str):
-            diagnostic.log("ERROR", f"Risorsa non stringa per {path}", emoji="❌")
-            return {"success": False, "errors": ["risorsa non valida"]}
-
-        parser = language.create_parser()
-        ast    = language.parse(source, parser)
-        if isinstance(ast, Exception):
-            diagnostic.log("ERROR", f"Errore di parsing DSL in {path}: {ast}", emoji="❌")
-            return {"success": False, "errors": [str(ast)]}
-
+    async def dsl(self, interp, path):
         # ── esecuzione ────────────────────────────────────────────────────────
-        ctx    = await interp.run(path, ast,"tester", env=language.DSL_FUNCTIONS|{'resource':self.loader.resource}) or {}
+        ctx    = await interp.run_session("tester", path)
+        print(ctx)
         
         '''errors = [
             err

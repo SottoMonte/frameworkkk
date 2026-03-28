@@ -1,7 +1,15 @@
-"""DAG Engine v11 - deps_policy + reactive triggers"""
+"""DAG Engine v13 - sessione persistente utente + run_file(sid, fname)
+
+Modello:
+  - La sessione rappresenta l'identità dell'utente (es. session_id web)
+  - Il ctx accumula stato tra una richiesta e l'altra
+  - run_file(sid, fname) esegue un file specifico sulla sessione esistente
+  - Più run_file sulla stessa sessione possono girare in parallelo
+  - Le chiavi nei results sono "fname::node_name" per evitare collisioni
+"""
 
 import asyncio, inspect, time
-from typing import Any, Dict, Callable, List
+from typing import Any, Callable, Dict, List, Optional
 import networkx as nx
 import functools
 import uuid
@@ -12,18 +20,18 @@ import uuid
 
 def _res(ok, value=None, errors=None, t0=None):
     return {
-        "action": None,
-        "success": ok,
-        "outputs": value if ok else None,
-        "errors": errors if isinstance(errors, list) else ([str(errors)] if errors else []),
-        "time": (time.perf_counter() - t0) if t0 else 0.0,
-        "updated_at": time.time(), # Timestamp assoluto
-        "version": str(uuid.uuid4())[:8], # ID univoco del run
-        "duration": 0, # Durata del nodo
+        "action":     None,
+        "success":    ok,
+        "outputs":    value if ok else None,
+        "errors":     errors if isinstance(errors, list) else ([str(errors)] if errors else []),
+        "time":       (time.perf_counter() - t0) if t0 else 0.0,
+        "updated_at": time.time(),
+        "version":    str(uuid.uuid4())[:8],
+        "duration":   0,
     }
 
-def success(v, t0=None): return _res(True, v, None, t0)
-def error(e, t0=None):   return _res(False, None, e, t0)
+def success(v, t0=None): return _res(True,  v,    None, t0)
+def error(e,   t0=None): return _res(False, None, e,    t0)
 def output(v):           return v.get("outputs") if isinstance(v, dict) and v.get("success") is not None else v
 def is_result(v):        return isinstance(v, dict) and v.get("success") is not None
 
@@ -37,30 +45,33 @@ def _set(ctx, path, val):
         ctx = ctx.setdefault(p, {})
     ctx[parts[-1]] = val
 
+def _key(fname: str, node_name: str) -> str:
+    return f"{fname}::{node_name}"
+
 # ─────────────────────────────────────────────
 # NODE DSL
 # ─────────────────────────────────────────────
 
 def node(name: str, fn: Callable, **kw):
     return {
-        "name": name,
-        "fn": fn,
-        "deps": kw.get("deps", []),
-        "policy": kw.get("policy", "all"),
-        "meta": kw.get("meta", False),
-        "trigger": kw.get("trigger"),
-        "schedule":  kw.get("schedule"),
-        "duration":  kw.get("duration"),
-        "timeout": kw.get("timeout",30),
-        "retries": kw.get("retries", 0),
+        "name":        name,
+        "fn":          fn,
+        "deps":        kw.get("deps", []),
+        "policy":      kw.get("policy", "all"),
+        "meta":        kw.get("meta", False),
+        "trigger":     kw.get("trigger"),
+        "schedule":    kw.get("schedule"),
+        "duration":    kw.get("duration"),
+        "timeout":     kw.get("timeout", 30),
+        "retries":     kw.get("retries", 0),
         "retry_delay": kw.get("retry_delay", 0),
-        "when": kw.get("when"),
-        "path": kw.get("path", name),
-        "cache": kw.get("cache", False),
-        "on_start": kw.get("on_start"),
-        "on_success": kw.get("on_success"),
-        "on_error": kw.get("on_error"),
-        "on_end": kw.get("on_end"),
+        "when":        kw.get("when"),
+        "path":        kw.get("path", name),
+        "cache":       kw.get("cache", False),
+        "on_start":    kw.get("on_start"),
+        "on_success":  kw.get("on_success"),
+        "on_error":    kw.get("on_error"),
+        "on_end":      kw.get("on_end"),
     }
 
 # ── DSL ───────────────────────────────────────────────────────────────────────
@@ -78,22 +89,22 @@ def action(custom_filename: str = __file__, app_context=None, **constants):
         if asyncio.iscoroutinefunction(function):
             @functools.wraps(function)
             async def wrapper(*args, **kwargs):
-                start_time = time.perf_counter()
+                t0 = time.perf_counter()
                 try:
                     result = await function(*args, **kwargs)
-                    return result|{"action": function.__name__, "time": start_time}
+                    return result | {"action": function.__name__, "time": t0}
                 except Exception as e:
-                    return error(e, start_time)|{"action": function.__name__, "time": start_time}
+                    return error(e, t0) | {"action": function.__name__, "time": t0}
             return wrapper
         else:
             @functools.wraps(function)
             def wrapper(*args, **kwargs):
-                start_time = time.perf_counter()
+                t0 = time.perf_counter()
                 try:
-                    result = function(*args, **kwargs)|{"action": function.__name__, "time": start_time}
-                    return result|{"action": function.__name__, "time": start_time}
+                    result = function(*args, **kwargs)
+                    return result | {"action": function.__name__, "time": t0}
                 except Exception as e:
-                    return error(e, start_time)|{"action": function.__name__, "time": start_time}
+                    return error(e, t0) | {"action": function.__name__, "time": t0}
             return wrapper
     return decorator
 
@@ -122,16 +133,13 @@ def foreach(iterable, fn, args=()):
 @action()
 async def pipeline(iterable, *functions):
     r = iterable
-    print("\n #################### NODE_NAME:",iterable["node"]["name"])
     for fn in functions:
         r = await fn(r)
-        print(r.get("errors"),r.get("action"))
         if not r["success"]: return error(r["errors"], r["time"])
         r = output(r)
     return success(r)
 
-async def reset(old,new):
-    return new
+async def reset(old, new): return new
 
 async def switch(data, cases):
     for cond, fn in cases.items():
@@ -147,130 +155,155 @@ async def switch(data, cases):
 
 class DagRunner:
 
-    def __init__(self, workers=3):
+    def __init__(self, workers: int = 3):
         self.workers = workers
 
-        self.graphs = {}
-        self.nodes = {}
+        self.graphs   = {}   # fname -> DiGraph
+        self.nodes    = {}   # fname -> {node_name -> node_def}
+        self.triggers = {}   # fname -> {node_name -> [listeners]}
 
-        self.sessions = {}
+        self.sessions  = {}
+        self.queue     = asyncio.Queue()
+        self.tasks     = []
+        self.running   = False
 
-        self.queue = asyncio.Queue()
-        self.tasks = []
-        self.running = False
-
-        # 🔥 reactive index
-        self.triggers = {}  # node_name -> [listeners]
-        self.cancelled_sessions: set = set() 
+        self.cancelled_sessions: set = set()
 
     # ─────────────────────────────────────────
     # FILE
     # ─────────────────────────────────────────
 
     async def add_file(self, name: str, nodes: List[Dict]):
-        G = nx.DiGraph()
+        G  = nx.DiGraph()
         nm = {n["name"]: n for n in nodes}
-
         self.triggers[name] = {}
 
         for n in nodes:
             G.add_node(n["name"])
-
-            # deps graph
             for d in n.get("deps", []):
                 if d in nm:
                     G.add_edge(d, n["name"])
-
-            # 🔥 trigger graph
             trg = n.get("trigger")
             if trg:
                 self.triggers[name].setdefault(trg, []).append(n["name"])
 
         if not nx.is_directed_acyclic_graph(G):
-            raise ValueError("DAG con cicli")
+            raise ValueError(f"Il file '{name}' contiene cicli")
 
         self.graphs[name] = G
-        self.nodes[name] = nm
+        self.nodes[name]  = nm
 
     async def delete_file(self, name: str):
-        if name in self.graphs:
-            del self.graphs[name]
-        if name in self.nodes:
-            del self.nodes[name]
-        if name in self.triggers:
-            del self.triggers[name]
+        for store in (self.graphs, self.nodes, self.triggers):
+            store.pop(name, None)
 
     # ─────────────────────────────────────────
-    # SESSION
+    # SESSION — identità utente persistente
+    #
+    # Non è legata a un file specifico.
+    # ctx accumula stato tra le richieste.
+    # run_file() decide quale file eseguire.
     # ─────────────────────────────────────────
 
-    def create_session(self, sid: str, fname: str, ctx=None):
-        ctx = dict(ctx or {})
-
+    def create_session(self, sid: str, ctx: Optional[Dict] = None):
+        """
+        Crea una sessione persistente per un utente.
+        Non esegue nulla — usa run_file() per avviare operazioni.
+        """
         self.sessions[sid] = {
-            "file": fname,
-            "ctx": ctx,
-            "results": {},
-            "done": {n: asyncio.Event() for n in self.nodes[fname]},
-            "schedulers": {}
+            "ctx":           dict(ctx or {}),
+            "results":       {},       # "fname::node_name" -> Result
+            "done":          {},       # "fname::node_name" -> Event (popolato da run_file)
+            "schedulers":    {},       # "fname::node_name" -> Task heartbeat
+            "running_files": set(),    # fname attualmente in esecuzione
         }
 
-    async def run_session(self, sid: str):
+    async def run_file(self, fname: str, sid: str, ctx_update: Optional[Dict] = None):
+        """
+        Esegue un file specifico sulla sessione esistente.
+
+        ctx_update: aggiorna il ctx prima dell'esecuzione
+                    (tipicamente il body della request HTTP)
+
+        Aspetta solo i nodi one-shot.
+        I nodi schedulati continuano in background fino a close_session.
+        Più run_file sulla stessa sessione possono girare in parallelo.
+
+        Ritorna: dict {node_name -> Result} dei nodi del file eseguito.
+        """
         if sid not in self.sessions:
-            raise ValueError(f"Sessione {sid} non trovata")
+            raise ValueError(f"Sessione '{sid}' non trovata.")
+        if fname not in self.graphs:
+            raise ValueError(f"File '{fname}' non registrato.")
 
         session = self.sessions[sid]
+
+        # Aggiorna ctx con i dati della richiesta corrente
+        if ctx_update:
+            session["ctx"].update(ctx_update)
+
+        session["running_files"].add(fname)
+
+        # Inizializza/resetta gli eventi done per i nodi di questo file
+        for n in self.nodes[fname]:
+            session["done"][_key(fname, n)] = asyncio.Event()
 
         if not self.running:
             await self.start()
 
-        fname = session["file"]
+        # Enqueue i root node
         for n in self.graphs[fname].nodes:
             if self.graphs[fname].in_degree(n) == 0:
-                self.queue.put_nowait((sid, n))
+                self.queue.put_nowait((sid, fname, n))
 
+        # Aspetta solo i nodi one-shot (senza schedule)
         one_shot = [
-            event for name, event in session["done"].items()
-            if not self.nodes[fname][name].get("schedule")
+            session["done"][_key(fname, n)].wait()
+            for n in self.nodes[fname]
+            if not self.nodes[fname][n].get("schedule")
         ]
-        await asyncio.gather(*one_shot)
 
-        return session["results"]
+        if one_shot:
+            await asyncio.gather(*one_shot)
+        else:
+            # DAG puramente reattivo: aspetta almeno un giro completo
+            await asyncio.gather(*[
+                session["done"][_key(fname, n)].wait()
+                for n in self.nodes[fname]
+            ])
+
+        session["running_files"].discard(fname)
+
+        # Ritorna i risultati di questo file con chiave semplice (node_name)
+        return {
+            n: session["results"][_key(fname, n)]
+            for n in self.nodes[fname]
+            if _key(fname, n) in session["results"]
+        }
 
     async def close_session(self, sid: str):
-        """
-        Rimuove la sessione e pulisce le risorse.
-        """
         if sid not in self.sessions:
             return
 
-        # 1. Marca come cancellata — i worker la ignoreranno
         session = self.sessions[sid]
         self.cancelled_sessions.add(sid)
 
         for task in session["schedulers"].values():
             task.cancel()
 
-        # 2. Sblocca i wait_node pendenti
         for event in session["done"].values():
             if not event.is_set():
                 event.set()
 
-        # 3. Rimuovi i dati della sessione
         del self.sessions[sid]
-        
-        # 4. Pulisci il tombstone dopo un po'
-        async def _cleanup_tombstone():
+
+        async def _cleanup():
             await asyncio.sleep(60)
             self.cancelled_sessions.discard(sid)
-
-        asyncio.create_task(_cleanup_tombstone())
-        print(f"[Session {sid}] Cleaned up successfully.")
+        asyncio.create_task(_cleanup())
 
     async def clear_all_sessions(self):
-        """Rimuove tutte le sessioni attive."""
-        sids = list(self.sessions.keys())
-        for sid in sids:
+        for sid in list(self.sessions.keys()):
             await self.close_session(sid)
 
     # ─────────────────────────────────────────
@@ -289,60 +322,51 @@ class DagRunner:
     async def _worker(self):
         while self.running:
             try:
-                sid, name = await asyncio.wait_for(self.queue.get(), 0.2)
+                sid, fname, name = await asyncio.wait_for(self.queue.get(), 0.2)
             except asyncio.TimeoutError:
                 continue
 
-            # scarta silenziosamente i task di sessioni chiuse
             if sid in self.cancelled_sessions:
                 self.queue.task_done()
                 continue
-            await self._run_node(sid, name)
+
+            await self._run_node(sid, fname, name)
             self.queue.task_done()
 
     # ─────────────────────────────────────────
     # CORE
     # ─────────────────────────────────────────
 
-    async def _run_node(self, sid: str, name: str):
+    async def _run_node(self, sid: str, fname: str, name: str):
         session = self.sessions[sid]
-        nd = self.nodes[session["file"]][name]
+        nd  = self.nodes[fname][name]
+        k   = _key(fname, name)
 
-        # Inizializziamo il pacchetto dati che viaggerà nella pipeline
         d = {
-            "sid": sid,
-            "node": nd,
-            "ctx": session["ctx"],
+            "sid":     sid,
+            "fname":   fname,
+            "node":    nd,
+            "ctx":     session["ctx"],
             "results": session["results"],
-            "result": None,
-            "t0": time.perf_counter()
+            "result":  None,
+            "t0":      time.perf_counter(),
         }
 
-        # 1. Verifica dipendenze e policy
         steps = [self._check_deps]
-
-        # 2. Controllo Quota Tempo (Storico)
-        if nd.get("duration"):    steps.append(self._handle_duration)
-        # 3. Verifica pre-condizioni logiche
-        if nd.get("when"):        steps.append(self._check_when)
-        # 4. Hook d'inizio
-        if nd.get("on_start"): steps.append(functools.partial(self._run_hook, hook_name="on_start"))
-        # 5. Esecuzione (con retry interno)
+        if nd.get("duration"):   steps.append(self._handle_duration)
+        if nd.get("when"):       steps.append(self._check_when)
+        if nd.get("on_start"):   steps.append(functools.partial(self._run_hook, hook_name="on_start"))
         steps.append(self._execute_step)
-        # 6. Hook di fine (successo/errore)
         if nd.get("on_success"): steps.append(functools.partial(self._run_hook, hook_name="on_success"))
-        if nd.get("on_error"): steps.append(functools.partial(self._run_hook, hook_name="on_error"))
-        # 7. Hook di fine
-        if nd.get("on_end"): steps.append(functools.partial(self._run_hook, hook_name="on_end"))
-        # 8. Scrittura risultati nel contesto
+        if nd.get("on_error"):   steps.append(functools.partial(self._run_hook, hook_name="on_error"))
+        if nd.get("on_end"):     steps.append(functools.partial(self._run_hook, hook_name="on_end"))
         steps.append(self._save_step)
-        # 9. Trigger successori
         steps.append(self._dispatch)
 
-        # Esecuzione a tappe
         await pipeline(d, *steps)
 
-        session["done"][name].set()
+        if k in session["done"]:
+            session["done"][k].set()
 
     # ─────────────────────────────────────────
     # OPS
@@ -350,73 +374,57 @@ class DagRunner:
 
     @action()
     async def _check_deps(self, d):
-        sid      = d["sid"]
-        deps     = d["node"].get("deps", [])
+        sid       = d["sid"]
+        fname     = d["fname"]
+        deps      = d["node"].get("deps", [])
         node_name = d["node"]["name"]
-        policy   = d["node"].get("policy", "all")
-        res      = d["results"]
-        session  = self.sessions[sid]
+        k         = _key(fname, node_name)
+        policy    = d["node"].get("policy", "all")
+        res       = d["results"]
+        session   = self.sessions[sid]
         use_cache = d["node"].get("cache", False)
-        # 1. Se non ci sono dipendenze, via liberi
+
         if not deps:
             return success(d)
 
-        # 1. Check di Sincronizzazione (Eventi)
-        not_ready = [dep for dep in deps if dep in session["done"] and not session["done"][dep].is_set()]
+        dep_keys = [_key(fname, dep) for dep in deps]
+
+        not_ready = [
+            dk for dk in dep_keys
+            if dk in session["done"] and not session["done"][dk].is_set()
+        ]
 
         if not_ready and not use_cache:
-            # Se i padri non sono pronti, rilasciamo il worker!
-            # Aspettiamo un pochino e rimettiamo il nodo in coda.
             async def _retry_later():
-                print(f"[Session {sid}] Waiting for deps: {not_ready}")
-                await asyncio.sleep(0.5) # Piccolo delay per non floodare la coda
-                self.queue.put_nowait((sid, node_name))
-            
+                await asyncio.sleep(0.5)
+                self.queue.put_nowait((sid, fname, node_name))
             asyncio.create_task(_retry_later())
-            
-            # Interrompiamo la pipeline corrente con un errore "silenzioso" 
-            # o uno stato che fermi l'esecuzione attuale senza loggare disastri.
             return error(f"Waiting for deps: {not_ready}")
 
-        # 2. Check di Freschezza (Timestamp/Version)
-        # Se il figlio è schedulato, non vogliamo che giri 100 volte sullo stesso dato del padre
         if not use_cache:
-            my_last_run_time = res.get(node_name, {}).get("updated_at", 0)
-            
-            # Controlliamo se almeno un padre ha un dato più nuovo della nostra ultima esecuzione
-            fresh_data = False
-            for dep in deps:
-                if dep in res:
-                    if res[dep]["updated_at"] > my_last_run_time:
-                        fresh_data = True
-                        break
-            
-            # Se siamo già stati eseguiti una volta e nessun padre ha dati nuovi...
-            if node_name in res and not fresh_data:
-                # Rimettiamo in coda silenziosamente (aspettando il prossimo battito del padre)
-                async def _wait_for_fresh():
+            my_last = res.get(k, {}).get("updated_at", 0)
+            fresh = any(res[dk]["updated_at"] > my_last for dk in dep_keys if dk in res)
+            if k in res and not fresh:
+                async def _wait_fresh():
                     await asyncio.sleep(0.5)
-                    self.queue.put_nowait((sid, node_name))
-                asyncio.create_task(_wait_for_fresh())
+                    self.queue.put_nowait((sid, fname, node_name))
+                asyncio.create_task(_wait_fresh())
                 return error("No fresh data from parents yet.")
 
-        completed = [dep for dep in deps if dep in res]
-        succeeded = [dep for dep in completed if res[dep]["success"]]
+        completed = [dk for dk in dep_keys if dk in res]
+        succeeded = [dk for dk in completed if res[dk]["success"]]
 
         if policy == "all":
-            if len(succeeded) == len(deps):
-                return success(d)
-            failed = [dep for dep in completed if not res[dep]["success"]]
+            if len(succeeded) == len(deps): return success(d)
+            failed = [dk for dk in completed if not res[dk]["success"]]
             return error(f"policy=all failed: {failed}")
 
         if policy == "any":
-            if len(succeeded) >= 1:
-                return success(d)
+            if len(succeeded) >= 1: return success(d)
             return error("policy=any failed")
 
         if isinstance(policy, int):
-            if len(succeeded) >= policy:
-                return success(d)
+            if len(succeeded) >= policy: return success(d)
             return error(f"policy={policy} >= ({len(succeeded)} succeeded)")
 
         return error(f"unknown policy: {policy!r}")
@@ -424,151 +432,123 @@ class DagRunner:
     @action()
     async def _check_when(self, d):
         fn = d["node"].get("when")
-        if not fn:
-            return success(d)
-        #print(fn(d["ctx"] | d["results"]))
-        if bool(fn(d["ctx"] | d["results"])):
-            return success(d)
-        return error("Invalid when")
+        if not fn: return success(d)
+        if bool(fn(d["ctx"] | d["results"])): return success(d)
+        return error("when condition not met")
 
     @action()
     async def _execute_step(self, d):
         nd, ctx, res = d["node"], d["ctx"], d["results"]
+        fname   = d["fname"]
         retries = nd.get("retries", 0)
-        delay = nd.get("retry_delay", 0)
-        
-        # Prepariamo gli input: ctx globale + risultati dei nodi dipendenti
-        #inputs = ctx | {k: v["outputs"] for k, v in res.items()}
+        delay   = nd.get("retry_delay", 0)
+
+        # Inietta gli output dei dep nel ctx condiviso (by reference)
+        # In questo modo le mutazioni del nodo su ctx persistono nella sessione
         if nd.get("meta"):
-            # Passa l'intero oggetto Result per ogni dipendenza
-            inputs = ctx | {k: v for k, v in res.items()}
+            for dep in nd.get("deps", []):
+                if _key(fname, dep) in res:
+                    ctx[dep] = res[_key(fname, dep)]
         else:
-            # Comportamento standard: passa solo il valore prodotto
-            inputs = ctx | {k: v["outputs"] for k, v in res.items()}
-        
+            for dep in nd.get("deps", []):
+                if _key(fname, dep) in res:
+                    ctx[dep] = res[_key(fname, dep)]["outputs"]
+        inputs = ctx
+
         last_result = None
         for i in range(retries + 1):
             try:
-                # Esecuzione della funzione core
                 r = await _call(nd["fn"], inputs)
                 last_result = r if is_result(r) else success(r, d["t0"])
-                if last_result["success"]:
-                    break
+                if last_result["success"]: break
             except Exception as e:
                 last_result = error(e, d["t0"])
-            
             if i < retries:
                 await asyncio.sleep(delay)
-        
+
         d["result"] = last_result
         return success(d)
 
     @action()
     async def _run_hook(self, d, hook_name: str):
-        nd = d["node"]
+        nd       = d["node"]
+        fname    = d["fname"]
         hook_val = nd.get(hook_name)
-        sid = d["sid"]
-        
-        if not hook_val:
-            return success(d)
+        sid      = d["sid"]
+
+        if not hook_val: return success(d)
 
         try:
-            # GESTIONE STRINGA O LISTA DI STRINGHE (TRIGGER REATTIVI)
             if isinstance(hook_val, (str, list)):
-                # Normalizziamo in una lista per iterare
                 targets = [hook_val] if isinstance(hook_val, str) else hook_val
-                
-                for target_node in targets:
-                    if target_node in self.sessions[sid]["done"]:
-                        # Reset dell'evento: permette al nodo di essere eseguito di nuovo
-                        self.sessions[sid]["done"][target_node].clear()
-                    # Mettiamo il nodo in coda per i worker
-                    self.queue.put_nowait((sid, target_node))
-
-            # GESTIONE FUNZIONE (LOGICA CUSTOM)
+                for target in targets:
+                    tk = _key(fname, target)
+                    if tk in self.sessions[sid]["done"]:
+                        self.sessions[sid]["done"][tk].clear()
+                    self.queue.put_nowait((sid, fname, target))
             elif callable(hook_val):
                 await _call(hook_val, d, d.get("result"))
-                
             return success(d)
         except Exception as e:
-            print(f"❌ Errore nell'hook {hook_name} di {nd['name']}: {e}")
+            print(f"❌ Hook {hook_name} di {nd['name']}: {e}")
             return success(d)
 
     @action()
     async def _handle_duration(self, d):
-        nd = d["node"]
+        nd      = d["node"]
+        fname   = d["fname"]
         max_dur = nd.get("duration")
         if not max_dur: return success(d)
-
-        # Recuperiamo quanto tempo ha accumulato il nodo finora nella sessione
-        current_total = d["results"].get(nd["name"], {}).get("duration", 0.0)
-
-        if current_total >= max_dur:
-            return error(f"Quota temporale esaurita ({current_total:.2f}s >= {max_dur}s)")
-        
+        k = _key(fname, nd["name"])
+        current = d["results"].get(k, {}).get("duration", 0.0)
+        if current >= max_dur:
+            return error(f"Quota temporale esaurita ({current:.2f}s >= {max_dur}s)")
         return success(d)
 
     @action()
     async def _save_step(self, d):
         nd, result = d["node"], d["result"]
-        sid = d["sid"]
-        session = self.sessions[sid]
-        
-        # Salvataggio standard
-        _set(d["ctx"], nd.get("path"), result["outputs"])
-        session["results"][nd["name"]] = result
-        
-        # Registriamo che questo nodo ha appena prodotto questa versione
-        session.setdefault("last_seen", {})[nd["name"]] = result["version"]
+        fname   = d["fname"]
+        session = self.sessions[d["sid"]]
+        k       = _key(fname, nd["name"])
 
+        _set(d["ctx"], nd.get("path"), result["outputs"])
+        session["results"][k] = result
+        session.setdefault("last_seen", {})[k] = result["version"]
         result["duration"] += result["time"]
-        
+
         return success(d)
 
     @action()
     async def _dispatch(self, d):
-        sid = d["sid"]
+        sid       = d["sid"]
+        fname     = d["fname"]
         node_name = d["node"]["name"]
-        session = self.sessions[sid]
-        interval = d["node"].get("schedule")
-        
-        # 1. Trigger e Reset Successori
-        for nxt in self.graphs[session["file"]].successors(node_name):
-            nxt_node = self.nodes[session["file"]][nxt]
-            
-            # Se il FIGLIO vuole dati freschi (cache=False), resettiamo il suo 'done'
-            if not nxt_node.get("cache") and nxt in session["done"]:
-                session["done"][nxt].clear()
-            
-            self.queue.put_nowait((sid, nxt))
+        k         = _key(fname, node_name)
+        session   = self.sessions[sid]
+        interval  = d["node"].get("schedule")
 
-        # 2. Reactive triggers
-        for trg in self.triggers[session["file"]].get(node_name, []):
-            self.queue.put_nowait((sid, trg))
+        for nxt in self.graphs[fname].successors(node_name):
+            nxt_k = _key(fname, nxt)
+            if not self.nodes[fname][nxt].get("cache") and nxt_k in session["done"]:
+                session["done"][nxt_k].clear()
+            self.queue.put_nowait((sid, fname, nxt))
 
-        # 2. AUTO-SCHEDULAZIONE PERSISTENTE
-        if interval and node_name not in session["schedulers"]:
-            
-            async def _heartbeat():
+        for trg in self.triggers[fname].get(node_name, []):
+            self.queue.put_nowait((sid, fname, trg))
+
+        if interval and k not in session["schedulers"]:
+            async def _heartbeat(fname=fname, node_name=node_name, k=k):
                 try:
                     while sid in self.sessions and sid not in self.cancelled_sessions:
                         await asyncio.sleep(interval)
-                        
-                        # Reset dell'evento per permettere una nuova esecuzione pulita
-                        if node_name in session["done"]:
-                            session["done"][node_name].clear()
-                        
-                        # Rimettiamo il nodo in coda per i worker
-                        self.queue.put_nowait((sid, node_name))
-                        
-                        # Opzionale: attendiamo che il nodo finisca prima di far ripartire il timer 
-                        # (per evitare accumuli se l'esecuzione dura più dell'intervallo)
-                        await session["done"][node_name].wait()
-                        
+                        if k in session["done"]:
+                            session["done"][k].clear()
+                        self.queue.put_nowait((sid, fname, node_name))
+                        await session["done"][k].wait()
                 except asyncio.CancelledError:
                     pass
-            # Crea il task UNA SOLA VOLTA per tutta la durata della sessione
-            session["schedulers"][node_name] = asyncio.create_task(_heartbeat())
+            session["schedulers"][k] = asyncio.create_task(_heartbeat())
 
         return success(d)
 
@@ -576,26 +556,13 @@ class DagRunner:
     # REACTIVE API
     # ─────────────────────────────────────────
 
-    def emit(self, sid: str, name: str, value: Any = None):
-        """Trigger manuale (event sourcing light)"""
+    def emit(self, sid: str, fname: str, name: str, value: Any = None):
+        """Trigger manuale di un nodo specifico."""
         session = self.sessions[sid]
-
         if value is not None:
             _set(session["ctx"], name, value)
+        self.queue.put_nowait((sid, fname, name))
 
-        self.queue.put_nowait((sid, name))
-
-    # ─────────────────────────────────────────
-    # HOOKS
-    # ─────────────────────────────────────────
-
-    async def _hook(self, fn, d, result=None):
-        if not fn:
-            return
-        try:
-            await _call(fn, d, result)
-        except:
-            pass
-
-    async def wait_node(self, sid, name):
-        await self.sessions[sid]["done"][name].wait()
+    async def wait_node(self, sid: str, fname: str, name: str):
+        """Attende il completamento di un nodo specifico."""
+        await self.sessions[sid]["done"][_key(fname, name)].wait()

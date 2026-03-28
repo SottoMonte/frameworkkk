@@ -722,15 +722,21 @@ class Interpreter:
         self._tasks = [] # Reset tasks for this run
         self._stack = []
         self._dag = []
-        self.cache_ast[name] = parse(code, self.parser)
-        flow_nodes = await self._build_flow_nodes(env|result)
+        ast = parse(code, self.parser)
+        if isinstance(ast, Exception):
+            print("ERROR", f"Errore di parsing DSL in {name}: {ast}")
+            return
+        print("OK")
+        result , _ = await self.visit(ast, DSL_FUNCTIONS, path="")
+        print("OK")
+        flow_nodes = await self._build_flow_nodes(DSL_FUNCTIONS|result)
         await self.runner.add_file(name,flow_nodes)
 
-    async def create_session(self, name, session, env={}):
-        ast = self.cache_ast.get(name)
-        if not ast:
-            raise DSLRuntimeError(f"File {name} non trovato")
-        self.runner.create_session(session,name,env)
+    async def create_session(self, session, env={}):
+        self.runner.create_session(session,env)
 
-    async def run_session(self, file,session):
+    async def run_session(self, session, file, env={}):
+        print("OK")
         result , _ = await self.visit(self.cache_ast[file], env, path="")
+        result |= await self.runner.run_file(file,session,env)
+        return result
