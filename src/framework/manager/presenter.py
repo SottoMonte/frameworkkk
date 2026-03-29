@@ -5,13 +5,14 @@ class presenter():
         self.executor = constants['executor']
 
     async def start(self):
-        print(self.presentations())
         for presentation in self.presentations:
-            await presentation.start()
+            if hasattr(presentation, 'start'):
+                await presentation.start()
 
     async def stop(self):
         for presentation in self.presentations:
-            await presentation.stop()
+            if hasattr(presentation, 'stop'):
+                await presentation.stop()
 
     async def selector(self,**constants):
         name = constants.get('name','')

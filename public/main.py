@@ -7,7 +7,7 @@ async def main(argv=sys.argv):
     sys.path.insert(1, cwd+'/src')
     import framework.manager.loader as loader
     
-    loader_instance = loader.loader()
+    loader_instance = loader.Loader()
     return await loader_instance.bootstrap(argv)
 
 if __name__ == "__main__":

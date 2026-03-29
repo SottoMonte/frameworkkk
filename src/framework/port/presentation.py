@@ -180,9 +180,11 @@ class port(ABC):
         regex_simple_options = r'\{([a-zA-Z0-9_|]+)\}'
         # Regex per parametri dinamici tipo {$id} -> {id}
         regex_dynamic_param = r'\{\$([a-zA-Z0-9_]+)\}'
-        rotta = f"application/policy/presentation/{self.config.get('project',).get('policy').get('presentation')}"
-        file = await language.fetch(path=rotta)
-        policy = await language.convert(file,dict,'toml')
+        
+        #rotta = f"application/policy/presentation/{self.config.get('project',).get('policy').get('presentation')}"
+        rotta = f"src/application/policy/presentation/web.toml"
+        file = await loader.resource(rotta)
+        policy = await scheme.convert(file,dict,'toml')
         routes = policy.get('store').get('data').get('routes')
         try:
             for setting in routes:

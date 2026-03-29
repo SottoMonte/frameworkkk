@@ -677,7 +677,9 @@ class Adapter(presentation.port):
     }
 
     def __init__(self,**constants):
-        self.config = constants.get('config', {})
+        self.config = constants
+
+
         self.initialize()
         self.views = dict({})
         self.ssh = {}
@@ -699,11 +701,12 @@ class Adapter(presentation.port):
             #Middleware(AuthorizationMiddleware, manager=defender)
         ]
 
-    async def start(self, loop):
+    async def start(self):
+        loop = asyncio.get_event_loop()
         print("Starlette: Inizializzazione in corso...")
         await self.parse_route()
         self.mount_route(self.routes) # 'routes' deve essere accessibile qui
-
+        print("SSSSSSSSSSSSSSSSSSSSSSSSSS")
         # Inizializza l'applicazione Starlette con rotte e middleware
         self.app = Starlette(debug=True, routes=self.routes, middleware=self.middleware)
         #print(di['message'][0].logger,'###########')
