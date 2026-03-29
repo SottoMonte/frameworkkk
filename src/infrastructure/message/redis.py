@@ -1,35 +1,31 @@
 import asyncio
 import redis.asyncio as r
-import framework.port.message as message
-import framework.service.flow as flow
 import datetime
 from ast import literal_eval
 import importlib
 import json
 
-imports = {
-    "framework": "framework/service/language.py",
-    "flow": "framework/service/flow.py"
-}
-
-class adapter(message.port):
+class Adapter(message.port):
 
     def __init__(self,**constants):
-        self.config = constants['config'] 
+        self.host = constants['host']
+        self.port = constants['port']
+        self.database = constants['database']
+        self.username = constants['username']
+        self.password = constants['password']
         self.connection = self.loader()
         self.processable = dict()
 
     def loader(self,*managers,**constants):
-        return r.from_url(f"redis://{self.config['host']}:{self.config['port']}")
+        return r.from_url(f"redis://{self.host}:{self.port}")
 
-    @flow.asynchronous(args=('policy','name','value','identifier'),ports=('storekeeper',))
     async def post(self,storekeeper,**constants):
         payload = constants['value'] if 'value' in constants else ''
         domain = [self.app+'.'+constants['name']] if 'name' in constants else [self.app]
         identifier = constants['identifier'] if 'identifier' in constants else ''
         await self.signal(keys=domain,value=str(payload),identifier=identifier,name=constants['name'])
 
-    @flow.asynchronous(ports=('storekeeper',))
+    #@flow.asynchronous(ports=('storekeeper',))
     async def get(self,storekeeper,**constants):
         identifier = constants['identifier']
         max = 0
@@ -57,7 +53,7 @@ class adapter(message.port):
             return True
         except ImportError:return False
 
-    @flow.asynchronous(ports=('storekeeper','messenger'))
+    #@flow.asynchronous(ports=('storekeeper','messenger'))
     async def react(self, storekeeper,messenger, **constants):
         while True:
             await asyncio.sleep(1.1)

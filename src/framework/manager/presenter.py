@@ -1,10 +1,21 @@
+
 class presenter():
     def __init__(self,**constants):
-        self.providers = constants['providers']
+        self.presentations = constants['presentations']
+        self.executor = constants['executor']
+
+    async def start(self):
+        print(self.presentations())
+        for presentation in self.presentations:
+            await presentation.start()
+
+    async def stop(self):
+        for presentation in self.presentations:
+            await presentation.stop()
 
     async def selector(self,**constants):
         name = constants.get('name','')
-        driver = language.last(self.providers)
+        driver = language.last(self.presentations)
         return await driver.selector(**constants)
 
     async def get_attribute(self,**constants):

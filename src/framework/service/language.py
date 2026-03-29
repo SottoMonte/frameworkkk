@@ -118,7 +118,7 @@ DSL_FUNCTIONS = {
     'switch':  flow.switch,
     #'when': flow.when,
     #'sentry': flow.sentry,
-    #'branch': flow.branch,
+    'branch': flow.branch,
     #'pipeline': flow.pipeline,
     #'parallel': flow.parallel,
     'reset': flow.reset,

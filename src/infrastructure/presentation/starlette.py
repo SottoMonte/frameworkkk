@@ -6,11 +6,6 @@ import json
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse, ParseResult,parse_qs
 
-imports = {
-    'presentation': 'framework/port/presentation.py',
-    'scheme_url' : 'framework/scheme/url.json',
-}
-
 try:
     from starlette.applications import Starlette
     from starlette.requests import Request
@@ -46,14 +41,14 @@ try:
     import paramiko
     import asyncio
 
-    class NoCacheMiddleware(BaseHTTPMiddleware):
+    '''class NoCacheMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
             response = await call_next(request)
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
             response.headers["Server"] = "Starlette-Test"
-            return response
+            return response'''
 
 except Exception as e:
     #import starlette
@@ -63,7 +58,7 @@ except Exception as e:
     import xml.etree.ElementTree as ET
     from xml.sax.saxutils import escape
 
-class adapter(presentation.port):
+class Adapter(presentation.port):
     
     attributes = {
         # Attributi HTML diretti
@@ -681,15 +676,13 @@ class adapter(presentation.port):
         },
     }
 
-    @language.synchronous(managers=('defender','messenger'))
-    def __init__(self,defender,messenger,**constants):
+    def __init__(self,**constants):
         self.config = constants.get('config', {})
         self.initialize()
         self.views = dict({})
         self.ssh = {}
         cwd = os.getcwd()
-
-        routes=[
+        self.routes=[
             Mount('/static', app=StaticFiles(directory=f'{cwd}/public/'), name="static"),
             Mount('/framework', app=StaticFiles(directory=f'{cwd}/src/framework'), name="y"),
             Mount('/application', app=StaticFiles(directory=f'{cwd}/src/application'), name="z"),
@@ -697,70 +690,64 @@ class adapter(presentation.port):
             #WebSocketRoute("/messenger", self.websocket, name="messenger"),
             #WebSocketRoute("/ssh", self.websocketssh, name="ssh"),
         ]
-
-        middleware = [
+        
+        self.middleware = [
             Middleware(SessionMiddleware, session_cookie="session_state",secret_key=self.config.get('project',{}).get('key', 'default_key')),
             Middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'], allow_credentials=True),
-            Middleware(NoCacheMiddleware),
+            #Middleware(NoCacheMiddleware),
             #Middleware(CSRFMiddleware, secret=self.config['project']['key']),
             #Middleware(AuthorizationMiddleware, manager=defender)
         ]
 
-        async def starter():
-            print("Starlette: Inizializzazione in corso...")
-            
-            await self.parse_route()
-            self.mount_route(routes) # 'routes' deve essere accessibile qui
+    async def start(self, loop):
+        print("Starlette: Inizializzazione in corso...")
+        await self.parse_route()
+        self.mount_route(self.routes) # 'routes' deve essere accessibile qui
 
-            # Inizializza l'applicazione Starlette con rotte e middleware
-            self.app = Starlette(debug=True, routes=routes, middleware=middleware)
-            #print(di['message'][0].logger,'###########')
-            # Parametri di configurazione base per Uvicorn
-            uvicorn_config_params = {
-                "app": self.app,
-                "host": self.config.get('host', '127.0.0.1'),
-                "port": int(self.config.get('port', 8000)),
-                "use_colors": True,
-                "reload": False, # `reload=True` non è compatibile con create_task in questo modo
-                "loop": loop,
-                #'log_level':"trace"
-                #'log_config':None
-            }
+        # Inizializza l'applicazione Starlette con rotte e middleware
+        self.app = Starlette(debug=True, routes=self.routes, middleware=self.middleware)
+        #print(di['message'][0].logger,'###########')
+        # Parametri di configurazione base per Uvicorn
+        uvicorn_config_params = {
+            "app": self.app,
+            "host": self.config.get('host', '127.0.0.1'),
+            "port": int(self.config.get('port', 8000)),
+            "use_colors": True,
+            "reload": False, # `reload=True` non è compatibile con create_task in questo modo
+            "loop": loop,
+            #'log_level':"trace"
+            #'log_config':None
+        }
+        print("BOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOM!")
+        # Aggiunge i parametri SSL se presenti
+        if 'ssl_keyfile' in self.config and 'ssl_certfile' in self.config:
+            await messenger.post(domain='debug', message="SSL abilitato.")
+            uvicorn_config_params['ssl_keyfile'] = self.config['ssl_keyfile']
+            uvicorn_config_params['ssl_certfile'] = self.config['ssl_certfile']
+        else:
+            await messenger.post(domain='debug', message="SSL disabilitato.")
 
-            # Aggiunge i parametri SSL se presenti
-            if 'ssl_keyfile' in self.config and 'ssl_certfile' in self.config:
-                await messenger.post(domain='debug', message="SSL abilitato.")
-                uvicorn_config_params['ssl_keyfile'] = self.config['ssl_keyfile']
-                uvicorn_config_params['ssl_certfile'] = self.config['ssl_certfile']
-            else:
-                await messenger.post(domain='debug', message="SSL disabilitato.")
+        # Costruisci la stringa della porta
+        port_str = ""
+        if 'port' in uvicorn_config_params:
+            port_str = f":{uvicorn_config_params['port']}"
 
-            # Costruisci la stringa della porta
-            port_str = ""
-            if 'port' in uvicorn_config_params:
-                port_str = f":{uvicorn_config_params['port']}"
-
-            # Costruisci l'URL
-            self.url = f"http{'s' if 'ssl_certfile' in self.config else ''}://{uvicorn_config_params['host']}{port_str}"
-
-            try:
-                # Crea e avvia il server Uvicorn come task asyncio
-                config = Config(**uvicorn_config_params)
-                server = Server(config)
-                await server.serve()
-                await messenger.post(domain='debug', message=f"Server avviato su {uvicorn_config_params['host']}:{uvicorn_config_params['port']}")
-            except Exception as e:
-                # Logga errori critici all'avvio del server
-                await messenger.post(domain='error', message=f"Errore critico durante l'avvio del server Uvicorn: {e}")
-        self.starter = starter
-
-    def loader(self, loop):
-        loop.create_task(self.starter())
+        # Costruisci l'URL
+        self.url = f"http{'s' if 'ssl_certfile' in self.config else ''}://{uvicorn_config_params['host']}{port_str}"
+        print("BOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOM!")
+        try:
+            # Crea e avvia il server Uvicorn come task asyncio
+            config = Config(**uvicorn_config_params)
+            server = Server(config)
+            await server.serve()
+            await messenger.post(domain='debug', message=f"Server avviato su {uvicorn_config_params['host']}:{uvicorn_config_params['port']}")
+        except Exception as e:
+            # Logga errori critici all'avvio del server
+            await messenger.post(domain='error', message=f"Errore critico durante l'avvio del server Uvicorn: {e}")
     
     async def mount_css(self,constants):
         pass
         
-    @language.asynchronous(managers=('defender',))
     async def logout(self,request,defender) -> None:
         assert request.scope.get("app") is not None, "Invalid Starlette app"
         request.session.clear()
@@ -768,7 +755,6 @@ class adapter(presentation.port):
         response.delete_cookie("session_token")
         return response
 
-    @language.asynchronous(managers=('storekeeper','messenger','defender'))
     async def login(self, request,storekeeper,messenger, defender):
         """Gestisce il login dell'utente con autenticazione basata su IP e sessione."""
         
@@ -805,7 +791,7 @@ class adapter(presentation.port):
 
         return response
 
-    @language.asynchronous(managers=('messenger',))
+
     async def websocket(self, websocket, messenger):
         ip = websocket.client.host
         await websocket.accept()
@@ -831,7 +817,6 @@ class adapter(presentation.port):
                 #await messenger_queue.put(msg)
                 await websocket.send_text(msg)
     
-    @language.asynchronous(managers=('defender','messenger'))
     async def websocketssh(self, websocket, defender,messenger):
         ip = websocket.client.host
 
@@ -891,7 +876,6 @@ class adapter(presentation.port):
             except Exception as close_err:
                 await messenger.post(domain='error', message=f"Errore durante la chiusura SSH: {close_err}")
     
-    @language.asynchronous(managers=('storekeeper','messenger'))
     async def action(self, request, storekeeper, messenger, **constants):
         #print(request.cookies.get('user'))
         match request.method:
@@ -912,7 +896,6 @@ class adapter(presentation.port):
                 #await messenger.post(name=request.url.path[1:],value={'model':data['model'],'value':data})
                 return RedirectResponse('/', status_code=303)
 
-    @language.asynchronous(managers=('messenger',))
     async def mount_view(self, url,messenger,**kargs):
         def process_url(url, default_base_url):
             """
@@ -991,10 +974,10 @@ class adapter(presentation.port):
         }
 
         # chiama il modello / builder come nel tuo flusso
-        url_payload = await language.normalize(url_payload,scheme_url)
+        #url_payload = await language.normalize(url_payload,scheme_url)
         return await self.builder(file=matched_route['view'], url=url_payload, mode=['main'], identifier=kargs.get('identifier'))
 
-    @language.asynchronous()
+
     async def starlette_view(self,request):
         request.session["url_precedente"] = str(request.url)
         html = await self.mount_view(str(request.url),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))

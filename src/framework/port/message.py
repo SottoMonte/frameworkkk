@@ -1,5 +1,3 @@
-# internal external dove viaggiano i dati
-
 from abc import ABC, abstractmethod
 
 class port(ABC):

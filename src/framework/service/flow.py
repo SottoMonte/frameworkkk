@@ -123,7 +123,11 @@ async def act(s):
 # ── EXTENSIONS ────────────────────────────────────────────────────────────────
 
 async def branch(cond, ctx, branches):
-    return branches[cond if isinstance(cond, bool) else cond(**ctx)]
+    ok = branches[cond if isinstance(cond, bool) else cond(**ctx)]
+    if callable(ok):
+        print("ok", ctx)
+        return await ok(ctx)
+    return ok
 
 def foreach(iterable, fn, args=()):
     async def _fn(view):

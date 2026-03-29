@@ -11,10 +11,12 @@ class Container(containers.DynamicContainer):
     module_cache = providers.Singleton(dict)
     loading_stack = providers.Singleton(set)
     # Definiamo i ports come mappe di provider o liste
-    ports = providers.Singleton(dict, 
-        presentation=[], persistence=[], message=[], 
-        authentication=[], actuator=[], authorization=[]
-    )
+    presentations = providers.Singleton(list,[])
+    persistences = providers.Singleton(list,[])
+    messages = providers.Singleton(list,[])
+    authentications = providers.Singleton(list,[])
+    actuators = providers.Singleton(list,[])
+    authorizations = providers.Singleton(list,[])
 
 class loader:
     def __init__(self, **config):
@@ -22,6 +24,15 @@ class loader:
         self.container = Container()
         # Lista ufficiale dei port supportati
         self.valid_ports = ["presentation", "persistence", "message", "authentication", "actuator", "authorization"]
+        self.ports_class_deps = {
+            "presentation": ["defender","messenger"],
+            "persistence": ["executor"],
+            "message": ["storekeeper","messenger"],
+            "authentication": [],
+            "actuator": [],
+            "authorization": []
+        }
+
 
     def _create_mod(self, name, path):
         """Crea il modulo senza eseguirlo (per permettere l'iniezione pre-exec)."""
@@ -110,15 +121,14 @@ class loader:
                     obj = await self._build(spec)
 
                 # 1. Registrazione per nome univoco
-                setattr(self.container, name, obj)
-
-                # 2. Registrazione nel PORT (se specificato)
-                port_name = spec.get("port")
-                if port_name in self.valid_ports:
-                    port_list = getattr(self.container, port_name)
-                    port_list.append(obj)
-                    print(f"[*] Servizio '{name}' registrato nel port '{port_name}'")
-
+                if spec.get("is_list",False):
+                    port_list = getattr(self.container, spec.get("port"),None)
+                    lista = port_list()
+                    lista.append(obj)
+                    #print(f"[*] Classe '{name}' registrato nel port '{spec.get('port')}'")
+                else:
+                    setattr(self.container, name, providers.Singleton(any,obj))
+                    
     async def get(self, name: str, spec: dict = None) -> any:
         if hasattr(self.container, name):
             return getattr(self.container, name)
@@ -144,11 +154,11 @@ class loader:
 
     def get_sync(self, name) -> any:
         if hasattr(self.container, name):
-            return getattr(self.container, name)
+            return getattr(self.container, name)()
         else:
             raise KeyError(f"Servizio '{name}' non trovato")
 
-    def read_config(file_path):
+    def read_config(self,file_path):
         """
         Legge un file TOML e restituisce un dizionario.
         Gestisce l'assenza del file con un errore descrittivo.
@@ -183,40 +193,41 @@ class loader:
 
     async def load_project(self, main_config_path: str):
         # 1. Carica il file principale
-        project_data = read_config(main_config_path)
+        project_data = self.read_config(main_config_path)
         
         # Inietta la configurazione globale nel container
         self.container.config.from_dict(project_data)
         
-        policies = project_data.get("project", {}).get("policy", {})
+        #policies = project_data.get("project", {}).get("policy", {})
+        services = project_data
         specs = []
 
         # 2. Cicla sui Port definiti nelle policy
-        for port_name, config_file in policies.items():
-            # Recupera i dati specifici del backend dal file principale
-            # o dal file indicato nella policy (es. web.toml)
-            backend_data = project_data.get(port_name, {}).get("backend", {})
-            
-            if not backend_data:
-                # Se il file principale non ha i dati, potresti voler leggere 
-                # il file indicato nella policy: read_config(f"configs/{config_file}")
+        for port_name, services in project_data.items():
+            if port_name not in self.valid_ports:
                 continue
-
-            adapter = backend_data.get("adapter")
+            for service_name, config_file in services.items():
+                adapter = config_file.get("adapter")
+                print(f"[*] Port: {port_name}.{adapter} in {port_name}s")
             
-            # 3. Crea la specifica dinamica
-            spec = {
-                "name": f"{port_name}.{adapter}", # Es: presentation.starlette
-                "port": port_name,
-                "path": f"src/infrastructure/{port_name}/{adapter}.py",
-                "is_class": True, # Di solito i backend sono classi
-                "config": backend_data
-            }
-            specs.append(spec)
+                # 3. Crea la specifica dinamica
+                spec = {
+                    "name": "Adapter",
+                    "path": f"src/infrastructure/{port_name}/{adapter}.py",
+                    "mod_deps": [port_name],
+                    "cls_deps": self.ports_class_deps[port_name],
+                    "port": port_name+"s",
+                    "is_class": True, # Di solito i backend sono classi
+                    "is_list": True,
+                    "config": config_file
+                }
+                #print(f"[*] Spec: {spec}")
+                specs.append(spec)
 
         # 4. Avvia il caricamento batch
-        await self._setup_batch(specs)
-        return project_data
+        #await self._setup_batch(specs)
+        #return project_data
+        return specs
 
     async def bootstrap(self,args):
         services = [
@@ -225,6 +236,9 @@ class loader:
             {"name": "flow", "path": "src/framework/service/flow.py", "mod_deps": ["scheme","loader"], "is_class": False, "config": {}},
             {"name": "language", "path": "src/framework/service/language.py", "mod_deps": ["scheme", "flow"], "is_class": False, "config": {}},
             {"name": "diagnostic", "path": "src/framework/service/diagnostic.py", "mod_deps": ["scheme", "flow"], "is_class": False, "config": {}},
+            {"name": "message", "path": "src/framework/port/message.py", "mod_deps": [], "is_class": False, "config": {}},
+            {"name": "presentation", "path": "src/framework/port/presentation.py", "mod_deps": [], "is_class": False, "config": {}},
+            {"name": "persistence", "path": "src/framework/port/persistence.py", "mod_deps": [], "is_class": False, "config": {}},
         ]
 
         managers = [
@@ -233,14 +247,15 @@ class loader:
             {"name": "executor", "path": "src/framework/manager/executor.py", "mod_deps": ["flow"], "cls_deps": ["defender","language"], "is_class": True, "config": {'args':args}},
             {"name": "defender", "path": "src/framework/manager/defender.py", "mod_deps": ["flow"], "cls_deps": [], "is_class": True, "config": {'args':args}},
             {"name": "tester", "path": "src/framework/manager/tester.py", "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader"], "is_class": True, "config": {'args':args}},
-            # {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [], "cls_deps": ["executor","persistences"], "is_class": True, "config": {}},
             # {"name": "sensor", "path": "src/framework/manager/sensor.py", "deps": ["container"], "is_class": True, "config": {}},
-            # {"name": "presenter", "path": "src/framework/manager/presenter.py", "deps": ["container"], "is_class": True, "config": {}},
+            {"name": "presenter", "path": "src/framework/manager/presenter.py", "mod_deps": [], "cls_deps": ["executor","presentations"], "is_class": True, "config": {}},
             # {"name": "inferencer", "path": "src/framework/manager/inferencer.py", "deps": ["container"], "is_class": True, "config": {}},
             # {"name": "actuator", "path": "src/framework/manager/actuator.py", "deps": ["container"], "is_class": True, "config": {}},
         ]
-        
-        await self._setup_batch(services+managers)
+
+        specs = await self.load_project("pyproject.toml")
+        await self._setup_batch(services+managers+specs)
 
         self._stop_event = asyncio.Event()
 
@@ -268,6 +283,7 @@ class loader:
         finally:
             for manager in managers:
                 obj = self.get_sync(manager["name"])
+                print(obj)
                 if hasattr(obj, "stop"):
                     await obj.stop()
             print("[*] Framework spento correttamente.")

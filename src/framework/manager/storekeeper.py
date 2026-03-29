@@ -1,11 +1,11 @@
 import asyncio
 import importlib
-from framework.service import language
 
 class storekeeper():
 
     def __init__(self,**constants):
-        self.providers = constants['providers']
+        self.executor = constants['executor']
+        self.persistences = constants['persistences']
 
     async def preparation(self, **constants):
         operations = []
@@ -78,31 +78,26 @@ class storekeeper():
         return repository, operations
     
     # overview/view/get
-    @language.asynchronous(inputs='storekeeper',outputs='transaction',managers=('executor',))
-    async def overview(self, executor, **constants):
+    async def overview(self, **constants):
         repository,operations = await self.preparation(**constants|{'operation':'view'})
-        return await executor.first_completed(operations=operations,success=repository.results)
+        return await self.executor.first_completed(operations=operations,success=repository.results)
 
     # gather/read/get
-    @language.asynchronous(inputs='storekeeper',outputs='transaction',managers=('executor',))
-    async def gather(self, executor, **constants):
+    async def gather(self, **constants):
         repository,operations = await self.preparation(**constants|{'operation':'read'})
-        return await executor.first_completed(operations=operations,success=repository.results)
+        return await self.executor.first_completed(operations=operations,success=repository.results)
     
     # store/create/put
-    @language.asynchronous(inputs='storekeeper',outputs='transaction',managers=('executor',))
-    async def store(self, executor, **constants):
+    async def store(self, **constants):
         repository,operations = await self.preparation(**constants|{'operation':'create'})
-        return await executor.first_completed(operations=operations,success=repository.results)
+        return await self.executor.first_completed(operations=operations,success=repository.results)
     
     # remove/delete/delete
-    @language.asynchronous(inputs='storekeeper',outputs='transaction',managers=('executor',))
-    async def remove(self, executor, **constants):
+    async def remove(self, **constants):
         repository,operations = await self.preparation(**constants|{'operation':'delete'})
-        return await executor.first_completed(operations=operations,success=repository.results)
+        return await self.executor.first_completed(operations=operations,success=repository.results)
     
     # change/update/patch
-    @language.asynchronous(inputs='storekeeper',outputs='transaction',managers=('executor',))
-    async def change(self,executor,**constants):
+    async def change(self, **constants):
         repository,operations = await self.preparation(**constants|{'operation':'update'})
-        return await executor.first_completed(operations=operations,success=repository.results)
+        return await self.executor.first_completed(operations=operations,success=repository.results)

@@ -65,7 +65,10 @@ tests:{
 cpu(schedule:2,trigger:"data") -> random(0,100);
 // on_end:data
 numero:0;
-data(default:0) -> data + 1;
+data(default:0) -> branch(@data == 0,{'data':data}, {
+    true: 0;
+    false: @data + 1;
+});
 //aaa(schedule:5,meta:true,cache:true) -> print("@@@@@@@@@@@@@@@@@@@@",data);
 fff() -> print("CPU:",cpu);
 aaa(schedule:2,cache:true) -> print("DATA:",data);

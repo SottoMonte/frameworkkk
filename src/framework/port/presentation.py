@@ -60,7 +60,7 @@ class port(ABC):
                 raise NotImplementedError(f"Tag '{widget}' non gestito in compose_view")
         
         self.env = Environment(loader=fs_loader,autoescape=select_autoescape(["html", "xml"]),undefined=DebugUndefined)
-        self.env.filters['route'] = language.route
+        #self.env.filters['route'] = language.route
 
     @abstractmethod
     async def get_attribute(self, widget, field):
@@ -90,7 +90,7 @@ class port(ABC):
     async def mount_widget(self, tag, inner, attributes):
         pass'''
     
-    @language.asynchronous(managers=('defender','storekeeper'))
+    #@language.asynchronous(managers=('defender','storekeeper'))
     async def builder(self, defender, storekeeperr, **constants):
         if 'text' in constants:
             text = constants['text']
@@ -234,7 +234,7 @@ class port(ABC):
             #print(f"Si è verificato un errore durante il parsing del file: {e}")
             pass
 
-    @language.asynchronous(managers=('storekeeper','messenger'))
+    #@language.asynchronous(managers=('storekeeper','messenger'))
     async def render_view(self,root,data,storekeeper,messenger):
         inner = []
 
@@ -526,7 +526,7 @@ class port(ABC):
 
 
     @staticmethod
-    @language.asynchronous(managers=('messenger','presenter','executor'))
+    #@language.asynchronous(managers=('messenger','presenter','executor'))
     async def action_form(messenger,presenter,executor,**constants):
         target = constants.get('id','')
         action = constants.get('action','')
