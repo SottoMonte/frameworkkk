@@ -36,6 +36,8 @@ class Tag(Enum):
     RESOURCE = "resource"
 
 class Attribute(Enum):
+    ID = "id"
+    TYPE = "type"
     SRC = "src"
     ALT = "alt"
     TITLE = "title"
@@ -45,7 +47,7 @@ class Attribute(Enum):
     AUTOPLAY = "autoplay"
     LOOP = "loop"
     MUTED = "muted"
-    TYPE = "type"
+    CLASS = "class"
 
 
 
@@ -191,7 +193,10 @@ class port(ABC):
             text = constants['text']
         else:
             #text = await loader.resource("src/" + constants.get('file',''))
-            text = "<Window><Action type='button' id='test'>ciao</Action></Window>"
+            text = """<Window>
+            <Action type='button' id='test'>ciao</Action>
+            <Media height='100px' width='100px' type='img' src='https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_120x44dp.png'/>
+            </Window>"""
 
         template = self.env.from_string(text)
         if 'data' not in constants:

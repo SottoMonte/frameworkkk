@@ -60,29 +60,88 @@ except Exception as e:
     import xml.etree.ElementTree as ET
     from xml.sax.saxutils import escape
 
-from framework.port import presentation
-
 class Adapter(presentation.port):
 
     attributes = {
-        presentation.Attribute.SRC:{"img":"src","video":"src","audio":"src","embed":"src","carousel":"src","map":"src","icon":"src"},
-        presentation.Attribute.CONTROLS:{"video":"controls","audio":"controls"},
-        presentation.Attribute.AUTOPLAY:{"video":"autoplay","audio":"autoplay"},
-        presentation.Attribute.LOOP:{"video":"loop","audio":"loop"},
-        presentation.Attribute.MUTED:{"video":"muted","audio":"muted"},
-        presentation.Attribute.TYPE:{"embed":"type"},
-        presentation.Attribute.WIDTH:{"img":"width","video":"width","audio":"width","embed":"width","carousel":"width","map":"width","icon":"width"},
-        presentation.Attribute.HEIGHT:{"img":"height","video":"height","audio":"height","embed":"height","carousel":"height","map":"height","icon":"height"}
+        presentation.Attribute.SRC.value:{"img":"src","video":"src","audio":"src","embed":"src","carousel":"src","map":"src","icon":"src"},
+        presentation.Attribute.CONTROLS.value:{"video":"controls","audio":"controls"},
+        presentation.Attribute.AUTOPLAY.value:{"video":"autoplay","audio":"autoplay"},
+        presentation.Attribute.LOOP.value:{"video":"loop","audio":"loop"},
+        presentation.Attribute.MUTED.value:{"video":"muted","audio":"muted"},
+        presentation.Attribute.TYPE.value:{"embed":"type","input":"type","select":"type","textarea":"type","button":"type","link":"type","img":"type","video":"type","audio":"type","embed":"type","carousel":"type","map":"type","icon":"type"},
+        presentation.Attribute.WIDTH.value:{"img":"width","video":"width","audio":"width","embed":"width","carousel":"width","map":"width","icon":"width"},
+        presentation.Attribute.HEIGHT.value:{"img":"height","video":"height","audio":"height","embed":"height","carousel":"height","map":"height","icon":"height"},
+        presentation.Attribute.ID.value:{"window":"id","text":"id","input":"id","select":"id","textarea":"id","button":"id","link":"id","img":"id","video":"id","audio":"id","embed":"id","carousel":"id","map":"id","icon":"id"},
+        presentation.Attribute.CLASS.value:{"window":"class","text":"class","input":"class","select":"class","textarea":"class","button":"class","link":"class","img":"class","video":"class","audio":"class","embed":"class","carousel":"class","map":"class","icon":"class"}
     }
 
     tags = {
-        presentation.Tag.WINDOW: {
+        presentation.Tag.WINDOW.value: {
             "types":{
-                "window":lambda x: htpy.html[htpy.head[htpy.title["Today's menu"]],htpy.body[[Markup(i) for i in x['inner']]]]
+                "window": lambda x: htpy.html[
+                    htpy.head[
+                        htpy.meta(charset="utf-8"),
+                        htpy.meta(name="viewport", content="width=device-width, initial-scale=1"),
+                        htpy.title[x.get("attrs", {}).get("title", "Today's menu")],
+                        # Caricamento CSS di Bootstrap 5.3
+                        htpy.link(
+                            rel="stylesheet", 
+                            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+                        )
+                    ],
+                    htpy.body(class_="bg-light")[
+                        [Markup(i) for i in x['inner']],
+                        # Caricamento JS di Bootstrap (necessario per Modal, Dropdown, Accordion)
+                        htpy.script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+                    ]
+                ],
+                # Rendering del Modal Bootstrap
+                "dialog": lambda x: htpy.div(
+                    class_="modal fade", 
+                    id=x.get("attrs", {}).get("id", "myModal"), # ID fondamentale per il trigger
+                    tabindex="-1",
+                    aria_hidden="true"
+                )[
+                    htpy.div(class_="modal-dialog")[
+                        htpy.div(class_="modal-content")[
+                            # Header del Modal
+                            htpy.div(class_="modal-header")[
+                                htpy.h5(class_="modal-title")[x.get("attrs", {}).get("title", "")],
+                                htpy.button(type="button", class_="btn-close", data_bs_dismiss="modal", aria_label="Close")
+                            ],
+                            # Corpo del Modal (qui vanno i figli XML)
+                            htpy.div(class_="modal-body")[
+                                [Markup(i) for i in x['inner']]
+                            ],
+                            # Footer opzionale (puoi gestirlo con un sotto-tag se vuoi)
+                            htpy.div(class_="modal-footer")[
+                                htpy.button(type="button", class_="btn btn-secondary", data_bs_dismiss="modal")["Chiudi"]
+                            ]
+                        ]
+                    ]
+                ],
+                "still": lambda x: htpy.div(
+                    class_=f"offcanvas offcanvas-{x.get('attrs', {}).get('alignment-content', 'start')}", 
+                    tabindex="-1",
+                    id=x.get("attrs", {}).get("id", "offcanvasMenu"),
+                    aria_labelledby=f"{x.get('attrs', {}).get('id', 'offcanvasMenu')}Label"
+                )[
+                    # Header dell'Offcanvas
+                    htpy.div(class_="offcanvas-header")[
+                        htpy.h5(class_="offcanvas-title", id=f"{x.get('attrs', {}).get('id', 'offcanvasMenu')}Label")[
+                            x.get("attrs", {}).get("title", "")
+                        ],
+                        htpy.button(type="button", class_="btn-close", data_bs_dismiss="offcanvas", aria_label="Close")
+                    ],
+                    # Body dell'Offcanvas
+                    htpy.div(class_="offcanvas-body")[
+                        [Markup(i) for i in x['inner']]
+                    ]
+                ],
             }
         },
-        presentation.Tag.TEXT: {"types":{"text":htpy.text}},
-        presentation.Tag.INPUT: {
+        presentation.Tag.TEXT.value: {"types":{"text":htpy.text}},
+        presentation.Tag.INPUT.value: {
             "types":{
                 "input":htpy.input,
                 "select":htpy.select,
@@ -94,7 +153,7 @@ class Adapter(presentation.port):
                 "file":htpy.file
             }
         },
-        presentation.Tag.ACTION: {
+        presentation.Tag.ACTION.value: {
             "types":{
                 "action":htpy.button,
                 "button":htpy.button,
@@ -102,7 +161,7 @@ class Adapter(presentation.port):
                 "reset":htpy.reset
             }
         },
-        presentation.Tag.MEDIA: {
+        presentation.Tag.MEDIA.value: {
             "types":{
                 "media":htpy.img,
                 "img":htpy.img,
@@ -114,13 +173,60 @@ class Adapter(presentation.port):
                 "icon":htpy.icon
             },
             "attributes":{
-                "img":[presentation.Attribute.SRC,presentation.Attribute.ALT,presentation.Attribute.TITLE,presentation.Attribute.WIDTH,presentation.Attribute.HEIGHT],
-                "video":[presentation.Attribute.SRC,presentation.Attribute.CONTROLS,presentation.Attribute.AUTOPLAY,presentation.Attribute.LOOP,presentation.Attribute.MUTED],
-                "audio":[presentation.Attribute.SRC,presentation.Attribute.CONTROLS,presentation.Attribute.AUTOPLAY,presentation.Attribute.LOOP,presentation.Attribute.MUTED],
-                "embed":[presentation.Attribute.SRC,presentation.Attribute.TYPE,presentation.Attribute.WIDTH,presentation.Attribute.HEIGHT],
-                "carousel":[presentation.Attribute.SRC,presentation.Attribute.ALT,presentation.Attribute.TITLE,presentation.Attribute.WIDTH,presentation.Attribute.HEIGHT],
-                "map":[presentation.Attribute.SRC,presentation.Attribute.ALT,presentation.Attribute.TITLE,presentation.Attribute.WIDTH,presentation.Attribute.HEIGHT],
-                "icon":[presentation.Attribute.SRC,presentation.Attribute.ALT,presentation.Attribute.TITLE,presentation.Attribute.WIDTH,presentation.Attribute.HEIGHT]
+                "img":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ],
+                "video":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.CONTROLS.value,
+                    presentation.Attribute.AUTOPLAY.value,
+                    presentation.Attribute.LOOP.value,
+                    presentation.Attribute.MUTED.value
+                ],
+                "audio":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.CONTROLS.value,
+                    presentation.Attribute.AUTOPLAY.value,
+                    presentation.Attribute.LOOP.value,
+                    presentation.Attribute.MUTED.value
+                ],
+                "embed":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ],
+                "carousel":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ],
+                "map":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ],
+                "icon":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ]
             }
         },
     }
@@ -475,10 +581,21 @@ class Adapter(presentation.port):
 
     def mount_tag(self, tag, attrs={}, inner=[]):
         tag = tag.lower()
-        if tag in self.tags:
-            elemento = self.tags[tag].get("types",{}).get(tag)
-            return self.node_create(elemento,attrs,inner)
-        raise Exception(f"Tag {tag} non trovato")
+        if tag not in self.tags: raise Exception(f"Tag {tag} non trovato")
+        elemento = self.tags[tag].get("types",{}).get(tag)
+        new_attrs = {}
+        tipo = attrs.get("type") or tag
+        
+        for attr in attrs:
+            if attr not in [c.value for c in presentation.Attribute]:
+                raise Exception(f"Attributo attributes.{attr} non trovato")
+            #print(tipo,attr,self.attributes.get(attr,{}),"\n\n")
+            if tipo in self.attributes.get(attr,{}):
+                new_attrs[self.attributes[attr][tipo]] = attrs[attr]
+            else:
+                raise Exception(f"Attributo {attr}  non trovato in tags.{tag}.attributes.{tipo}")
+        #print(new_attrs)
+        return self.node_create(elemento,new_attrs,inner)
 
     def node_create(self, tag, attrs={}, inner=[]):
         # Se tag è una funzione (es. un componente funzionale/lambda)
@@ -487,6 +604,8 @@ class Adapter(presentation.port):
         
         # Altrimenti trattalo come un elemento htpy standard
         children = [Markup(i) for i in inner] if isinstance(inner, list) else Markup(inner or "")
+        if not hasattr(tag, "__getitem__"):
+            return tag(**attrs)
         return str(tag(**attrs)[children])
     
     def node_union(self, node, context):
