@@ -65,14 +65,15 @@ class defender:
         ip = constants.get('ip', '')
         return any(session.get('ip') == ip for session in self.sessions.values())
 
-    async def whoami(self, storekeeper, **constants) -> Any:
+    async def whoami(self, **constants) -> Any:
         """
         Determina l'identità dell'utente associato a un determinato indirizzo IP.
 
         :param constants: Deve includere 'ip'.
         :return: Identificatore dell'utente se trovato, altrimenti None.
         """
-        return await storekeeper.gather(repository='sessions',filter=constants)
+        #return await storekeeper.gather(repository='sessions',filter=constants)
+        return None
     
     async def whoami2(self, **constants) -> Any:
         
