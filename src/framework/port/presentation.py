@@ -127,6 +127,25 @@ class port(ABC):
     async def node_union(self, node, context):
         pass
 
+    def mount_tag(self, tag, attrs={}, inner=[]):
+        tag = tag.lower()
+        if tag not in self.tags: raise Exception(f"Tag {tag} non trovato")
+        tipo = attrs.get("type") or tag
+        elemento = self.tags[tag].get("types",{}).get(tipo)
+        new_attrs = {}
+        
+        
+        for attr in attrs:
+            if attr not in [c.value for c in Attribute]:
+                raise Exception(f"Attributo attributes.{attr} non trovato")
+            #print(tipo,attr,self.attributes.get(attr,{}),"\n\n")
+            if tipo in self.attributes.get(attr,{}):
+                new_attrs[self.attributes[attr][tipo]] = attrs[attr]
+            else:
+                raise Exception(f"Attributo {attr}  non trovato in tags.{tag}.attributes.{tipo}")
+        #print(new_attrs)
+        return self.node_create(elemento,new_attrs,inner)
+
     async def parse_route(self):
         # Regex per opzioni multiple senza virgolette (es. {a|b})
         regex_simple_options = r'\{([a-zA-Z0-9_|]+)\}'
@@ -192,11 +211,7 @@ class port(ABC):
         if 'text' in constants:
             text = constants['text']
         else:
-            #text = await loader.resource("src/" + constants.get('file',''))
-            text = """<Window>
-            <Action type='button' id='test'>ciao</Action>
-            <Media height='100px' width='100px' type='img' src='https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_120x44dp.png'/>
-            </Window>"""
+            text = await loader.resource("src/" + constants.get('file',''))
 
         template = self.env.from_string(text)
         if 'data' not in constants:

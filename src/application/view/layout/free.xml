@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 {% if not user %}
-<Window type="{% if not model %}root{% else %}inner{% endif %}" title="Colosso - App">
+<Window title="Colosso - App">
     <Text>{{model}}</Text>
     <Text>{{user}}</Text>
-    <Column expand="full">
-        {% block main %}
-        {% endblock %}
-    </Column>
+    {% block main %}
+    {% endblock %}
 </Window>
 {% else %}
 <Window type="root">

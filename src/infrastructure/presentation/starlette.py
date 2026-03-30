@@ -72,7 +72,8 @@ class Adapter(presentation.port):
         presentation.Attribute.WIDTH.value:{"img":"width","video":"width","audio":"width","embed":"width","carousel":"width","map":"width","icon":"width"},
         presentation.Attribute.HEIGHT.value:{"img":"height","video":"height","audio":"height","embed":"height","carousel":"height","map":"height","icon":"height"},
         presentation.Attribute.ID.value:{"window":"id","text":"id","input":"id","select":"id","textarea":"id","button":"id","link":"id","img":"id","video":"id","audio":"id","embed":"id","carousel":"id","map":"id","icon":"id"},
-        presentation.Attribute.CLASS.value:{"window":"class","text":"class","input":"class","select":"class","textarea":"class","button":"class","link":"class","img":"class","video":"class","audio":"class","embed":"class","carousel":"class","map":"class","icon":"class"}
+        presentation.Attribute.CLASS.value:{"window":"class","text":"class","input":"class","select":"class","textarea":"class","button":"class","link":"class","img":"class","video":"class","audio":"class","embed":"class","carousel":"class","map":"class","icon":"class"},
+        presentation.Attribute.TITLE.value:{"window":"title"}
     }
 
     tags = {
@@ -450,16 +451,9 @@ class Adapter(presentation.port):
                 #await messenger.post(name=request.url.path[1:],value={'model':data['model'],'value':data})
                 return RedirectResponse('/', status_code=303)
 
-    async def starlette_view(self,request):
+    async def render_view(self,request):
         request.session["url_precedente"] = str(request.url)
         html = await self.mount_view(str(request.url),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
-        '''layout = 'application/view/layout/base.html'
-        file = await self.fetch_resource({'url':layout})
-        css = await self.fetch_resource({'url':layout.replace('.html','.css').replace('.xml','.css')})
-        #template = self.env.from_string(file.replace('{% block style %}','{% block style %}<style>'+css+'</style>'))
-        template = self.env.from_string(file)
-        content = template.render()
-        content = content.replace('<!-- Body -->',str(html_body))'''
         return HTMLResponse(html)
 
     async def mount_view(self, url,**kargs):
@@ -562,7 +556,7 @@ class Adapter(presentation.port):
             if typee == 'model':
                 endpoint = self.model
             elif typee == 'view':
-                endpoint = self.starlette_view
+                endpoint = self.render_view
             elif typee == 'action':
                 endpoint = self.action
             elif typee == 'login':
@@ -579,29 +573,10 @@ class Adapter(presentation.port):
     def mount_css(self, node, context):
         pass
 
-    def mount_tag(self, tag, attrs={}, inner=[]):
-        tag = tag.lower()
-        if tag not in self.tags: raise Exception(f"Tag {tag} non trovato")
-        elemento = self.tags[tag].get("types",{}).get(tag)
-        new_attrs = {}
-        tipo = attrs.get("type") or tag
-        
-        for attr in attrs:
-            if attr not in [c.value for c in presentation.Attribute]:
-                raise Exception(f"Attributo attributes.{attr} non trovato")
-            #print(tipo,attr,self.attributes.get(attr,{}),"\n\n")
-            if tipo in self.attributes.get(attr,{}):
-                new_attrs[self.attributes[attr][tipo]] = attrs[attr]
-            else:
-                raise Exception(f"Attributo {attr}  non trovato in tags.{tag}.attributes.{tipo}")
-        #print(new_attrs)
-        return self.node_create(elemento,new_attrs,inner)
-
     def node_create(self, tag, attrs={}, inner=[]):
         # Se tag è una funzione (es. un componente funzionale/lambda)
         if callable(tag) and type(tag).__name__ == "function":
             return tag({"inner": inner, "attrs": attrs})
-        
         # Altrimenti trattalo come un elemento htpy standard
         children = [Markup(i) for i in inner] if isinstance(inner, list) else Markup(inner or "")
         if not hasattr(tag, "__getitem__"):
