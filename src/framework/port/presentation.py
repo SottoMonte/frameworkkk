@@ -19,7 +19,6 @@ class Tag(Enum):
     MEDIA = "media"
     CARD = "card"
     NAVIGATION = "navigation"
-    PAGINATION = "pagination"
     GROUP = "group"
     ROW = "row"
     COLUMN = "column"
@@ -143,8 +142,8 @@ class port(ABC):
         tag = tag.lower()
         if tag not in self.tags: raise Exception(f"Tag {tag} non trovato")
         tipo = attrs.get("type") or tag
-        elemento = self.tags[tag].get("types",{}).get(tipo)
-        new_attrs = {}
+        elemento = self.tags[tag].get(tipo)
+        '''new_attrs = {}
         
         
         for attr in attrs:
@@ -155,8 +154,8 @@ class port(ABC):
                 new_attrs[self.attributes[attr][tipo]] = attrs[attr]
             #else:
             #    raise Exception(f"Attributo {attr}  non trovato in tags.{tag}.attributes.{tipo}")
-        #print(new_attrs)
-        return self.node_create(elemento,new_attrs,inner)
+        #print(new_attrs)'''
+        return self.node_create(elemento,attrs,inner)
 
     async def parse_route(self):
         # Regex per opzioni multiple senza virgolette (es. {a|b})

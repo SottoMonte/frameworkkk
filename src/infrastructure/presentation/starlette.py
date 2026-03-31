@@ -60,172 +60,183 @@ except Exception as e:
     import xml.etree.ElementTree as ET
     from xml.sax.saxutils import escape
 
-class Adapter(presentation.port):
 
-    # --- Configurazione Programmatica Attributi ---
-    _A = presentation.Attribute
-    _CORE = {a.value: a.value for a in [_A.ID, _A.CLASS, _A.TITLE]}
-    _MEDIA = {**_CORE, **{a.value: a.value for a in [_A.SRC, _A.WIDTH, _A.HEIGHT, _A.ALT]}}
-    _FIELD = {**_CORE, **{a.value: a.value for a in [_A.NAME, _A.VALUE, _A.PLACEHOLDER, _A.REQUIRED, _A.DISABLED, _A.READONLY, _A.MAX, _A.MIN, _A.MULTIPLE, _A.TYPE]}}
-    _MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [_A.CONTROLS, _A.AUTOPLAY, _A.LOOP, _A.MUTED]}}
+# --- Configurazione Programmatica Attributi ---
+_A = presentation.Attribute
+_CORE = {a.value: a.value for a in [_A.ID, _A.CLASS, _A.TITLE]}
+_MEDIA = {**_CORE, **{a.value: a.value for a in [_A.SRC, _A.WIDTH, _A.HEIGHT, _A.ALT]}}
+_FIELD = {**_CORE, **{a.value: a.value for a in [_A.NAME, _A.VALUE, _A.PLACEHOLDER, _A.REQUIRED, _A.DISABLED, _A.READONLY, _A.MAX, _A.MIN, _A.MULTIPLE, _A.TYPE]}}
+_MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [_A.CONTROLS, _A.AUTOPLAY, _A.LOOP, _A.MUTED]}}
 
-    _ATTR_SCHEMA = {
-        "window": _CORE, "text": _MEDIA, "input": _FIELD, "select": _FIELD, "textarea": _FIELD, 
-        "action": _MEDIA, "button": _CORE, "submit": _CORE, "img": _MEDIA, "video": _MULTIMEDIA, 
-        "audio": _MULTIMEDIA, "embed": _MEDIA, "carousel": _MEDIA, "map": _MEDIA, "icon": _MEDIA,
-        "container": _MEDIA, "row": _MEDIA, "column": _MEDIA, "stack": _MEDIA, "divider": _MEDIA,
-        "navigation": _MEDIA, "bar": _MULTIMEDIA, "app": _MEDIA, "breadcrumb": _MULTIMEDIA, "tab": _MEDIA
+_ATTR_SCHEMA = {
+    "window": _CORE, 
+    "text": _MEDIA, 
+    "input": _FIELD, 
+    "select": _FIELD, 
+    "textarea": _FIELD, 
+    "action": _MEDIA, 
+    "button": _CORE, 
+    "submit": _CORE, 
+    "img": _MEDIA, 
+    "video": _MULTIMEDIA, 
+    "audio": _MULTIMEDIA, 
+    "embed": _MEDIA, 
+    "carousel": _MEDIA, 
+    "map": _MEDIA, 
+    "icon": _MEDIA,
+    "container": _MEDIA, 
+    "row": _MEDIA, 
+    "column": _MEDIA, 
+    "stack": _MEDIA, 
+    "divider": _MEDIA,
+    "navigation": _MEDIA, 
+    "bar": _MULTIMEDIA, 
+    "app": _MEDIA, 
+    "breadcrumb": _MULTIMEDIA, 
+    "tab": _MEDIA
+}
+
+def attrs(tag_key, input_data):
+    # 1. Prendi gli attributi grezzi passati dall'utente
+    raw_attrs = input_data.get("attrs", {})
+    
+    # 2. Prendi lo schema dei nomi validi per quel tag (es. _MEDIA o _FIELD)
+    valid_schema = _ATTR_SCHEMA.get(tag_key, _CORE)
+    
+    # 3. Crea il dizionario finale usando l'unpacking filtrato
+    # Mappiamo la chiave (es: "src") al suo valore nello schema
+    return {
+        valid_schema[k]: v 
+        for k, v in raw_attrs.items() 
+        if k in valid_schema
     }
 
-    attributes = {}
-    for _tag, _attrs in _ATTR_SCHEMA.items():
-        for _attr_key, _html_name in _attrs.items():
-            attributes.setdefault(_attr_key, {})[_tag] = _html_name
-
+class Adapter(presentation.port):
     # --- Configurazione Tag ---
     tags = {
         presentation.Tag.WINDOW.value: {
-            "types": {
-                "window": lambda x: htpy.html[
-                    htpy.head[
-                        htpy.meta(charset="utf-8"),
-                        htpy.meta(name="viewport", content="width=device-width, initial-scale=1"),
-                        htpy.title[x.get("attrs", {}).get("title", "Today's menu")],
-                        htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css")
-                    ],
-                    htpy.body(class_="bg-light")[
-                        [Markup(i) for i in x['inner']],
-                        htpy.script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
-                    ]
+            "window": lambda x: htpy.html[
+                htpy.head[
+                    htpy.meta(charset="utf-8"),
+                    htpy.meta(name="viewport", content="width=device-width, initial-scale=1"),
+                    htpy.title[x.get("attrs", {}).get("title", "Today's menu")],
+                    htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css")
                 ],
-                "dialog": lambda x: htpy.div(class_="modal fade", id=x.get("attrs", {}).get("id", "myModal"), tabindex="-1", aria_hidden="true")[
-                    htpy.div(class_="modal-dialog")[
-                        htpy.div(class_="modal-content")[
-                            htpy.div(class_="modal-header")[
-                                htpy.h5(class_="modal-title")[x.get("attrs", {}).get("title", "")],
-                                htpy.button(type="button", class_="btn-close", data_bs_dismiss="modal", aria_label="Close")
-                            ],
-                            htpy.div(class_="modal-body")[[Markup(i) for i in x['inner']]],
-                            htpy.div(class_="modal-footer")[
-                                htpy.button(type="button", class_="btn btn-secondary", data_bs_dismiss="modal")["Chiudi"]
-                            ]
+                htpy.body(class_="bg-light")[
+                    [Markup(i) for i in x['inner']],
+                    htpy.script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+                ]
+            ],
+            "dialog": lambda x: htpy.div(class_="modal fade", id=x.get("attrs", {}).get("id", "myModal"), tabindex="-1", aria_hidden="true")[
+                htpy.div(class_="modal-dialog")[
+                    htpy.div(class_="modal-content")[
+                        htpy.div(class_="modal-header")[
+                            htpy.h5(class_="modal-title")[x.get("attrs", {}).get("title", "")],
+                            htpy.button(type="button", class_="btn-close", data_bs_dismiss="modal", aria_label="Close")
+                        ],
+                        htpy.div(class_="modal-body")[[Markup(i) for i in x['inner']]],
+                        htpy.div(class_="modal-footer")[
+                            htpy.button(type="button", class_="btn btn-secondary", data_bs_dismiss="modal")["Chiudi"]
                         ]
                     ]
+                ]
+            ],
+            "still": lambda x: htpy.div(class_=f"offcanvas offcanvas-{x.get('attrs', {}).get('alignment-content', 'start')}", tabindex="-1", id=x.get('attrs', {}).get('id', 'offcanvasMenu'), aria_labelledby=f"{x.get('attrs', {}).get('id', 'offcanvasMenu')}Label")[
+                htpy.div(class_="offcanvas-header")[
+                    htpy.h5(class_="offcanvas-title", id=f"{x.get('attrs', {}).get('id', 'offcanvasMenu')}Label")[x.get("attrs", {}).get("title", "")],
+                    htpy.button(type="button", class_="btn-close", data_bs_dismiss="offcanvas", aria_label="Close")
                 ],
-                "still": lambda x: htpy.div(class_=f"offcanvas offcanvas-{x.get('attrs', {}).get('alignment-content', 'start')}", tabindex="-1", id=x.get('attrs', {}).get('id', 'offcanvasMenu'), aria_labelledby=f"{x.get('attrs', {}).get('id', 'offcanvasMenu')}Label")[
-                    htpy.div(class_="offcanvas-header")[
-                        htpy.h5(class_="offcanvas-title", id=f"{x.get('attrs', {}).get('id', 'offcanvasMenu')}Label")[x.get("attrs", {}).get("title", "")],
-                        htpy.button(type="button", class_="btn-close", data_bs_dismiss="offcanvas", aria_label="Close")
-                    ],
-                    htpy.div(class_="offcanvas-body")[[Markup(i) for i in x['inner']]]
-                ],
-            }
+                htpy.div(class_="offcanvas-body")[[Markup(i) for i in x['inner']]]
+            ],
         },
         presentation.Tag.TEXT.value: {
-            "types": {
-                "text": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
-                "h1": lambda x: htpy.h1()[[Markup(i) for i in x['inner']]],
-                "h2": lambda x: htpy.h2()[[Markup(i) for i in x['inner']]],
-                "h3": lambda x: htpy.h3()[[Markup(i) for i in x['inner']]],
-                "h4": lambda x: htpy.h4()[[Markup(i) for i in x['inner']]],
-                "h5": lambda x: htpy.h5()[[Markup(i) for i in x['inner']]],
-                "h6": lambda x: htpy.h6()[[Markup(i) for i in x['inner']]],
-                "p": lambda x: htpy.p()[[Markup(i) for i in x['inner']]],
-                "span": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
-                "a": lambda x: htpy.a()[[Markup(i) for i in x['inner']]],
-                "em": lambda x: htpy.em()[[Markup(i) for i in x['inner']]],
-                "mark": lambda x: htpy.mark()[[Markup(i) for i in x['inner']]],
-                "code": lambda x: htpy.code()[[Markup(i) for i in x['inner']]],
-                "pre": lambda x: htpy.pre()[[Markup(i) for i in x['inner']]],
-                "blockquote": lambda x: htpy.blockquote()[[Markup(i) for i in x['inner']]],
-                "q": lambda x: htpy.q()[[Markup(i) for i in x['inner']]],
-                "cite": lambda x: htpy.cite()[[Markup(i) for i in x['inner']]],
-                "abbr": lambda x: htpy.abbr()[[Markup(i) for i in x['inner']]],
-                "time": lambda x: htpy.time()[[Markup(i) for i in x['inner']]],
-            }
+            "text": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
+            "h1": lambda x: htpy.h1()[[Markup(i) for i in x['inner']]],
+            "h2": lambda x: htpy.h2()[[Markup(i) for i in x['inner']]],
+            "h3": lambda x: htpy.h3()[[Markup(i) for i in x['inner']]],
+            "h4": lambda x: htpy.h4()[[Markup(i) for i in x['inner']]],
+            "h5": lambda x: htpy.h5()[[Markup(i) for i in x['inner']]],
+            "h6": lambda x: htpy.h6()[[Markup(i) for i in x['inner']]],
+            "p": lambda x: htpy.p()[[Markup(i) for i in x['inner']]],
+            "span": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
+            "a": lambda x: htpy.a()[[Markup(i) for i in x['inner']]],
+            "em": lambda x: htpy.em()[[Markup(i) for i in x['inner']]],
+            "mark": lambda x: htpy.mark()[[Markup(i) for i in x['inner']]],
+            "code": lambda x: htpy.code()[[Markup(i) for i in x['inner']]],
+            "pre": lambda x: htpy.pre()[[Markup(i) for i in x['inner']]],
+            "blockquote": lambda x: htpy.blockquote()[[Markup(i) for i in x['inner']]],
+            "q": lambda x: htpy.q()[[Markup(i) for i in x['inner']]],
+            "cite": lambda x: htpy.cite()[[Markup(i) for i in x['inner']]],
+            "abbr": lambda x: htpy.abbr()[[Markup(i) for i in x['inner']]],
+            "time": lambda x: htpy.time()[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.INPUT.value: {
-            "types": {
-                "input": lambda x: htpy.input(type="text", class_="form-control"), 
-                "select": lambda x: htpy.select(class_="form-select"), 
-                "textarea": lambda x: htpy.textarea(class_="form-control"),
-                "text": lambda x: htpy.input(type="text", class_="form-control"), 
-                "password": lambda x: htpy.input(type="password", class_="form-control"),
-                "switch": lambda x: htpy.input(type="checkbox", class_="form-switch"), 
-                "checkbox": lambda x: htpy.input(type="checkbox", class_="form-check-input"),
-                "radio": lambda x: htpy.input(type="radio", class_="form-check-input"), 
-                "range": lambda x: htpy.input(class_="form-range", type="range"),
-                "color": lambda x: htpy.input(type="color", class_="form-control"), 
-                "date": lambda x: htpy.input(type="date", class_="form-control"), 
-                "month": lambda x: htpy.input(type="month", class_="form-control"), 
-                "week": lambda x: htpy.input(type="week", class_="form-control"), 
-                "time": lambda x: htpy.input(type="time", class_="form-control"),
-                "number": lambda x: htpy.input(type="number", class_="form-control"), 
-                "email": lambda x: htpy.input(type="email", class_="form-control"), 
-                "url": lambda x: htpy.input(type="url", class_="form-control"),
-                "search": lambda x: htpy.input(type="search", class_="form-control"),
-                "tel": lambda x: htpy.input(type="tel", class_="form-control"), 
-                "dropdown": lambda x: htpy.select(class_="form-select"),
-                "file": lambda x: htpy.input(type="file", class_="form-control"),
-                "hidden": lambda x: htpy.input(type="hidden"),
-            }
+            "input": lambda x: htpy.input(type="text", class_="form-control"), 
+            "select": lambda x: htpy.select(class_="form-select"), 
+            "textarea": lambda x: htpy.textarea(class_="form-control"),
+            "text": lambda x: htpy.input(type="text", class_="form-control"), 
+            "password": lambda x: htpy.input(type="password", class_="form-control"),
+            "switch": lambda x: htpy.input(type="checkbox", class_="form-switch"), 
+            "checkbox": lambda x: htpy.input(type="checkbox", class_="form-check-input"),
+            "radio": lambda x: htpy.input(type="radio", class_="form-check-input"), 
+            "range": lambda x: htpy.input(class_="form-range", type="range"),
+            "color": lambda x: htpy.input(type="color", class_="form-control"), 
+            "date": lambda x: htpy.input(type="date", class_="form-control"), 
+            "month": lambda x: htpy.input(type="month", class_="form-control"), 
+            "week": lambda x: htpy.input(type="week", class_="form-control"), 
+            "time": lambda x: htpy.input(type="time", class_="form-control"),
+            "number": lambda x: htpy.input(type="number", class_="form-control"), 
+            "email": lambda x: htpy.input(type="email", class_="form-control"), 
+            "url": lambda x: htpy.input(type="url", class_="form-control"),
+            "search": lambda x: htpy.input(type="search", class_="form-control"),
+            "tel": lambda x: htpy.input(type="tel", class_="form-control"), 
+            "dropdown": lambda x: htpy.select(class_="form-select"),
+            "file": lambda x: htpy.input(type="file", class_="form-control"),
+            "hidden": lambda x: htpy.input(type="hidden"),
         },
         presentation.Tag.ACTION.value: {
-            "types": {
-                "action": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
-                "button": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
-                "submit": lambda x: htpy.input(type="submit", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
-                "reset": lambda x: htpy.input(type="reset", class_="btn btn-secondary")[[Markup(i) for i in x['inner']]],
-            }
+            "action": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
+            "button": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
+            "submit": lambda x: htpy.input(type="submit", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
+            "reset": lambda x: htpy.input(type="reset", class_="btn btn-secondary")[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.MEDIA.value: {
-            "types": {
-                "media": lambda x: htpy.img, 
-                "img": lambda x: htpy.img, 
-                "video": lambda x: htpy.video, 
-                "audio": lambda x: htpy.audio, 
-                "embed": lambda x: htpy.embed, 
-                "carousel": lambda x: htpy.div(".carousel"), 
-                "map": lambda x: htpy.div(".map"), 
-                "icon": lambda x: htpy.i(".bi")
-            }
+            "media": lambda x: htpy.img(**attrs("media", x)), 
+            "img": lambda x: htpy.img(**attrs("img", x)), 
+            "video": lambda x: htpy.video(**attrs("video", x)), 
+            "audio": lambda x: htpy.audio(**attrs("audio", x)), 
+            "embed": lambda x: htpy.embed(**attrs("embed", x)),
+            "carousel": lambda x: htpy.div(".carousel"), 
+            "map": lambda x: htpy.div(".map"), 
+            "icon": lambda x: htpy.i(".bi")
         },
         presentation.Tag.CONTAINER.value: {
-            "types": {
-                "container": lambda x: htpy.div(".container")[[Markup(i) for i in x['inner']]], 
-                "fluid": lambda x: htpy.div(".container-fluid")[[Markup(i) for i in x['inner']]]
-            } 
+            "container": lambda x: htpy.div(".container")[[Markup(i) for i in x['inner']]], 
+            "fluid": lambda x: htpy.div(".container-fluid")[[Markup(i) for i in x['inner']]]
         },
         presentation.Tag.ROW.value: { 
-            "types": {
-                "row": lambda x: htpy.div(".row")[[Markup(i) for i in x['inner']]]
-            } 
+            "row": lambda x: htpy.div(".row")[[Markup(i) for i in x['inner']]]
         },
         presentation.Tag.COLUMN.value: { 
-            "types": {
-                "column": lambda x: htpy.div(".col")[[Markup(i) for i in x['inner']]]
-            } 
+            "column": lambda x: htpy.div(".col")[[Markup(i) for i in x['inner']]]
         },
         presentation.Tag.STACK.value: { 
-            "types": {
-                "stack": lambda x: htpy.div(".position-relative")[[Markup(i) for i in x['inner']]]
-            } 
+            "stack": lambda x: htpy.div(".position-relative")[[Markup(i) for i in x['inner']]]
         },
         presentation.Tag.DIVIDER.value: { 
-            "types": {
-                "divider": lambda x: htpy.hr, 
-                "vertical": lambda x: htpy.div(".vr"), 
-                "horizontal": lambda x: htpy.hr
-            } 
+            "divider": lambda x: htpy.hr, 
+            "vertical": lambda x: htpy.div(".vr"), 
+            "horizontal": lambda x: htpy.hr
+        },
+        presentation.Tag.ICON.value: { 
+            "icon": lambda x: htpy.i(".bi")
         },
         presentation.Tag.NAVIGATION.value: {
-            "types": {
-                "navigation": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
-                "bar": lambda x: htpy.nav(".nav")[[Markup(i) for i in x['inner']]],
-                "app": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
-                "breadcrumb": lambda x: htpy.nav(".breadcrumb")[[Markup(i) for i in x['inner']]],
-                "tab": lambda x: htpy.nav(".nav-tabs")[[Markup(i) for i in x['inner']]],
-            }
+            "navigation": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
+            "bar": lambda x: htpy.nav(".nav")[[Markup(i) for i in x['inner']]],
+            "app": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
+            "breadcrumb": lambda x: htpy.nav(".breadcrumb")[[Markup(i) for i in x['inner']]],
+            "tab": lambda x: htpy.nav(".nav-tabs")[[Markup(i) for i in x['inner']]],
         },
     }
 
