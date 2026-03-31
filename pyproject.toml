@@ -1,7 +1,7 @@
 [project]
 name = "cloud.colosso"                      # Nome del progetto
 version = "0.1.0"                           # Versione dell'app
-description = "Un'app di esempio"           # Descrizione del progetto
+description = "Un'app di esempio con OmniPort"           # Descrizione del progetto
 readme = "README.md"                        # File di documentazione
 requires-python = ">=3.9"                   # Versione minima di Python richiesta
 key = "rSc4ExXBDvtKF03pHd8W3Kz5VfSW7z0ITQsAR46nELg"                       # Chiave segreta dell'app

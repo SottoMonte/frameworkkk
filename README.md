@@ -1,7 +1,9 @@
 ![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)
-# SottoMonte Framework
+# OmniPort Framework
 
-Il **SottoMonte Framework** è una piattaforma modulare e flessibile progettata per la creazione rapida di applicazioni web. Sfrutta Python, Jinja2 e Supabase per offrire un'esperienza di sviluppo moderna e scalabile.
+Il **OmniPort Framework** è una piattaforma modulare e flessibile progettata per la creazione rapida di applicazioni web. Sfrutta Python, Jinja2 e Supabase per offrire un'esperienza di sviluppo moderna e scalabile.
+
+"Smetti di scrivere codice per una sola piattaforma. Definisci l'intento, scegli il Port. Benvenuti nell'era di OmniPort."
 
 ## 🚀 Caratteristiche Principali
 

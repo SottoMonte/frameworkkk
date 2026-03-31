@@ -58,6 +58,7 @@ class Attribute(Enum):
     MIN = "min"
     SIZE = "size"
     MULTIPLE = "multiple"
+    STYLE = "style"
     
 
 

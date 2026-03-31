@@ -63,7 +63,7 @@ except Exception as e:
 
 # --- Configurazione Programmatica Attributi ---
 _A = presentation.Attribute
-_CORE = {a.value: a.value for a in [_A.ID, _A.CLASS, _A.TITLE]}
+_CORE = {a.value: a.value for a in [_A.ID, _A.CLASS, _A.TITLE, _A.STYLE]}
 _MEDIA = {**_CORE, **{a.value: a.value for a in [_A.SRC, _A.WIDTH, _A.HEIGHT, _A.ALT]}}
 _FIELD = {**_CORE, **{a.value: a.value for a in [_A.NAME, _A.VALUE, _A.PLACEHOLDER, _A.REQUIRED, _A.DISABLED, _A.READONLY, _A.MAX, _A.MIN, _A.MULTIPLE, _A.TYPE]}}
 _MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [_A.CONTROLS, _A.AUTOPLAY, _A.LOOP, _A.MUTED]}}
@@ -99,9 +99,11 @@ _ATTR_SCHEMA = {
 
 }
 
-def attrs(tag_key, input_data):
+def attrs(tag_key, input_data, classe=None):
     # 1. Prendi gli attributi grezzi passati dall'utente
     raw_attrs = input_data.get("attrs", {})
+    if classe:
+        raw_attrs["class"] = classe + " " + raw_attrs.get("class", "")
     
     # 2. Prendi lo schema dei nomi validi per quel tag (es. _MEDIA o _FIELD)
     valid_schema = _ATTR_SCHEMA.get(tag_key, _CORE)
@@ -240,11 +242,11 @@ class Adapter(presentation.port):
             "fa": lambda x: htpy.i(**attrs("icon", x)),
         },
         presentation.Tag.NAVIGATION.value: {
-            "navigation": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
-            "bar": lambda x: htpy.nav(".nav")[[Markup(i) for i in x['inner']]],
-            "app": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
-            "breadcrumb": lambda x: htpy.nav(".breadcrumb")[[Markup(i) for i in x['inner']]],
-            "tab": lambda x: htpy.nav(".nav-tabs")[[Markup(i) for i in x['inner']]],
+            "navigation": lambda x: htpy.nav(**attrs("navigation", x,"navbar"))[[Markup(i) for i in x['inner']]],
+            "bar": lambda x: htpy.nav(**attrs("bar", x,"nav"))[[Markup(i) for i in x['inner']]],
+            "app": lambda x: htpy.nav(**attrs("app", x,"navbar"))[[Markup(i) for i in x['inner']]],
+            "breadcrumb": lambda x: htpy.nav(**attrs("breadcrumb", x,"breadcrumb"))[[Markup(i) for i in x['inner']]],
+            "tab": lambda x: htpy.nav(**attrs("tab", x,"nav-tabs"))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.GROUP.value: {
             "input": lambda x: htpy.div(".input-group")[[Markup(i) for i in x['inner']]],

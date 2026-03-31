@@ -1,14 +1,99 @@
 {% extends "free.xml" %}
 {% block main %}
-<Navigation type='app'>
+<Navigation type='app' style='background-color: red;'>
+    <Text>OMNIPORT</Text>
     <Action type='button' id='test'>ciao</Action>
 </Navigation>
-<Text type='h1'>Titolo</Text>
-<Text type='h2'>Titolo</Text>
-<Text type='h3'>Titolo</Text>
-<Text type='h4'>Titolo</Text>
-<Text type='h5'>Titolo</Text>
-<Text type='h6'>Titolo</Text>
+<Container>
+    <Text type='h1'>OMNIPORT: THE OPERATING SYSTEM FOR YOUR LOGIC</Text>
+    <Text type='h2'>Define the intent, choose the Port. The first Hexagonal framework built for the era of AI-driven development. </Text>
+    <Row>
+        <Container>
+            <Text>STARLETTE_WEB_PORT</Text>
+        </Container>
+        <Container>
+            <Text type='h3'>// PROJECT.TOML</Text>
+            <Text type='pre'>
+[project]
+name = "cloud.colosso"                                  # Nome del progetto
+version = "0.1.0"                                       # Versione dell'app
+description = "Un'app di esempio con OmniPort"          # Descrizione del progetto
+readme = "README.md"                                    # File di documentazione
+requires-python = ">=3.9"                               # Versione minima di Python richiesta
+key = "rSc4ExXBDvtKF03pHd8W3Kz5VfSW7z0ITQsAR46nELg"     # Chiave segreta dell'app
+mode = "development"                                    # Modalita applicazione development/production
+
+[project.policy]
+presentation = "web.toml"
+persistence = "redis.toml"
+message = "log.toml"
+
+[message.backend]
+adapter = "redis"
+host = "redis-13976.c339.eu-west-3-1.ec2.cloud.redislabs.com"
+port = "13976"
+database = "database-MJZMYZ6J"
+username = "default"
+password = "3LkESG6clHa2hJj1zF8CabQlqU50O6zL"
+
+[presentation.backend]
+adapter = "starlette"
+host = "0.0.0.0"
+port = "5000"
+#route = "web.xml"
+#ssl_keyfile = "key.pem"
+#ssl_certfile = "cert.pem"
+            </Text>
+        </Container>
+        <Container>
+            <Text type='h3'>GTK_DESKTOP_PORT</Text>
+        </Container>
+    </Row>
+</Container>
+<Container>
+    <Container>
+        <Text type='h3'>_ARCHITECTURE_OVERVIEW</Text>
+        <Text type='h3'>THE HEXAGONAL CORE</Text>
+        <Text type='h3'>Infrastructure changes. Business logic doesn't. OmniPort isolates your src/application from the volatile world of APIs and databases. </Text>
+        <Text>ZERO LOGIC DUPLICATION</Text>
+        <Text>Write your validation logic once. Serve it to a React frontend, a CLI tool, and an IoT adapter simultaneously without changing a single line of domain code.</Text>
+    </Container>
+    <Container>
+        <Text>HTTP_ADAPTER_PRESENTATION</Text>
+        <Text>CLI_ADAPTER_PRESENTATION</Text>
+        <Text>DB_ADAPTER_PERSISTENCE</Text>
+        <Container>
+            <Text>CORE_DOMAIN_LOGIC</Text>
+        </Container>
+        <Container>
+        </Container>
+        
+    </Container>
+</Container>
+<Container>
+    <Column>
+        <Container>
+            <Text type="h1" >MVA > MVC</Text>
+            <Text>[MODEL_VIEW_ACTION]</Text>
+            <Divider/>
+            <Text type="h1" >AI-OPTIMIZED ATOMICS</Text>
+            <Text>Actions are single-purpose functions. AI models (LLMs) excel at writing specific actions with 100% test coverage, unlike monolithic controllers.</Text>
+            <Text type="h1">VIBECODING READY</Text>
+            <Text>Iterate on the "Vibe" of your UI while the Core remains immutable. Your logic is a set of deterministic assets, not technical debt.</Text>
+        </Container>
+        <Container>
+            <Text type="h5" ># src/application/actions/create_user.py</Text>
+            <Text type="code">class CreateUserAction:
+                def execute(self, data: UserSchema) -> User:
+                    user = User.initialize(data)
+                    # Persistence Port call
+                    self.repo.save(user)
+                    return user
+            </Text>
+        </Container>
+    </Column>
+</Container>
+
 <Text type='p'>Paragrafo</Text>
 <Text type='span'>Span</Text>
 <Text type='code'>a == b</Text>
