@@ -23,6 +23,7 @@ class Tag(Enum):
     GROUP = "group"
     ROW = "row"
     COLUMN = "column"
+    STACK = "stack"
     CONTAINER = "container"
     DEFENDER = "defender"
     MESSENGER = "messenger"
@@ -48,6 +49,17 @@ class Attribute(Enum):
     LOOP = "loop"
     MUTED = "muted"
     CLASS = "class"
+    NAME = "name"
+    VALUE = "value"
+    PLACEHOLDER = "placeholder"
+    REQUIRED = "required"
+    DISABLED = "disabled"
+    READONLY = "readonly"
+    MAX = "max"
+    MIN = "min"
+    MULTIPLE = "multiple"
+    
+
 
 
 

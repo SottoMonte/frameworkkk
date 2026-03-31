@@ -68,12 +68,21 @@ class Adapter(presentation.port):
         presentation.Attribute.AUTOPLAY.value:{"video":"autoplay","audio":"autoplay"},
         presentation.Attribute.LOOP.value:{"video":"loop","audio":"loop"},
         presentation.Attribute.MUTED.value:{"video":"muted","audio":"muted"},
-        presentation.Attribute.TYPE.value:{"embed":"type","input":"type","select":"type","textarea":"type","button":"type","link":"type","img":"type","video":"type","audio":"type","embed":"type","carousel":"type","map":"type","icon":"type"},
+        presentation.Attribute.TYPE.value:{"app":"type","navigation":"type","embed":"type","input":"type","select":"type","textarea":"type","button":"type","link":"type","img":"type","video":"type","audio":"type","embed":"type","carousel":"type","map":"type","icon":"type"},
         presentation.Attribute.WIDTH.value:{"img":"width","video":"width","audio":"width","embed":"width","carousel":"width","map":"width","icon":"width"},
         presentation.Attribute.HEIGHT.value:{"img":"height","video":"height","audio":"height","embed":"height","carousel":"height","map":"height","icon":"height"},
-        presentation.Attribute.ID.value:{"window":"id","text":"id","input":"id","select":"id","textarea":"id","button":"id","link":"id","img":"id","video":"id","audio":"id","embed":"id","carousel":"id","map":"id","icon":"id"},
+        presentation.Attribute.ID.value:{"app":"id","window":"id","text":"id","input":"id","select":"id","textarea":"id","button":"id","link":"id","img":"id","video":"id","audio":"id","embed":"id","carousel":"id","map":"id","icon":"id"},
         presentation.Attribute.CLASS.value:{"window":"class","text":"class","input":"class","select":"class","textarea":"class","button":"class","link":"class","img":"class","video":"class","audio":"class","embed":"class","carousel":"class","map":"class","icon":"class"},
-        presentation.Attribute.TITLE.value:{"window":"title"}
+        presentation.Attribute.TITLE.value:{"window":"title"},
+        presentation.Attribute.NAME.value:{"input":"name","select":"name","textarea":"name","button":"name","link":"name","img":"name","video":"name","audio":"name","embed":"name","carousel":"name","map":"name","icon":"name"},
+        presentation.Attribute.VALUE.value:{"input":"value","select":"value","textarea":"value","button":"value","link":"value","img":"value","video":"value","audio":"value","embed":"value","carousel":"value","map":"value","icon":"value"},
+        presentation.Attribute.PLACEHOLDER.value:{"input":"placeholder","select":"placeholder","textarea":"placeholder","button":"placeholder","link":"placeholder","img":"placeholder","video":"placeholder","audio":"placeholder","embed":"placeholder","carousel":"placeholder","map":"placeholder","icon":"placeholder"},
+        presentation.Attribute.REQUIRED.value:{"input":"required","select":"required","textarea":"required","button":"required","link":"required","img":"required","video":"required","audio":"required","embed":"required","carousel":"required","map":"required","icon":"required"},
+        presentation.Attribute.DISABLED.value:{"input":"disabled","select":"disabled","textarea":"disabled","button":"disabled","link":"disabled","img":"disabled","video":"disabled","audio":"disabled","embed":"disabled","carousel":"disabled","map":"disabled","icon":"disabled"},
+        presentation.Attribute.READONLY.value:{"input":"readonly","select":"readonly","textarea":"readonly","button":"readonly","link":"readonly","img":"readonly","video":"readonly","audio":"readonly","embed":"readonly","carousel":"readonly","map":"readonly","icon":"readonly"},
+        presentation.Attribute.MAX.value:{"input":"max","select":"max","textarea":"max","button":"max","link":"max","img":"max","video":"max","audio":"max","embed":"max","carousel":"max","map":"max","icon":"max"},
+        presentation.Attribute.MIN.value:{"input":"min","select":"min","textarea":"min","button":"min","link":"min","img":"min","video":"min","audio":"min","embed":"min","carousel":"min","map":"min","icon":"max"},
+        presentation.Attribute.MULTIPLE.value:{"input":"multiple","select":"multiple","textarea":"multiple","button":"multiple","link":"multiple","img":"multiple","video":"multiple","audio":"multiple","embed":"multiple","carousel":"multiple","map":"multiple","icon":"multiple"},
     }
 
     tags = {
@@ -141,17 +150,77 @@ class Adapter(presentation.port):
                 ],
             }
         },
-        presentation.Tag.TEXT.value: {"types":{"text":htpy.text}},
+        presentation.Tag.TEXT.value: {
+            "types":{
+                "text":htpy.text,
+                "h1": htpy.h1,
+                "h2": htpy.h2,
+                "h3": htpy.h3,
+                "h4": htpy.h4,
+                "h5": htpy.h5,
+                "h6": htpy.h6,
+                "p": htpy.p,
+                "span": htpy.span,
+                "a": htpy.a,
+                "em": htpy.em,
+                "mark": htpy.mark,
+                "code": htpy.code,
+                "pre": htpy.pre,
+                "blockquote": htpy.blockquote,
+                "q": htpy.q,
+                "cite": htpy.cite,
+                "abbr": htpy.abbr,
+                "time": htpy.time,
+            },
+            "attributes":{
+                "text":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ]
+            }
+        },
         presentation.Tag.INPUT.value: {
             "types":{
                 "input":htpy.input,
                 "select":htpy.select,
                 "textarea":htpy.textarea,
-                "text":htpy.input,
-                "password":htpy.password,
-                "checkbox":htpy.checkbox,
-                "radio":htpy.radio,
-                "file":htpy.file
+                "text":htpy.input(type="text"),
+                "password":htpy.input(type="password"),
+                "switch":htpy.input(type="checkbox",class_="form-switch"),
+                "checkbox":htpy.input(type="checkbox"),
+                "radio":htpy.input(type="radio"),
+                "range":htpy.input(class_="form-range",type="range"),
+                "color":htpy.input(type="color"),
+                "date":htpy.input(type="date"),
+                "datetime-local":htpy.input(type="datetime-local"),
+                "month":htpy.input(type="month"),
+                "week":htpy.input(type="week"),
+                "time":htpy.input(type="time"),
+                "number":htpy.input(type="number"),
+                "email":htpy.input(type="email"),
+                "url":htpy.input(type="url"),
+                "search":htpy.input(type="search"),
+                "tel":htpy.input(type="tel"),
+                "dropdown":htpy.select(".form-select"),
+                "file":htpy.input(type="file")
+            },
+            "attributes":{
+                "input":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.NAME.value,
+                    presentation.Attribute.VALUE.value,
+                    presentation.Attribute.PLACEHOLDER.value,
+                    presentation.Attribute.MAX.value,
+                    presentation.Attribute.MIN.value,
+                    presentation.Attribute.REQUIRED.value,
+                    presentation.Attribute.DISABLED.value,
+                    presentation.Attribute.READONLY.value,
+                    presentation.Attribute.MULTIPLE.value,
+                ]
             }
         },
         presentation.Tag.ACTION.value: {
@@ -159,7 +228,17 @@ class Adapter(presentation.port):
                 "action":htpy.button,
                 "button":htpy.button,
                 "submit":htpy.submit,
-                "reset":htpy.reset
+                "reset":htpy.reset,
+            },
+            "attributes":{
+                "action":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ]
             }
         },
         presentation.Tag.MEDIA.value: {
@@ -228,6 +307,125 @@ class Adapter(presentation.port):
                     presentation.Attribute.WIDTH.value,
                     presentation.Attribute.HEIGHT.value
                 ]
+            }
+        },
+        presentation.Tag.CONTAINER.value: {
+            "types":{
+                "container":lambda x: htpy.div(".container")[[Markup(i) for i in x['inner']]],
+                "fluid":lambda x: htpy.div(".container-fluid")[[Markup(i) for i in x['inner']]],
+            },
+            "attributes":{
+                "container":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ]
+            }
+        },
+        presentation.Tag.ROW.value: {
+            "types":{
+                "row":lambda x: htpy.div(".d-flex .flex-row")[[Markup(i) for i in x['inner']]],
+            },
+            "attributes":{
+                "row":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ]
+            }
+        },
+        presentation.Tag.COLUMN.value: {
+            "types":{
+                "column":lambda x: htpy.div(".d-flex.flex-column")[[Markup(i) for i in x['inner']]],
+            },
+            "attributes":{
+                "column":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ]
+            }
+        },
+        presentation.Tag.STACK.value: {
+            "types":{
+                "stack":lambda x: htpy.div(".position-relative")[[Markup(i) for i in x['inner']]],
+            },
+            "attributes":{
+                "stack":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ]
+            }
+        },
+        presentation.Tag.DIVIDER.value: {
+            "types":{
+                "divider":lambda x: htpy.hr,
+                "vertical":lambda x: htpy.div(".vr"),
+                "horizontal":lambda x: htpy.hr,
+            },
+            "attributes":{
+                "divider":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ]
+            }
+        },
+        presentation.Tag.NAVIGATION.value: {
+            "types":{
+                "navigation":lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
+                "bar":lambda x: htpy.nav(".nav")[[Markup(i) for i in x['inner']]],
+                "app":lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
+                "breadcrumb":lambda x: htpy.nav(".breadcrumb")[[Markup(i) for i in x['inner']]],
+                "tab":lambda x: htpy.nav(".nav-tabs")[[Markup(i) for i in x['inner']]],
+            },
+            "attributes":{
+                "navigation":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.ALT.value,
+                    presentation.Attribute.TITLE.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ],
+                "bar":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.CONTROLS.value,
+                    presentation.Attribute.AUTOPLAY.value,
+                    presentation.Attribute.LOOP.value,
+                    presentation.Attribute.MUTED.value
+                ],
+                "breadcrumb":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.CONTROLS.value,
+                    presentation.Attribute.AUTOPLAY.value,
+                    presentation.Attribute.LOOP.value,
+                    presentation.Attribute.MUTED.value
+                ],
+                "app":[
+                    presentation.Attribute.TYPE.value,
+                    presentation.Attribute.SRC.value,
+                    presentation.Attribute.WIDTH.value,
+                    presentation.Attribute.HEIGHT.value
+                ],
             }
         },
     }

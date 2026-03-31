@@ -1,6 +1,8 @@
 {% extends "free.xml" %}
 {% block main %}
-<Action type='button' id='test'>ciao</Action>
+<Navigation type='app'>
+    <Action type='button' id='test'>ciao</Action>
+</Navigation>
 <Media height='100px' width='100px' type='img' src='https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_120x44dp.png'/>
 <Media height='100px' width='200px' type='video' src='https://www.w3schools.com/html/mov_bbb.mp4'/>
 {% endblock %}
