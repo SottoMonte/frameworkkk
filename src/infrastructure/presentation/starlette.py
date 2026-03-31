@@ -461,7 +461,7 @@ class Adapter(presentation.port):
 
         # chiama il modello / builder come nel tuo flusso
         #url_payload = await language.normalize(url_payload,scheme_url)
-        return await self.builder(file=matched_route['view'], url=url_payload, mode=['main'], identifier=kargs.get('identifier'))
+        return await self.render_template(file=matched_route['view'], url=url_payload, mode=['main'], identifier=kargs.get('identifier'))
 
     def mount_route(self, routes):
         for path, data in self.routes.items():

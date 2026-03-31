@@ -309,7 +309,7 @@ class Loader:
 
     async def bootstrap(self, args):
         managers      = _inject_args(_MANAGERS, args)
-        project_specs = self._project.load("pyproject.toml")
+        project_specs = self._project.load("pyproject.toml") if '--test' not in args else []
 
         await self._batch.run(
             _SERVICES + managers + project_specs,

@@ -219,7 +219,7 @@ class port(ABC):
             #print(f"Si è verificato un errore durante il parsing del file: {e}")
             pass
     
-    async def builder(self, **constants):
+    async def render_template(self, **constants):
         if 'text' in constants:
             text = constants['text']
         else:
