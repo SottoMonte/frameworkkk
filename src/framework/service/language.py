@@ -215,6 +215,7 @@ class DSLTransformer(Transformer):
         fn = tree[0]
         lazy = fn.get("type") == "context_var"
         inputs = tree[1].get("items",[]) if isinstance(tree[1],dict) and tree[1]["type"] == "sequence" else [tree[1]]
+        inputs = [i for i in inputs if i is not None]
         args, kwargs = [], {}
         for inp in inputs:
             if isinstance(inp, dict) and inp.get("type") == "pair":
@@ -838,12 +839,9 @@ class Interpreter:
             print("ERROR", f"Errore di parsing DSL in {name}: {ast}")
             return
         self.cache_ast[name] = ast
-        print("OK")
         #result , _ = await self.visit(ast, DSL_FUNCTIONS, path="")
-        print("OK")
         #flow_nodes = await self._build_flow_nodes(DSL_FUNCTIONS)
         flow_nodes = await self.builder.build(ast, env=DSL_FUNCTIONS)
-        print("OK")
         #print(flow_nodes)
         
         await self.runner.add_file(name,flow_nodes)
@@ -852,7 +850,6 @@ class Interpreter:
         self.runner.create_session(session,env)
 
     async def run_session(self, session, file, env={}):
-        print("RUN")
         result , _ = await self.visit(self.cache_ast[file], env, path="")
         result |= await self.runner.run_file(session,file,env|result)
         return result

@@ -232,21 +232,6 @@ class Lifecycle:
 
 
 # ─────────────────────────────────────────────
-# File utilities (funzione pura)
-# ─────────────────────────────────────────────
-
-def read_resource(path: str, module_cache: dict):
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Risorsa non trovata: {path}")
-    if path.endswith(".py"):
-        if path not in module_cache:
-            name = os.path.splitext(os.path.basename(path))[0]
-            module_cache[path] = ModuleLoader._exec(name, path, {})
-        return module_cache[path]
-    with open(path) as f:
-        return f.read()
-
-
 # ─────────────────────────────────────────────
 # Spec statiche di bootstrap
 #
@@ -270,7 +255,7 @@ _MANAGERS: list[dict] = [
     {"name": "messenger",   "path": "src/framework/manager/messenger.py",   "mod_deps": ["flow"],                         "cls_deps": ["executor", "messages"],                    "is_class": True, "config": {}},
     {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language"],                    "is_class": True, "config": {}},
     {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": [],                                          "is_class": True, "config": {}},
-    {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader"],                                  "is_class": True, "config": {}},
+    {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger"],          "is_class": True, "config": {}},
     {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [],                               "cls_deps": ["executor", "persistences"],                "is_class": True, "config": {}},
     {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],               "is_class": True, "config": {}},
 ]
@@ -305,7 +290,16 @@ class Loader:
         return self._container.get(name)
 
     async def resource(self, path: str):
-        return read_resource(path, self._container.get("module_cache"))
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Risorsa non trovata: {path}")
+
+        if path.endswith(".py"):
+            name = os.path.splitext(os.path.basename(path))[0]
+            inject = {k: self._container.get(k) for k in PORT_REGISTRY if self._container.has(k)}
+            return self._mod_loader.load(name, path, inject=inject)
+
+        with open(path) as f:
+            return f.read()
 
     async def bootstrap(self, args):
         managers      = _inject_args(_MANAGERS, args)

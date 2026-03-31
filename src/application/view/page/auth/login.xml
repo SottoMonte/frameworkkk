@@ -3,6 +3,31 @@
 <Navigation type='app'>
     <Action type='button' id='test'>ciao</Action>
 </Navigation>
+<Text type='h1'>Titolo</Text>
+<Text type='h2'>Titolo</Text>
+<Text type='h3'>Titolo</Text>
+<Text type='h4'>Titolo</Text>
+<Text type='h5'>Titolo</Text>
+<Text type='h6'>Titolo</Text>
+<Text type='p'>Paragrafo</Text>
+<Text type='span'>Span</Text>
+<Text type='code'>a == b</Text>
+<Text type='pre'>Pre</Text>
+<Divider type='vertical'/>
+<Input type='text' name='test' placeholder='test'/>
+<Input type='password' name='test' placeholder='test'/>
+<Input type='email' name='test' placeholder='test'/>
+<Input type='number' name='test' placeholder='test'/>
+<Input type='search' name='test' placeholder='test'/>
+<Input type='url' name='test' placeholder='test'/>
+<Input type='tel' name='test' placeholder='test'/>
+<Input type='date' name='test' placeholder='test'/>
+<Input type='time' name='test' placeholder='test'/>
+<Input type='week' name='test' placeholder='test'/>
+<Input type='month' name='test' placeholder='test'/>
+<Input type='color' name='test' placeholder='test'/>
+<Input type='file' name='test' placeholder='test'/>
+<Input type='hidden' name='test' placeholder='test'/>
 <Media height='100px' width='100px' type='img' src='https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_120x44dp.png'/>
 <Media height='100px' width='200px' type='video' src='https://www.w3schools.com/html/mov_bbb.mp4'/>
 {% endblock %}

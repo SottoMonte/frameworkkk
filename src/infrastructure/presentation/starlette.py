@@ -122,31 +122,102 @@ class Adapter(presentation.port):
             }
         },
         presentation.Tag.TEXT.value: {
-            "types": {name: getattr(htpy, name) for name in ["h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "a", "em", "mark", "code", "pre", "blockquote", "q", "cite", "abbr", "time"]} | {"text": htpy.text}
+            "types": {
+                "text": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
+                "h1": lambda x: htpy.h1()[[Markup(i) for i in x['inner']]],
+                "h2": lambda x: htpy.h2()[[Markup(i) for i in x['inner']]],
+                "h3": lambda x: htpy.h3()[[Markup(i) for i in x['inner']]],
+                "h4": lambda x: htpy.h4()[[Markup(i) for i in x['inner']]],
+                "h5": lambda x: htpy.h5()[[Markup(i) for i in x['inner']]],
+                "h6": lambda x: htpy.h6()[[Markup(i) for i in x['inner']]],
+                "p": lambda x: htpy.p()[[Markup(i) for i in x['inner']]],
+                "span": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
+                "a": lambda x: htpy.a()[[Markup(i) for i in x['inner']]],
+                "em": lambda x: htpy.em()[[Markup(i) for i in x['inner']]],
+                "mark": lambda x: htpy.mark()[[Markup(i) for i in x['inner']]],
+                "code": lambda x: htpy.code()[[Markup(i) for i in x['inner']]],
+                "pre": lambda x: htpy.pre()[[Markup(i) for i in x['inner']]],
+                "blockquote": lambda x: htpy.blockquote()[[Markup(i) for i in x['inner']]],
+                "q": lambda x: htpy.q()[[Markup(i) for i in x['inner']]],
+                "cite": lambda x: htpy.cite()[[Markup(i) for i in x['inner']]],
+                "abbr": lambda x: htpy.abbr()[[Markup(i) for i in x['inner']]],
+                "time": lambda x: htpy.time()[[Markup(i) for i in x['inner']]],
+            }
         },
         presentation.Tag.INPUT.value: {
             "types": {
-                "input": htpy.input, "select": htpy.select, "textarea": htpy.textarea,
-                "text": htpy.input(type="text"), "password": htpy.input(type="password"),
-                "switch": htpy.input(type="checkbox", class_="form-switch"), "checkbox": htpy.input(type="checkbox"),
-                "radio": htpy.input(type="radio"), "range": htpy.input(class_="form-range", type="range"),
-                "color": htpy.input(type="color"), "date": htpy.input(type="date"), "datetime-local": htpy.input(type="datetime-local"),
-                "month": htpy.input(type="month"), "week": htpy.input(type="week"), "time": htpy.input(type="time"),
-                "number": htpy.input(type="number"), "email": htpy.input(type="email"), "url": htpy.input(type="url"),
-                "search": htpy.input(type="search"), "tel": htpy.input(type="tel"), "dropdown": htpy.select(".form-select"), "file": htpy.input(type="file")
+                "input": lambda x: htpy.input(type="text", class_="form-control"), 
+                "select": lambda x: htpy.select(class_="form-select"), 
+                "textarea": lambda x: htpy.textarea(class_="form-control"),
+                "text": lambda x: htpy.input(type="text", class_="form-control"), 
+                "password": lambda x: htpy.input(type="password", class_="form-control"),
+                "switch": lambda x: htpy.input(type="checkbox", class_="form-switch"), 
+                "checkbox": lambda x: htpy.input(type="checkbox", class_="form-check-input"),
+                "radio": lambda x: htpy.input(type="radio", class_="form-check-input"), 
+                "range": lambda x: htpy.input(class_="form-range", type="range"),
+                "color": lambda x: htpy.input(type="color", class_="form-control"), 
+                "date": lambda x: htpy.input(type="date", class_="form-control"), 
+                "month": lambda x: htpy.input(type="month", class_="form-control"), 
+                "week": lambda x: htpy.input(type="week", class_="form-control"), 
+                "time": lambda x: htpy.input(type="time", class_="form-control"),
+                "number": lambda x: htpy.input(type="number", class_="form-control"), 
+                "email": lambda x: htpy.input(type="email", class_="form-control"), 
+                "url": lambda x: htpy.input(type="url", class_="form-control"),
+                "search": lambda x: htpy.input(type="search", class_="form-control"),
+                "tel": lambda x: htpy.input(type="tel", class_="form-control"), 
+                "dropdown": lambda x: htpy.select(class_="form-select"),
+                "file": lambda x: htpy.input(type="file", class_="form-control"),
+                "hidden": lambda x: htpy.input(type="hidden"),
             }
         },
         presentation.Tag.ACTION.value: {
-            "types": {"action": htpy.button, "button": htpy.button, "submit": htpy.input(type="submit", class_="btn btn-primary"), "reset": htpy.input(type="reset", class_="btn btn-secondary")}
+            "types": {
+                "action": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
+                "button": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
+                "submit": lambda x: htpy.input(type="submit", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
+                "reset": lambda x: htpy.input(type="reset", class_="btn btn-secondary")[[Markup(i) for i in x['inner']]],
+            }
         },
         presentation.Tag.MEDIA.value: {
-            "types": {"media": htpy.img, "img": htpy.img, "video": htpy.video, "audio": htpy.audio, "embed": htpy.embed, "carousel": htpy.div(".carousel"), "map": htpy.div(".map"), "icon": htpy.i(".bi")}
+            "types": {
+                "media": lambda x: htpy.img, 
+                "img": lambda x: htpy.img, 
+                "video": lambda x: htpy.video, 
+                "audio": lambda x: htpy.audio, 
+                "embed": lambda x: htpy.embed, 
+                "carousel": lambda x: htpy.div(".carousel"), 
+                "map": lambda x: htpy.div(".map"), 
+                "icon": lambda x: htpy.i(".bi")
+            }
         },
-        presentation.Tag.CONTAINER.value: { "types": {"container": lambda x: htpy.div(".container")[[Markup(i) for i in x['inner']]], "fluid": lambda x: htpy.div(".container-fluid")[[Markup(i) for i in x['inner']]]} },
-        presentation.Tag.ROW.value: { "types": {"row": lambda x: htpy.div(".d-flex.flex-row")[[Markup(i) for i in x['inner']]]} },
-        presentation.Tag.COLUMN.value: { "types": {"column": lambda x: htpy.div(".d-flex.flex-column")[[Markup(i) for i in x['inner']]]} },
-        presentation.Tag.STACK.value: { "types": {"stack": lambda x: htpy.div(".position-relative")[[Markup(i) for i in x['inner']]]} },
-        presentation.Tag.DIVIDER.value: { "types": {"divider": lambda x: htpy.hr, "vertical": lambda x: htpy.div(".vr"), "horizontal": lambda x: htpy.hr} },
+        presentation.Tag.CONTAINER.value: {
+            "types": {
+                "container": lambda x: htpy.div(".container")[[Markup(i) for i in x['inner']]], 
+                "fluid": lambda x: htpy.div(".container-fluid")[[Markup(i) for i in x['inner']]]
+            } 
+        },
+        presentation.Tag.ROW.value: { 
+            "types": {
+                "row": lambda x: htpy.div(".row")[[Markup(i) for i in x['inner']]]
+            } 
+        },
+        presentation.Tag.COLUMN.value: { 
+            "types": {
+                "column": lambda x: htpy.div(".col")[[Markup(i) for i in x['inner']]]
+            } 
+        },
+        presentation.Tag.STACK.value: { 
+            "types": {
+                "stack": lambda x: htpy.div(".position-relative")[[Markup(i) for i in x['inner']]]
+            } 
+        },
+        presentation.Tag.DIVIDER.value: { 
+            "types": {
+                "divider": lambda x: htpy.hr, 
+                "vertical": lambda x: htpy.div(".vr"), 
+                "horizontal": lambda x: htpy.hr
+            } 
+        },
         presentation.Tag.NAVIGATION.value: {
             "types": {
                 "navigation": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
@@ -502,11 +573,11 @@ class Adapter(presentation.port):
     def node_create(self, tag, attrs={}, inner=[]):
         # Se tag è una funzione (es. un componente funzionale/lambda)
         if callable(tag) and type(tag).__name__ == "function":
-            return tag({"inner": inner, "attrs": attrs})
+            return str(tag({"inner": inner, "attrs": attrs}))
         # Altrimenti trattalo come un elemento htpy standard
         children = [Markup(i) for i in inner] if isinstance(inner, list) else Markup(inner or "")
         if not hasattr(tag, "__getitem__"):
-            return tag(**attrs)
+            return str(tag(**attrs))
         return str(tag(**attrs)[children])
     
     def node_union(self, node, context):

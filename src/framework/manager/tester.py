@@ -5,11 +5,12 @@ class tester:
     def __init__(self, **config):
         self.args = config.get('args')
         self.loader = config.get('loader')
+        self.defender = config.get('defender')
+        self.messenger = config.get('messenger')
 
     async def start(self):
         if '--test' in self.args:
             await self.run()
-        
 
     async def run(self, **constants):
         diagnostic.log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
@@ -21,7 +22,7 @@ class tester:
                 if file.endswith('.test.dsl'):
                     path = os.path.join(root, file).replace('./', '')
                     print(path)
-                    res    = self.loader.resource(path)
+                    res    = await self.loader.resource(path)
                     source = flow.value_of(res) if flow.is_result(res) else res
                     await interp.add_file(path, source)
                     await self.dsl(interp, path)
@@ -29,7 +30,7 @@ class tester:
 
     async def dsl(self, interp, path):
         # ── esecuzione ────────────────────────────────────────────────────────
-        ctx    = await interp.run_session("tester", path,env=language.DSL_FUNCTIONS|{'resource':self.loader.resource})
+        ctx    = await interp.run_session("tester", path,env=language.DSL_FUNCTIONS|{'messenger':self.messenger,'defender':self.defender,'resource':self.loader.resource})
         
         '''errors = [
             err
