@@ -67,6 +67,7 @@ _CORE = {a.value: a.value for a in [_A.ID, _A.CLASS, _A.TITLE]}
 _MEDIA = {**_CORE, **{a.value: a.value for a in [_A.SRC, _A.WIDTH, _A.HEIGHT, _A.ALT]}}
 _FIELD = {**_CORE, **{a.value: a.value for a in [_A.NAME, _A.VALUE, _A.PLACEHOLDER, _A.REQUIRED, _A.DISABLED, _A.READONLY, _A.MAX, _A.MIN, _A.MULTIPLE, _A.TYPE]}}
 _MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [_A.CONTROLS, _A.AUTOPLAY, _A.LOOP, _A.MUTED]}}
+_ICON = {**_CORE, **{_A.TYPE.value:"class", _A.NAME.value:"class", _A.SIZE.value:"size"}}
 
 _ATTR_SCHEMA = {
     "window": _CORE, 
@@ -82,8 +83,7 @@ _ATTR_SCHEMA = {
     "audio": _MULTIMEDIA, 
     "embed": _MEDIA, 
     "carousel": _MEDIA, 
-    "map": _MEDIA, 
-    "icon": _MEDIA,
+    "map": _MEDIA,
     "container": _MEDIA, 
     "row": _MEDIA, 
     "column": _MEDIA, 
@@ -93,7 +93,10 @@ _ATTR_SCHEMA = {
     "bar": _MULTIMEDIA, 
     "app": _MEDIA, 
     "breadcrumb": _MULTIMEDIA, 
-    "tab": _MEDIA
+    "tab": _MEDIA,
+    "icon": _ICON,
+    "form": _FIELD,
+
 }
 
 def attrs(tag_key, input_data):
@@ -120,7 +123,8 @@ class Adapter(presentation.port):
                     htpy.meta(charset="utf-8"),
                     htpy.meta(name="viewport", content="width=device-width, initial-scale=1"),
                     htpy.title[x.get("attrs", {}).get("title", "Today's menu")],
-                    htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css")
+                    htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"),
+                    htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"),
                 ],
                 htpy.body(class_="bg-light")[
                     [Markup(i) for i in x['inner']],
@@ -151,6 +155,7 @@ class Adapter(presentation.port):
         },
         presentation.Tag.TEXT.value: {
             "text": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
+            "input": lambda x: htpy.span(".input-group-text")[[Markup(i) for i in x['inner']]],
             "h1": lambda x: htpy.h1()[[Markup(i) for i in x['inner']]],
             "h2": lambda x: htpy.h2()[[Markup(i) for i in x['inner']]],
             "h3": lambda x: htpy.h3()[[Markup(i) for i in x['inner']]],
@@ -171,8 +176,8 @@ class Adapter(presentation.port):
             "time": lambda x: htpy.time()[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.INPUT.value: {
-            "input": lambda x: htpy.input(type="text", class_="form-control"), 
-            "select": lambda x: htpy.select(class_="form-select"), 
+            "input": lambda x: htpy.input(type="text", class_="form-control"),
+            "select": lambda x: htpy.select(class_="form-select"),
             "textarea": lambda x: htpy.textarea(class_="form-control"),
             "text": lambda x: htpy.input(type="text", class_="form-control"), 
             "password": lambda x: htpy.input(type="password", class_="form-control"),
@@ -195,6 +200,7 @@ class Adapter(presentation.port):
             "hidden": lambda x: htpy.input(type="hidden"),
         },
         presentation.Tag.ACTION.value: {
+            "form": lambda x: htpy.form(class_="form-control")[[Markup(i) for i in x['inner']]],
             "action": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
             "button": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
             "submit": lambda x: htpy.input(type="submit", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
@@ -229,7 +235,9 @@ class Adapter(presentation.port):
             "horizontal": lambda x: htpy.hr
         },
         presentation.Tag.ICON.value: { 
-            "icon": lambda x: htpy.i(".bi")
+            "icon": lambda x: htpy.i(**attrs("icon", x)),
+            "bi": lambda x: htpy.i(**attrs("icon", x)),
+            "fa": lambda x: htpy.i(**attrs("icon", x)),
         },
         presentation.Tag.NAVIGATION.value: {
             "navigation": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
@@ -237,6 +245,10 @@ class Adapter(presentation.port):
             "app": lambda x: htpy.nav(".navbar")[[Markup(i) for i in x['inner']]],
             "breadcrumb": lambda x: htpy.nav(".breadcrumb")[[Markup(i) for i in x['inner']]],
             "tab": lambda x: htpy.nav(".nav-tabs")[[Markup(i) for i in x['inner']]],
+        },
+        presentation.Tag.GROUP.value: {
+            "input": lambda x: htpy.div(".input-group")[[Markup(i) for i in x['inner']]],
+            "button": lambda x: htpy.div(".btn-group")[[Markup(i) for i in x['inner']]],
         },
     }
 

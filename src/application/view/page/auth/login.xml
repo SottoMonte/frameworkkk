@@ -30,4 +30,18 @@
 <Input type='hidden' name='test' placeholder='test'/>
 <Media height='100px' width='100px' type='img' src='https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_120x44dp.png'/>
 <Media height='100px' width='200px' type='video' src='https://www.w3schools.com/html/mov_bbb.mp4'/>
+<Icon type='bi' name='bi-alarm' size='50px'/>
+<Action type="form" action="/login" method="post">
+    <Group type='input'>
+        <Text type='input'>Username</Text>
+        <Input type='text' name='test' placeholder='test'/>
+        <Text type='input'>Password</Text>
+        <Input type='password' name='test' placeholder='test'/>
+    </Group>
+</Action>
+<Group type='button'>
+    <Action type='button'>Button1</Action>
+    <Action type='button'>Button2</Action>
+    <Action type='button'>Button3</Action>
+</Group>
 {% endblock %}

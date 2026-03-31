@@ -56,6 +56,7 @@ class Attribute(Enum):
     READONLY = "readonly"
     MAX = "max"
     MIN = "min"
+    SIZE = "size"
     MULTIPLE = "multiple"
     
 
@@ -143,18 +144,6 @@ class port(ABC):
         if tag not in self.tags: raise Exception(f"Tag {tag} non trovato")
         tipo = attrs.get("type") or tag
         elemento = self.tags[tag].get(tipo)
-        '''new_attrs = {}
-        
-        
-        for attr in attrs:
-            #if attr not in [c.value for c in Attribute]:
-            #    raise Exception(f"Attributo attributes.{attr} non trovato")
-            #print(tipo,attr,self.attributes.get(attr,{}),"\n\n")
-            if tipo in self.attributes.get(attr,{}):
-                new_attrs[self.attributes[attr][tipo]] = attrs[attr]
-            #else:
-            #    raise Exception(f"Attributo {attr}  non trovato in tags.{tag}.attributes.{tipo}")
-        #print(new_attrs)'''
         return self.node_create(elemento,attrs,inner)
 
     async def parse_route(self):
