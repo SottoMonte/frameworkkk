@@ -153,14 +153,59 @@ port = "5000"
         <Text>Write your validation logic once. Serve it to a React frontend, a CLI tool, and an IoT adapter simultaneously without changing a single line of domain code.</Text>
     </Container>
     <Container>
-        <Text>HTTP_ADAPTER_PRESENTATION</Text>
-        <Text>CLI_ADAPTER_PRESENTATION</Text>
-        <Text>DB_ADAPTER_PERSISTENCE</Text>
-        <Container>
-            <Text>CORE_DOMAIN_LOGIC</Text>
-        </Container>
-        <Container>
-        </Container>
+        <svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="800" fill="none" />
+
+  <polygon points="400,100 700,400 400,700 100,400" fill="none" stroke="#add8e6" stroke-width="4" />
+
+  <rect x="250" y="250" width="300" height="300" fill="#1e1e1e" stroke="#ccffcc" stroke-width="4" />
+  
+  <text x="400" y="380" text-anchor="middle" font-family="monospace" font-size="28" fill="#ffffff" font-weight="bold">
+    CORE
+    <tspan x="400" dy="35">DOMAIN</tspan>
+    <tspan x="400" dy="35">LOGIC</tspan>
+  </text>
+
+  <defs>
+    <style>
+      .adapter-label {
+        font-family: monospace;
+        font-size: 16px;
+        fill: #ffffff;
+      }
+      .adapter-rect {
+        fill: #1e1e1e;
+        stroke: #ffffff;
+        stroke-width: 1;
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(400, 100)">
+    <text dy="-15" text-anchor="middle" class="adapter-label">
+      <tspan class="adapter-rect" x="0" y="0">HTTP_ADAPTER</tspan>
+    </text>
+    <rect x="-65" y="-35" width="130" height="30" class="adapter-rect" rx="3"/>
+    <text x="0" y="-15" text-anchor="middle" class="adapter-label">HTTP_ADAPTER</text>
+  </g>
+
+  <g transform="translate(700, 400)">
+    <rect x="15" y="-15" width="120" height="30" class="adapter-rect" rx="3"/>
+    <text x="75" y="5" text-anchor="middle" class="adapter-label">CLI_ADAPTER</text>
+  </g>
+
+  <g transform="translate(400, 700)">
+    <rect x="-55" y="15" width="110" height="30" class="adapter-rect" rx="3"/>
+    <text x="0" y="35" text-anchor="middle" class="adapter-label">DB_ADAPTER</text>
+  </g>
+
+  <g transform="translate(100, 400)">
+    <rect x="-125" y="-15" width="110" height="30" class="adapter-rect" rx="3"/>
+    <text x="-70" y="5" text-anchor="middle" class="adapter-label">UI_ADAPTER</text>
+  </g>
+
+</svg>
+
         
     </Container>
 </Container>

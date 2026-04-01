@@ -53,6 +53,7 @@ class Tag(Enum):
     STOP = "stop"
     LINEAR_GRADIENT = "lineargradient"
     RADIAL_GRADIENT = "radialgradient"
+    POLYGON = "polygon"
     RESOURCE = "resource"
 
 class Attribute(Enum):
@@ -208,6 +209,7 @@ _ATTRIBUTES_SCHEMA |= {
     Tag.STOP.value: _SVG_ATTRIBUTES,
     Tag.LINEAR_GRADIENT.value: _SVG_ATTRIBUTES,
     Tag.RADIAL_GRADIENT.value: _SVG_ATTRIBUTES,
+    Tag.POLYGON.value: _SVG_ATTRIBUTES,
 }
 
 

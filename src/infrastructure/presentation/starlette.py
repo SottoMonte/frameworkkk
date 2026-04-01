@@ -254,7 +254,7 @@ def attrs(tag_key, input_data, classe=None):
         presentation.Tag.STYLE_SVG.value, presentation.Tag.FILTER.value, presentation.Tag.FE_GAUSSIAN_BLUR.value,
         presentation.Tag.FE_OFFSET.value, presentation.Tag.FE_FLOOD.value, presentation.Tag.FE_COMPOSITE.value,
         presentation.Tag.FE_MERGE.value, presentation.Tag.FE_MERGE_NODE.value, presentation.Tag.ANIMATE.value,
-        presentation.Tag.STOP.value
+        presentation.Tag.STOP.value, presentation.Tag.POLYGON.value
     ]
 
     for attr in list(raw_attrs.keys()):
@@ -438,6 +438,7 @@ class Adapter(presentation.port):
         presentation.Tag.STOP.value: {"stop": lambda x: htpy.Element("stop")(**attrs(presentation.Tag.STOP.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.LINEAR_GRADIENT.value: {"lineargradient": lambda x: htpy.Element("linearGradient")(**attrs(presentation.Tag.LINEAR_GRADIENT.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.RADIAL_GRADIENT.value: {"radialgradient": lambda x: htpy.Element("radialGradient")(**attrs(presentation.Tag.RADIAL_GRADIENT.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.POLYGON.value: {"polygon": lambda x: htpy.Element("polygon")(**attrs(presentation.Tag.POLYGON.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
     def __init__(self,**constants):
