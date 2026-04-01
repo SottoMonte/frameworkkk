@@ -66,17 +66,17 @@ except Exception as e:
 mapping_attributes = {
     presentation.Attribute.WIDTH.value: lambda x: {
         "full": "w-full",
-        "half": "w-1/2",
-        "third": "w-1/3",
-        "quarter": "w-1/4",
+        "1/2": "w-1/2",
+        "1/3": "w-1/3",
+        "1/4": "w-1/4",
         "auto": "w-auto",
         True:f"w-[{x}]"
     }.get(True if '%' in x or 'px' in x else x, ""),
     presentation.Attribute.HEIGHT.value: lambda x: {
         "full": "h-full",
-        "half": "h-1/2",
-        "third": "h-1/3",
-        "quarter": "h-1/4",
+        "1/2": "h-1/2",
+        "1/3": "h-1/3",
+        "1/4": "h-1/4",
         "auto": "h-auto",
         True:f"h-[{x}]"
     }.get(True if '%' in x or 'px' in x else x),

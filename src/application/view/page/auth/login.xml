@@ -11,7 +11,7 @@
         <Text type='h4'>Define the intent, choose the Port. The first Hexagonal framework built for the era of AI-driven development. </Text>
     </Column>
     <Row justify='center' align='center'>
-        <Container>
+        <Container width="1/3">
             <svg viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg" class="omniport-gui-mockup" style="width: 100%; height: auto; display: block;">
                 <defs>
                     <style type="text/css">
@@ -60,7 +60,7 @@
             </svg>
 
         </Container>
-        <Container max-width="450px" background='#373d49ff'>
+        <Container width="1/3" background='#373d49ff'>
             <Text type='h3'>// PROJECT.TOML</Text>
             <Text type='pre'>
 [project]
@@ -94,7 +94,7 @@ port = "5000"
 #ssl_certfile = "cert.pem"
             </Text>
         </Container>
-        <Container>
+        <Container width="1/3">
             <svg viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg" class="omniport-gui-mockup" style="width: 100%; height: auto; display: block;">
                 <defs>
                     <style type="text/css">
