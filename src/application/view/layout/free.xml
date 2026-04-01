@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 {% if not user %}
-<Window title="Colosso - App">
+<Window type="page" title="Colosso - App" background="#999" pointer="crosshair" >
     {% block main %}
     {% endblock %}
 </Window>

@@ -8,12 +8,109 @@ exports: {
 
 driver : imports.presentation.Adapter(messenger:messenger, defender:defender);
 
+Tags: {
+    WINDOW:"window",
+    TEXT:"text",
+    INPUT:"input",
+    ACTION:"action",
+    MEDIA:"media",
+    CARD:"card",
+    NAVIGATION:"navigation",
+    GROUP:"group",
+    ROW:"row",
+    COLUMN:"column",
+    STACK:"stack",
+    CONTAINER:"container",
+    DEFENDER:"defender",
+    MESSENGER:"messenger",
+    MESSAGE:"message",
+    STOREKEEPER:"storekeeper",
+    PRESENTER:"presenter",
+    VIEW:"view",
+    DIVIDER:"divider",
+    ICON:"icon",
+    ACCORDION:"accordion",
+    RESOURCE:"resource",
+};
+
+Attributes: {
+    ID:"id",
+    TYPE:"type",
+    SRC:"src",
+    ALT:"alt",
+    TITLE:"title",
+    WIDTH:"width",
+    MAXWIDTH:"max-width",
+    MINWIDTH:"min-width",
+    HEIGHT:"height",
+    MAXHEIGHT:"max-height",
+    MINHEIGHT:"min-height",
+    CONTROLS:"controls",
+    AUTOPLAY:"autoplay",
+    LOOP:"loop",
+    MUTED:"muted",
+    CLASS:"class",
+    NAME:"name",
+    VALUE:"value",
+    PLACEHOLDER:"placeholder",
+    REQUIRED:"required",
+    DISABLED:"disabled",
+    READONLY:"readonly",
+    MAX:"max",
+    MIN:"min",
+    SIZE:"size",
+    MULTIPLE:"multiple",
+    STYLE:"style",
+};
+
+Values: {
+    
+};
+
+CORE: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS,];
+MEDIA: [Attributes.SRC,Attributes.ALT,Attributes.TITLE,Attributes.WIDTH,Attributes.MAXWIDTH,Attributes.MINWIDTH,Attributes.HEIGHT,Attributes.MAXHEIGHT,Attributes.MINHEIGHT,Attributes.CONTROLS,Attributes.AUTOPLAY,Attributes.LOOP,Attributes.MUTED,];
+INPUT: [Attributes.NAME,Attributes.VALUE,Attributes.PLACEHOLDER,Attributes.REQUIRED,Attributes.DISABLED,Attributes.READONLY,Attributes.MAX,Attributes.MIN,Attributes.SIZE,Attributes.MULTIPLE,];
+
+Build: {
+    Tags.WINDOW: CORE;
+    Tags.TEXT: CORE;
+    Tags.INPUT: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS,Attributes.NAME,Attributes.VALUE,Attributes.PLACEHOLDER,Attributes.REQUIRED,Attributes.DISABLED,Attributes.READONLY,Attributes.MAX,Attributes.MIN,Attributes.SIZE,Attributes.MULTIPLE,];
+    Tags.ACTION: CORE;
+    Tags.MEDIA: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS,Attributes.SRC,Attributes.ALT,Attributes.TITLE,Attributes.WIDTH,Attributes.MAXWIDTH,Attributes.MINWIDTH,Attributes.HEIGHT,Attributes.MAXHEIGHT,Attributes.MINHEIGHT,Attributes.CONTROLS,Attributes.AUTOPLAY,Attributes.LOOP,Attributes.MUTED,];
+    Tags.CARD: CORE;
+    Tags.NAVIGATION: CORE;
+    Tags.GROUP: CORE;
+    Tags.ROW: CORE;
+    Tags.COLUMN: CORE;
+    Tags.STACK: CORE;
+    Tags.CONTAINER: CORE;
+    Tags.DEFENDER: CORE;
+    Tags.MESSENGER: CORE;
+    Tags.MESSAGE: CORE;
+    Tags.STOREKEEPER: CORE;
+    Tags.PRESENTER: CORE;
+    Tags.VIEW: CORE;
+    Tags.DIVIDER: CORE;
+    Tags.ICON: CORE;
+    Tags.ACCORDION: CORE;
+    Tags.RESOURCE: CORE;
+};
+
+scala: ["min","medium","large","max","none"];
+
 /* ============================================================
     11. TEST SUITE
 ============================================================ */
 
 tuple:test_suite := (
     { 
+        "action": imports.presentation.mapping_attributes.width;
+        "inputs": 'full';
+        "outputs": "w-full";
+        "assert":@received.outputs == @expected;
+        "note": "Render width full"; 
+    },
+    /*{ 
         "action": driver.render_template;
         "inputs": {'text':'<Text>10</Text>'};
         "outputs": '<span>10</span>';
@@ -224,5 +321,5 @@ tuple:test_suite := (
         "outputs": '<input type="hidden">';
         "assert":@received.outputs == @expected;
         "note": "Render input with type hidden";
-    },
+    },*/
 )

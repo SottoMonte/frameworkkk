@@ -62,41 +62,163 @@ except Exception as e:
 
 
 # --- Configurazione Programmatica Attributi ---
-_A = presentation.Attribute
-_CORE = {a.value: a.value for a in [_A.ID, _A.CLASS, _A.TITLE, _A.STYLE]}
-_MEDIA = {**_CORE, **{a.value: a.value for a in [_A.SRC, _A.WIDTH, _A.HEIGHT, _A.ALT]}}
-_FIELD = {**_CORE, **{a.value: a.value for a in [_A.NAME, _A.VALUE, _A.PLACEHOLDER, _A.REQUIRED, _A.DISABLED, _A.READONLY, _A.MAX, _A.MIN, _A.MULTIPLE, _A.TYPE]}}
-_MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [_A.CONTROLS, _A.AUTOPLAY, _A.LOOP, _A.MUTED]}}
-_ICON = {**_CORE, **{_A.TYPE.value:"class", _A.NAME.value:"class", _A.SIZE.value:"size"}}
 
-_ATTR_SCHEMA = {
-    "window": _CORE, 
-    "text": _MEDIA, 
-    "input": _FIELD, 
-    "select": _FIELD, 
-    "textarea": _FIELD, 
-    "action": _MEDIA, 
-    "button": _CORE, 
-    "submit": _CORE, 
-    "img": _MEDIA, 
-    "video": _MULTIMEDIA, 
-    "audio": _MULTIMEDIA, 
-    "embed": _MEDIA, 
-    "carousel": _MEDIA, 
-    "map": _MEDIA,
-    "container": _MEDIA, 
-    "row": _MEDIA, 
-    "column": _MEDIA, 
-    "stack": _MEDIA, 
-    "divider": _MEDIA,
-    "navigation": _MEDIA, 
-    "bar": _MULTIMEDIA, 
-    "app": _MEDIA, 
-    "breadcrumb": _MULTIMEDIA, 
-    "tab": _MEDIA,
-    "icon": _ICON,
-    "form": _FIELD,
-
+mapping_attributes = {
+    presentation.Attribute.WIDTH.value: lambda x: {
+        "full": "w-full",
+        "half": "w-1/2",
+        "third": "w-1/3",
+        "quarter": "w-1/4",
+        "auto": "w-auto",
+        True:f"w-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.HEIGHT.value: lambda x: {
+        "full": "h-full",
+        "half": "h-1/2",
+        "third": "h-1/3",
+        "quarter": "h-1/4",
+        "auto": "h-auto",
+        True:f"h-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x),
+    presentation.Attribute.MAX_HEIGHT.value: lambda x: {
+        True:f"max-h-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.MIN_HEIGHT.value: lambda x: {
+        True:f"min-h-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.MAX_WIDTH.value: lambda x: {
+        True:f"max-w-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.MIN_WIDTH.value: lambda x: {
+        True:f"min-w-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.PADDING.value: lambda x: {
+        True:f"p-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.MARGIN.value: lambda x: {
+        True:f"m-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.EXPAND.value: lambda x: {
+        "true":"flex-1",
+        "false":""
+    }.get(x, "false"),
+    presentation.Attribute.SPACING.value: lambda x: {
+        True:f"gap-[{x}]"
+    }.get(True if '%' in x or 'px' in x else False, ""),
+    presentation.Attribute.JUSTIFY.value: lambda x: {
+        "start": "justify-start",
+        "end": "justify-end",
+        "center": "justify-center",
+        "between": "justify-between",
+        "around": "justify-around",
+        "evenly": "justify-evenly",
+    }.get(x, ""),
+    presentation.Attribute.ALIGN.value: lambda x: {
+        "start": "items-start",
+        "end": "items-end",
+        "center": "items-center",
+        "stretch": "items-stretch",
+    }.get(x, ""),
+    presentation.Attribute.POSITION.value: lambda x: {
+        "static": "static",
+        "relative": "relative",
+        "absolute": "absolute",
+        "fixed": "fixed",
+        "sticky": "sticky",
+    }.get(x, ""),
+    presentation.Attribute.RADIUS.value: lambda x: {
+        "none":"rounded-none",
+        "small":"rounded-sm",
+        "medium":"rounded-md",
+        "large":"rounded-lg",
+        "full":"rounded-full",
+    }.get(x, ""),
+    presentation.Attribute.BORDER.value: lambda x: {
+        "none":"border-none",
+        "subtle":"border",
+        True:f"border-[{x}]"
+    }.get(True if x.isdigit() else x, ""),
+    presentation.Attribute.SHADOW.value: lambda x: {
+        "none":"shadow-none",
+        "min":"shadow-sm",
+        "medium":"shadow-md",
+        "large":"shadow-lg",
+        "max":"shadow-xl",
+    }.get(x, ""),
+    presentation.Attribute.BACKGROUND.value: lambda x: {
+        "none":"bg-transparent",
+        False:f"bg-gradient-to-r from-[{x.split(',')[0]}] to-[{x.split(',')[-1]}]",
+        True:f"bg-[{x}]"
+    }.get(False if ',' in x else True, ""),
+    presentation.Attribute.MATTER.value: lambda x: {
+        "glass":"backdrop-blur-md",
+        "glass-min":"backdrop-blur-sm",
+        "glass-medium":"backdrop-blur-lg",
+        "glass-max":"backdrop-blur-xl",
+    }.get(x, ""),
+    presentation.Attribute.POINTER.value: lambda x: {
+        "auto":"cursor-auto",
+        "default":"cursor-default",
+        "pointer":"cursor-pointer",
+        "wait":"cursor-wait",
+        "text":"cursor-text",
+        "move":"cursor-move",
+        "not-allowed":"cursor-not-allowed",
+        "help":"cursor-help",
+        "crosshair":"cursor-crosshair",
+        "zoom-in":"cursor-zoom-in",
+        "zoom-out":"cursor-zoom-out",
+        "grab":"cursor-grab",
+        "grabbing":"cursor-grabbing",
+        "col-resize":"cursor-col-resize",
+        "row-resize":"cursor-row-resize",
+        "n-resize":"cursor-n-resize",
+        "s-resize":"cursor-s-resize",
+        "e-resize":"cursor-e-resize",
+        "w-resize":"cursor-w-resize",
+        "ne-resize":"cursor-ne-resize",
+        "nw-resize":"cursor-nw-resize",
+        "se-resize":"cursor-se-resize",
+        "sw-resize":"cursor-sw-resize",
+    }.get(x, ""),
+    presentation.Attribute.TOP.value: lambda x: {
+        True:f"top-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.BOTTOM.value: lambda x: {
+        True:f"bottom-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.LEFT.value: lambda x: {
+        True:f"left-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.RIGHT.value: lambda x: {
+        True:f"right-[{x}]"
+    }.get(True if '%' in x or 'px' in x else x, ""),
+    presentation.Attribute.SIZE.value: lambda x: {
+        "min":"text-xs",
+        "small":"text-sm",
+        "medium":"text-base",
+        "large":"text-lg",
+        "max":"text-xl",
+    }.get(x, ""),
+    presentation.Attribute.UPPERCASE.value: lambda x: {
+        "true":"uppercase",
+        "false":""
+    }.get(x, ""),
+    presentation.Attribute.LOWERCASE.value: lambda x: {
+        "true":"lowercase",
+        "false":""
+    }.get(x, ""),
+    presentation.Attribute.TRUNCATE.value: lambda x: {
+        "true":"truncate",
+        "false":""
+    }.get(x, ""),
+    presentation.Attribute.FONT.value: lambda x: f"font-{x}",
+    "spacing.text": lambda x: {
+        "min":"tracking-tighter",
+        "normal":"tracking-normal",
+        "max":"tracking-wide",
+    }.get(x, ""),
+    "height.text": lambda x: f"leading-[{x}]",    
 }
 
 def attrs(tag_key, input_data, classe=None):
@@ -105,32 +227,70 @@ def attrs(tag_key, input_data, classe=None):
     if classe:
         raw_attrs["class"] = classe + " " + raw_attrs.get("class", "")
     
-    # 2. Prendi lo schema dei nomi validi per quel tag (es. _MEDIA o _FIELD)
-    valid_schema = _ATTR_SCHEMA.get(tag_key, _CORE)
+    classe = raw_attrs.get("class", "")
+
+    if any(attr in raw_attrs for attr in [presentation.Attribute.JUSTIFY.value, presentation.Attribute.ALIGN.value]) or tag_key in [presentation.Tag.ROW.value, presentation.Tag.COLUMN.value]:
+        classe += " flex"
+
+    if presentation.Attribute.THICKNESS.value in raw_attrs and tag_key == presentation.Tag.DIVIDER.value:
+        tipo = raw_attrs.get(presentation.Attribute.TYPE.value, "horizontal")
+        if tipo == "horizontal":
+            raw_attrs[presentation.Attribute.HEIGHT.value] = raw_attrs[presentation.Attribute.THICKNESS.value]
+        else:
+            raw_attrs[presentation.Attribute.WIDTH.value] = raw_attrs[presentation.Attribute.THICKNESS.value]
+        raw_attrs.pop(presentation.Attribute.THICKNESS.value)
+
+    if presentation.Attribute.SPACING.value in raw_attrs and tag_key == presentation.Tag.TEXT.value:
+        raw_attrs["spacing.text"] = raw_attrs[presentation.Attribute.SPACING.value]
+        raw_attrs.pop(presentation.Attribute.SPACING.value)
+
+    if presentation.Attribute.HEIGHT.value in raw_attrs and tag_key == presentation.Tag.TEXT.value:
+        raw_attrs["height.text"] = raw_attrs[presentation.Attribute.HEIGHT.value]
+        raw_attrs.pop(presentation.Attribute.HEIGHT.value)
+
+    is_svg = tag_key in [
+        presentation.Tag.SVG.value, presentation.Tag.G.value, presentation.Tag.DEFS.value, presentation.Tag.RECT.value,
+        presentation.Tag.CIRCLE.value, presentation.Tag.PATH.value, presentation.Tag.TEXT_SVG.value, presentation.Tag.TSPAN.value,
+        presentation.Tag.STYLE_SVG.value, presentation.Tag.FILTER.value, presentation.Tag.FE_GAUSSIAN_BLUR.value,
+        presentation.Tag.FE_OFFSET.value, presentation.Tag.FE_FLOOD.value, presentation.Tag.FE_COMPOSITE.value,
+        presentation.Tag.FE_MERGE.value, presentation.Tag.FE_MERGE_NODE.value, presentation.Tag.ANIMATE.value,
+        presentation.Tag.STOP.value
+    ]
+
+    for attr in list(raw_attrs.keys()):
+        if attr not in mapping_attributes:
+            continue
+        
+        # In SVG we might want to keep width/height as attributes instead of classes
+        if is_svg and attr in [presentation.Attribute.WIDTH.value, presentation.Attribute.HEIGHT.value]:
+            continue
+
+        valore = mapping_attributes[attr](raw_attrs[attr])
+        if valore:
+            classe += " " + valore
+            raw_attrs.pop(attr)
     
-    # 3. Crea il dizionario finale usando l'unpacking filtrato
-    # Mappiamo la chiave (es: "src") al suo valore nello schema
     return {
-        valid_schema[k]: v 
-        for k, v in raw_attrs.items() 
-        if k in valid_schema
+        "class": classe,
+        **{k: v for k, v in raw_attrs.items() if k != "class"}
     }
 
 class Adapter(presentation.port):
     # --- Configurazione Tag ---
     tags = {
         presentation.Tag.WINDOW.value: {
-            "window": lambda x: htpy.html[
+            "page": lambda x: htpy.html[
                 htpy.head[
                     htpy.meta(charset="utf-8"),
                     htpy.meta(name="viewport", content="width=device-width, initial-scale=1"),
                     htpy.title[x.get("attrs", {}).get("title", "Today's menu")],
-                    htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"),
+                    #htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"),
                     htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"),
+                    htpy.script(src="https://cdn.tailwindcss.com"),
                 ],
-                htpy.body(class_="bg-light")[
+                htpy.body(**attrs(presentation.Tag.WINDOW.value, x))[
                     [Markup(i) for i in x['inner']],
-                    htpy.script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+                    #htpy.script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
                 ]
             ],
             "dialog": lambda x: htpy.div(class_="modal fade", id=x.get("attrs", {}).get("id", "myModal"), tabindex="-1", aria_hidden="true")[
@@ -154,28 +314,26 @@ class Adapter(presentation.port):
                 ],
                 htpy.div(class_="offcanvas-body")[[Markup(i) for i in x['inner']]]
             ],
+            "embed": lambda x: htpy.div(**attrs("embed", x))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.TEXT.value: {
-            "text": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
-            "input": lambda x: htpy.span(".input-group-text")[[Markup(i) for i in x['inner']]],
-            "h1": lambda x: htpy.h1()[[Markup(i) for i in x['inner']]],
-            "h2": lambda x: htpy.h2()[[Markup(i) for i in x['inner']]],
-            "h3": lambda x: htpy.h3()[[Markup(i) for i in x['inner']]],
-            "h4": lambda x: htpy.h4()[[Markup(i) for i in x['inner']]],
-            "h5": lambda x: htpy.h5()[[Markup(i) for i in x['inner']]],
-            "h6": lambda x: htpy.h6()[[Markup(i) for i in x['inner']]],
-            "p": lambda x: htpy.p()[[Markup(i) for i in x['inner']]],
-            "span": lambda x: htpy.span()[[Markup(i) for i in x['inner']]],
-            "a": lambda x: htpy.a()[[Markup(i) for i in x['inner']]],
-            "em": lambda x: htpy.em()[[Markup(i) for i in x['inner']]],
-            "mark": lambda x: htpy.mark()[[Markup(i) for i in x['inner']]],
-            "code": lambda x: htpy.code()[[Markup(i) for i in x['inner']]],
-            "pre": lambda x: htpy.pre()[[Markup(i) for i in x['inner']]],
-            "blockquote": lambda x: htpy.blockquote()[[Markup(i) for i in x['inner']]],
-            "q": lambda x: htpy.q()[[Markup(i) for i in x['inner']]],
-            "cite": lambda x: htpy.cite()[[Markup(i) for i in x['inner']]],
-            "abbr": lambda x: htpy.abbr()[[Markup(i) for i in x['inner']]],
-            "time": lambda x: htpy.time()[[Markup(i) for i in x['inner']]],
+            "text": lambda x: htpy.span(**attrs("text", x,""))[[Markup(i) for i in x['inner']]],
+            "input": lambda x: htpy.span(**attrs("input", x, 'input-group-text'))[[Markup(i) for i in x['inner']]],
+            "h1": lambda x: htpy.h1(**attrs("text", x, "text-6xl"))[[Markup(i) for i in x['inner']]],
+            "h2": lambda x: htpy.h2(**attrs("text", x, "text-5xl"))[[Markup(i) for i in x['inner']]],
+            "h3": lambda x: htpy.h3(**attrs("text", x, "text-4xl"))[[Markup(i) for i in x['inner']]],
+            "h4": lambda x: htpy.h4(**attrs("text", x, "text-3xl"))[[Markup(i) for i in x['inner']]],
+            "h5": lambda x: htpy.h5(**attrs("text", x, "text-2xl"))[[Markup(i) for i in x['inner']]],
+            "h6": lambda x: htpy.h6(**attrs("text", x, "text-xl"))[[Markup(i) for i in x['inner']]],
+            "p": lambda x: htpy.p(**attrs("text", x, "text-base"))[[Markup(i) for i in x['inner']]],
+            "span": lambda x: htpy.span(**attrs("text", x, "text-transparent bg-clip-text"))[[Markup(i) for i in x['inner']]],
+            "mark": lambda x: htpy.mark(**attrs("mark", x, "text-transparent bg-clip-text"))[[Markup(i) for i in x['inner']]],
+            "code": lambda x: htpy.code(**attrs("code", x))[[Markup(i) for i in x['inner']]],
+            "pre": lambda x: htpy.pre(**attrs("pre", x))[[Markup(i) for i in x['inner']]],
+            "blockquote": lambda x: htpy.blockquote(**attrs("blockquote", x))[[Markup(i) for i in x['inner']]],
+            "cite": lambda x: htpy.cite(**attrs("cite", x))[[Markup(i) for i in x['inner']]],
+            "abbr": lambda x: htpy.abbr(**attrs("abbr", x))[[Markup(i) for i in x['inner']]],
+            "time": lambda x: htpy.time(**attrs("time", x))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.INPUT.value: {
             "input": lambda x: htpy.input(type="text", class_="form-control"),
@@ -203,10 +361,11 @@ class Adapter(presentation.port):
         },
         presentation.Tag.ACTION.value: {
             "form": lambda x: htpy.form(class_="form-control")[[Markup(i) for i in x['inner']]],
-            "action": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
-            "button": lambda x: htpy.button(type="button", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
-            "submit": lambda x: htpy.input(type="submit", class_="btn btn-primary")[[Markup(i) for i in x['inner']]], 
-            "reset": lambda x: htpy.input(type="reset", class_="btn btn-secondary")[[Markup(i) for i in x['inner']]],
+            "action": lambda x: htpy.button(**attrs("action", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
+            "button": lambda x: htpy.button(**attrs("button", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
+            "submit": lambda x: htpy.input(**attrs("submit", x, "btn btn-primary"))[[Markup(i) for i in x['inner']]], 
+            "reset": lambda x: htpy.input(**attrs("reset", x, "btn btn-secondary"))[[Markup(i) for i in x['inner']]],
+            "link": lambda x: htpy.a(**attrs("link", x, "btn link"))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.MEDIA.value: {
             "media": lambda x: htpy.img(**attrs("media", x)), 
@@ -219,22 +378,22 @@ class Adapter(presentation.port):
             "icon": lambda x: htpy.i(".bi")
         },
         presentation.Tag.CONTAINER.value: {
-            "container": lambda x: htpy.div(".container")[[Markup(i) for i in x['inner']]], 
-            "fluid": lambda x: htpy.div(".container-fluid")[[Markup(i) for i in x['inner']]]
+            "container": lambda x: htpy.div(**attrs("container", x))[[Markup(i) for i in x['inner']]], 
+            "fluid": lambda x: htpy.div(**attrs("fluid", x))[[Markup(i) for i in x['inner']]]
         },
-        presentation.Tag.ROW.value: { 
-            "row": lambda x: htpy.div(".row")[[Markup(i) for i in x['inner']]]
+        presentation.Tag.ROW.value: {
+            "row": lambda x: htpy.div(**attrs("row", x, "flex-row"))[[Markup(i) for i in x['inner']]]
         },
         presentation.Tag.COLUMN.value: { 
-            "column": lambda x: htpy.div(".col")[[Markup(i) for i in x['inner']]]
+            "column": lambda x: htpy.div(**attrs("column", x, "flex-col"))[[Markup(i) for i in x['inner']]]
         },
         presentation.Tag.STACK.value: { 
             "stack": lambda x: htpy.div(".position-relative")[[Markup(i) for i in x['inner']]]
         },
         presentation.Tag.DIVIDER.value: { 
-            "divider": lambda x: htpy.hr, 
-            "vertical": lambda x: htpy.div(".vr"), 
-            "horizontal": lambda x: htpy.hr
+            "divider": lambda x: htpy.hr(**attrs("divider", x,"w-full border-none")),
+            "vertical": lambda x: htpy.div(**attrs("vertical", x,"h-full border-none")),
+            "horizontal": lambda x: htpy.hr(**attrs("horizontal", x,"w-full border-none"))
         },
         presentation.Tag.ICON.value: { 
             "icon": lambda x: htpy.i(**attrs("icon", x)),
@@ -242,16 +401,41 @@ class Adapter(presentation.port):
             "fa": lambda x: htpy.i(**attrs("icon", x)),
         },
         presentation.Tag.NAVIGATION.value: {
-            "navigation": lambda x: htpy.nav(**attrs("navigation", x,"navbar"))[[Markup(i) for i in x['inner']]],
+            "navigation": lambda x: htpy.nav(**attrs("navigation", x,""))[[Markup(i) for i in x['inner']]],
             "bar": lambda x: htpy.nav(**attrs("bar", x,"nav"))[[Markup(i) for i in x['inner']]],
-            "app": lambda x: htpy.nav(**attrs("app", x,"navbar"))[[Markup(i) for i in x['inner']]],
+            "app": lambda x: htpy.nav(**attrs("app", x,""))[[Markup(i) for i in x['inner']]],
             "breadcrumb": lambda x: htpy.nav(**attrs("breadcrumb", x,"breadcrumb"))[[Markup(i) for i in x['inner']]],
             "tab": lambda x: htpy.nav(**attrs("tab", x,"nav-tabs"))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.GROUP.value: {
-            "input": lambda x: htpy.div(".input-group")[[Markup(i) for i in x['inner']]],
-            "button": lambda x: htpy.div(".btn-group")[[Markup(i) for i in x['inner']]],
+            "input": lambda x: htpy.div(**attrs("input", x,'input-group'))[[Markup(i) for i in x['inner']]],
+            "action": lambda x: htpy.div(**attrs("button", x,'btn-group'))[[Markup(i) for i in x['inner']]],
+            "card": lambda x: htpy.div(**attrs("card", x,'card-group'))[[Markup(i) for i in x['inner']]],
+            "list": lambda x: htpy.ul(**attrs("list", x,'list-group'))[[Markup(htpy.li('.list-group-item')[i]) for i in x['inner']]],
+            "tab": lambda x: htpy.ul(**attrs("tab", x,'nav-tabs'))[[Markup(htpy.li('.nav-item')[i]) for i in x['inner']]],
+            "dropdown": lambda x: htpy.div(**attrs("dropdown", x,'dropdown'))[[Markup(i) for i in x['inner']]],
         },
+        presentation.Tag.SVG.value: {"svg": lambda x: htpy.Element("svg")(**attrs(presentation.Tag.SVG.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.G.value: {"g": lambda x: htpy.Element("g")(**attrs(presentation.Tag.G.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.DEFS.value: {"defs": lambda x: htpy.Element("defs")(**attrs(presentation.Tag.DEFS.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.STYLE_SVG.value: {
+            "style_svg": lambda x: htpy.Element("style")(**attrs(presentation.Tag.STYLE_SVG.value, x))[[Markup(i) for i in x['inner']]],
+            "text/css": lambda x: htpy.Element("style")(**attrs(presentation.Tag.STYLE_SVG.value, x))[[Markup(i) for i in x['inner']]]
+        },
+        presentation.Tag.RECT.value: {"rect": lambda x: htpy.Element("rect")(**attrs(presentation.Tag.RECT.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.CIRCLE.value: {"circle": lambda x: htpy.Element("circle")(**attrs(presentation.Tag.CIRCLE.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.PATH.value: {"path": lambda x: htpy.Element("path")(**attrs(presentation.Tag.PATH.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.TEXT_SVG.value: {"text_svg": lambda x: htpy.Element("text")(**attrs(presentation.Tag.TEXT_SVG.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.TSPAN.value: {"tspan": lambda x: htpy.Element("tspan")(**attrs(presentation.Tag.TSPAN.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.FILTER.value: {"filter": lambda x: htpy.Element("filter")(**attrs(presentation.Tag.FILTER.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.FE_GAUSSIAN_BLUR.value: {"fegaussianblur": lambda x: htpy.Element("feGaussianBlur")(**attrs(presentation.Tag.FE_GAUSSIAN_BLUR.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.FE_OFFSET.value: {"feoffset": lambda x: htpy.Element("feOffset")(**attrs(presentation.Tag.FE_OFFSET.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.FE_FLOOD.value: {"feflood": lambda x: htpy.Element("feFlood")(**attrs(presentation.Tag.FE_FLOOD.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.FE_COMPOSITE.value: {"fecomposite": lambda x: htpy.Element("feComposite")(**attrs(presentation.Tag.FE_COMPOSITE.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.FE_MERGE.value: {"femerge": lambda x: htpy.Element("feMerge")(**attrs(presentation.Tag.FE_MERGE.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.FE_MERGE_NODE.value: {"femergenode": lambda x: htpy.Element("feMergeNode")(**attrs(presentation.Tag.FE_MERGE_NODE.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.ANIMATE.value: {"animate": lambda x: htpy.Element("animate")(**attrs(presentation.Tag.ANIMATE.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.STOP.value: {"stop": lambda x: htpy.Element("stop")(**attrs(presentation.Tag.STOP.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
     def __init__(self,**constants):

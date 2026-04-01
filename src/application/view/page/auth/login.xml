@@ -1,26 +1,29 @@
 {% extends "free.xml" %}
 {% block main %}
-<Navigation type='app' style='background-color: red;'>
+<Navigation type='app' width="full" height="50px" justify='between' align='center' position='fixed' top='0px' background='#0B0E14/80'  matter='glass'>
     <Text>OMNIPORT</Text>
-    <Action type='button' id='test'>ciao</Action>
+    <Action type='button' background='#44a137' >ciao</Action>
+    <Divider thickness='1px' background='#000000ff' position='absolute' bottom='0px' />
 </Navigation>
-<Container>
-    <Text type='h1'>OMNIPORT: THE OPERATING SYSTEM FOR YOUR LOGIC</Text>
-    <Text type='h2'>Define the intent, choose the Port. The first Hexagonal framework built for the era of AI-driven development. </Text>
-    <Row>
+<Column padding="50px">
+    <Column justify='center' align='center'>
+        <Text type='h1' font='black' spacing='min'><Text>OMNIPORT: THE </Text><Text type='span' background='#2ff801,#568dff' >OPERATING SYSTEM</Text><Text> FOR YOUR LOGIC</Text></Text>
+        <Text type='h4'>Define the intent, choose the Port. The first Hexagonal framework built for the era of AI-driven development. </Text>
+    </Column>
+    <Row justify='center' align='center'>
         <Container>
             <Text>STARLETTE_WEB_PORT</Text>
         </Container>
-        <Container>
+        <Container max-width="450px" background='#373d49ff'>
             <Text type='h3'>// PROJECT.TOML</Text>
             <Text type='pre'>
 [project]
 name = "cloud.colosso"                                  # Nome del progetto
 version = "0.1.0"                                       # Versione dell'app
-description = "Un'app di esempio con OmniPort"          # Descrizione del progetto
+description = "A minimal sample app with OmniPort"          # Descrizione del progetto
 readme = "README.md"                                    # File di documentazione
 requires-python = ">=3.9"                               # Versione minima di Python richiesta
-key = "rSc4ExXBDvtKF03pHd8W3Kz5VfSW7z0ITQsAR46nELg"     # Chiave segreta dell'app
+key = "YOUR_SECURE_API_KEY_HERE"                        # Chiave segreta dell'app
 mode = "development"                                    # Modalita applicazione development/production
 
 [project.policy]
@@ -30,11 +33,11 @@ message = "log.toml"
 
 [message.backend]
 adapter = "redis"
-host = "redis-13976.c339.eu-west-3-1.ec2.cloud.redislabs.com"
+host = "your-cluster.redis.cache.amazonaws.com"
 port = "13976"
-database = "database-MJZMYZ6J"
+database = "production-db"
 username = "default"
-password = "3LkESG6clHa2hJj1zF8CabQlqU50O6zL"
+password = "********"
 
 [presentation.backend]
 adapter = "starlette"
@@ -46,10 +49,95 @@ port = "5000"
             </Text>
         </Container>
         <Container>
-            <Text type='h3'>GTK_DESKTOP_PORT</Text>
+            <svg width="600" height="400" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" class="omniport-ui-mockup shadow-xl">
+    
+    <defs>
+        <style type="text/css">
+            @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap');
+            
+            .window-frame { fill: #1e293b; stroke: #334155; stroke-width: 2; rx: 12px; }
+            .title-bar { fill: #0f172a; rx: 12px; }
+            .title-text { fill: #94a3b8; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: bold; }
+            
+            .terminal-bg { fill: #0b1120; rx: 8px; }
+            .text-prompt { fill: #4ade80; font-family: 'JetBrains Mono', monospace; font-size: 14px; }
+            .text-command { fill: #e2e8f0; font-family: 'JetBrains Mono', monospace; font-size: 14px; }
+            .text-comment { fill: #64748b; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-style: italic; }
+            .text-error { fill: #f87171; font-family: 'JetBrains Mono', monospace; font-size: 14px; }
+            
+            .btn-close { fill: #ef4444; }
+            .btn-min { fill: #fbbf24; }
+            .btn-max { fill: #22c55e; }
+        </style>
+        
+        <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="5"/>
+            <feOffset dx="0" dy="4" result="offsetblur"/>
+            <feFlood flood-color="#000000" flood-opacity="0.3"/>
+            <feComposite in2="offsetblur" operator="in"/>
+            <feMerge>
+                <feMergeNode/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+
+    <g filter="url(#shadow)">
+        <rect x="10" y="10" width="580" height="380" class="window-frame"/>
+        
+        <g>
+            <path d="M 10 22 C 10 16 16 10 22 10 L 578 10 C 584 10 590 16 590 22 L 590 45 L 10 45 Z" class="title-bar"/>
+            <text x="300" y="28" text-anchor="middle" class="title-text">OmniPort Terminal v0.1.0 :: colosso.toml</text>
+            
+            <circle cx="35" cy="27" r="6" class="btn-close"/>
+            <circle cx="55" cy="27" r="6" class="btn-min"/>
+            <circle cx="75" cy="27" r="6" class="btn-max"/>
+        </g>
+        
+        <g transform="translate(25, 60)">
+            <rect x="0" y="0" width="550" height="315" class="terminal-bg"/>
+            
+            <g transform="translate(15, 25)">
+                <text x="0" y="0">
+                    <tspan class="text-prompt">root@omniport:~$</tspan>
+                    <tspan dx="10" class="text-command">omni validate src/application</tspan>
+                </text>
+                
+                <text x="0" y="25" class="text-comment">
+                    # [OK] Hexagonal Core isolation verified.
+                </text>
+                
+                <text x="0" y="45" class="text-prompt">
+                    # [OK] Zero Logic Duplication rule passed.
+                </text>
+                
+                <text x="0" y="80">
+                    <tspan class="text-prompt">root@omniport:~$</tspan>
+                    <tspan dx="10" class="text-command">omni deploy --port=starlette_web</tspan>
+                </text>
+                
+                <text x="0" y="105" class="text-error">
+                    ! [ERROR] Persistence Port call failed:
+                </text>
+                <text x="20" y="125" class="text-error">
+                    redis.toml configuration missing credentials.
+                </text>
+                
+                <text x="0" y="160">
+                    <tspan class="text-prompt">root@omniport:~$</tspan>
+                    <tspan dx="10" class="text-command">_</tspan>
+                </text>
+                
+                <rect x="153" y="147" width="8" height="15" fill="#4ade80" opacity="0.8">
+                    <animate attributeName="opacity" values="0.8;0;0.8" dur="1s" repeatCount="indefinite" />
+                </rect>
+            </g>
+        </g>
+    </g>
+</svg>
         </Container>
     </Row>
-</Container>
+</Column>
 <Container>
     <Container>
         <Text type='h3'>_ARCHITECTURE_OVERVIEW</Text>
@@ -94,7 +182,7 @@ port = "5000"
     </Column>
 </Container>
 
-<Text type='p'>Paragrafo</Text>
+<!-- <Text type='p'>Paragrafo</Text>
 <Text type='span'>Span</Text>
 <Text type='code'>a == b</Text>
 <Text type='pre'>Pre</Text>
@@ -124,9 +212,9 @@ port = "5000"
         <Input type='password' name='test' placeholder='test'/>
     </Group>
 </Action>
-<Group type='button'>
+<Group type='action'>
     <Action type='button'>Button1</Action>
     <Action type='button'>Button2</Action>
     <Action type='button'>Button3</Action>
-</Group>
+</Group> -->
 {% endblock %}
