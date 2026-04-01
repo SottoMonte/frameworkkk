@@ -51,6 +51,8 @@ class Tag(Enum):
     FE_MERGE_NODE = "femergenode"
     ANIMATE = "animate"
     STOP = "stop"
+    LINEAR_GRADIENT = "lineargradient"
+    RADIAL_GRADIENT = "radialgradient"
     RESOURCE = "resource"
 
 class Attribute(Enum):
@@ -139,6 +141,10 @@ class Attribute(Enum):
     FONT_STYLE = "font-style"
     ATTRIBUTE_NAME = "attributeName"
     VALUES = "values"
+    X1 = "x1"
+    Y1 = "y1"
+    X2 = "x2"
+    Y2 = "y2"
     DUR = "dur"
     REPEAT_COUNT = "repeatCount"
     OPACITY = "opacity"
@@ -178,7 +184,7 @@ _SVG_ATTRIBUTES = {a.value: a.value for a in [
     Attribute.FLOOD_COLOR, Attribute.FLOOD_OPACITY, Attribute.TEXT_ANCHOR, Attribute.FONT_FAMILY, Attribute.FONT_SIZE,
     Attribute.FONT_WEIGHT, Attribute.FONT_STYLE, Attribute.ATTRIBUTE_NAME, Attribute.VALUES, Attribute.DUR,
     Attribute.REPEAT_COUNT, Attribute.OPACITY, Attribute.POINTS, Attribute.OFFSET, Attribute.STOP_COLOR, Attribute.STOP_OPACITY,
-    Attribute.WIDTH, Attribute.HEIGHT
+    Attribute.WIDTH, Attribute.HEIGHT, Attribute.X1, Attribute.Y1, Attribute.X2, Attribute.Y2
 ]}
 
 _ATTRIBUTES_SCHEMA |= {
@@ -200,6 +206,8 @@ _ATTRIBUTES_SCHEMA |= {
     Tag.FE_MERGE_NODE.value: _SVG_ATTRIBUTES,
     Tag.ANIMATE.value: _SVG_ATTRIBUTES,
     Tag.STOP.value: _SVG_ATTRIBUTES,
+    Tag.LINEAR_GRADIENT.value: _SVG_ATTRIBUTES,
+    Tag.RADIAL_GRADIENT.value: _SVG_ATTRIBUTES,
 }
 
 
