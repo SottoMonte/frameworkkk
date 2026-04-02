@@ -103,7 +103,6 @@ class Attribute(Enum):
     PADDING = "padding"
     MARGIN = "margin"
     EXPAND = "expand"
-    CSS = "css"
     MATTER = "matter"
     POINTER = "pointer"
     THICKNESS = "thickness"
@@ -159,13 +158,13 @@ class Attribute(Enum):
     STOP_OPACITY = "stop-opacity"
     
 
-_IDENTITY = {a.value: a.value for a in [Attribute.ID, Attribute.CLASS, Attribute.CSS]}
+_IDENTITY = {a.value: a.value for a in [Attribute.ID, Attribute.CLASS]}
 _MEDIA = {**_IDENTITY, **{a.value: a.value for a in [Attribute.SRC, Attribute.WIDTH, Attribute.HEIGHT, Attribute.ALT]}}
 _FIELD = {**_IDENTITY, **{a.value: a.value for a in [Attribute.NAME, Attribute.VALUE, Attribute.PLACEHOLDER, Attribute.REQUIRED, Attribute.DISABLED, Attribute.READONLY, Attribute.MAX, Attribute.MIN, Attribute.MULTIPLE, Attribute.TYPE]}}
 _MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [Attribute.CONTROLS, Attribute.AUTOPLAY, Attribute.LOOP, Attribute.MUTED]}}
 _LAYOUT = {**_IDENTITY, **{a.value: a.value for a in [Attribute.WIDTH,Attribute.MAX_WIDTH, Attribute.MIN_WIDTH, Attribute.HEIGHT, Attribute.MAX_HEIGHT, Attribute.MIN_HEIGHT, Attribute.PADDING, Attribute.MARGIN, Attribute.EXPAND, Attribute.SPACING, Attribute.OVERFLOW]}}
 _LOCATION = {**_IDENTITY, **{a.value: a.value for a in [Attribute.JUSTIFY, Attribute.ALIGN, Attribute.POSITION, Attribute.TOP, Attribute.BOTTOM, Attribute.LEFT, Attribute.RIGHT]}}
-_STYLE = {**_IDENTITY, **{a.value: a.value for a in [Attribute.BACKGROUND, Attribute.MATTER, Attribute.COLOR, Attribute.BORDER, Attribute.RADIUS, Attribute.SHADOW, Attribute.THICKNESS]}}
+_STYLE = {**_IDENTITY, **{a.value: a.value for a in [Attribute.BACKGROUND, Attribute.MATTER, Attribute.COLOR, Attribute.BORDER, Attribute.RADIUS, Attribute.SHADOW, Attribute.THICKNESS, Attribute.STYLE]}}
 _TYPOGRAPHY = {**_LAYOUT, **{a.value: a.value for a in [Attribute.SIZE, Attribute.WEIGHT, Attribute.UPPERCASE, Attribute.LOWERCASE, Attribute.TRUNCATE, Attribute.FONT, Attribute.ALIGN]}}
 
 _ATTRIBUTES_SCHEMA = {
