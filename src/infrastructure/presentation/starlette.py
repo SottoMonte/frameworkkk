@@ -93,15 +93,29 @@ mapping_attributes = {
         True:f"min-w-[{x}]"
     }.get(True if '%' in x or 'px' in x else x, ""),
     presentation.Attribute.PADDING.value: lambda x: {
-        True:f"p-[{x}]"
-    }.get(True if '%' in x or 'px' in x else x, ""),
+        False:f"p-[{x}]",
+        True:" ".join(f"{p}-[{v}]" for p, v in zip(['pt','pb','pl','pr'] if len(x.split(',')) > 2 else ['py', 'px'], x.split(',')))
+    }.get(True if ',' in x else False, ""),
     presentation.Attribute.MARGIN.value: lambda x: {
-        True:f"m-[{x}]"
-    }.get(True if '%' in x or 'px' in x else x, ""),
+        False:f"m-[{x}]",
+        True:" ".join(f"{p}-[{v}]" for p, v in zip(['mt','mb','ml','mr'] if len(x.split(',')) > 2 else ['my', 'mx'], x.split(',')))
+    }.get(True if ',' in x else False, ""),
     presentation.Attribute.EXPAND.value: lambda x: {
         "true":"flex-1",
         "false":""
     }.get(x, "false"),
+    presentation.Attribute.COLOR.value: lambda x: {
+        "primary":"text-primary",
+        "secondary":"text-secondary",
+        "success":"text-success",
+        "danger":"text-danger",
+        "warning":"text-warning",
+        "info":"text-info",
+        "light":"text-light",
+        "dark":"text-dark",
+        True:f"text-[{x}]"
+    }.get(True if '#' in x else x, ""),
+    "color.border": lambda x: f"border-[{x}]" if '#' in x else "",
     presentation.Attribute.SPACING.value: lambda x: {
         True:f"gap-[{x}]"
     }.get(True if '%' in x or 'px' in x else False, ""),
@@ -135,9 +149,9 @@ mapping_attributes = {
     }.get(x, ""),
     presentation.Attribute.BORDER.value: lambda x: {
         "none":"border-none",
-        "subtle":"border",
-        True:f"border-[{x}]"
-    }.get(True if x.isdigit() else x, ""),
+        False:f"border-[{x}]",
+        True:" ".join(f"{p}-[{v}]" for p, v in zip(['border-t','border-b','border-l','border-r'] if len(x.split(',')) > 2 else ['border-y', 'border-x'], x.split(',')))
+    }.get(True if ',' in x else False, ""),
     presentation.Attribute.SHADOW.value: lambda x: {
         "none":"shadow-none",
         "min":"shadow-sm",
@@ -199,7 +213,8 @@ mapping_attributes = {
         "medium":"text-base",
         "large":"text-lg",
         "max":"text-xl",
-    }.get(x, ""),
+        True:f"text-[{x}]"
+    }.get(True if '%' in x or 'px' in x or 'em' in x else x, ""),
     presentation.Attribute.UPPERCASE.value: lambda x: {
         "true":"uppercase",
         "false":""
@@ -217,8 +232,14 @@ mapping_attributes = {
         "min":"tracking-tighter",
         "normal":"tracking-normal",
         "max":"tracking-wide",
+        True:f"tracking-[{x}]"
+    }.get(True if '%' in x or 'px' in x or 'em' in x else x, ""),
+    "height.text": lambda x: f"leading-[{x}]", 
+    "align.text": lambda x: {
+        "left":"text-left",
+        "center":"text-center",
+        "right":"text-right",
     }.get(x, ""),
-    "height.text": lambda x: f"leading-[{x}]",    
 }
 
 def attrs(tag_key, input_data, classe=None):
@@ -229,8 +250,11 @@ def attrs(tag_key, input_data, classe=None):
     
     classe = raw_attrs.get("class", "")
 
-    if any(attr in raw_attrs for attr in [presentation.Attribute.JUSTIFY.value, presentation.Attribute.ALIGN.value]) or tag_key in [presentation.Tag.ROW.value, presentation.Tag.COLUMN.value]:
+    if tag_key not in [presentation.Tag.TEXT.value] and (any(attr in raw_attrs for attr in [presentation.Attribute.JUSTIFY.value, presentation.Attribute.ALIGN.value]) or tag_key in [presentation.Tag.ROW.value, presentation.Tag.COLUMN.value]):
         classe += " flex"
+
+    if presentation.Attribute.COLOR.value in raw_attrs and presentation.Attribute.BORDER.value in raw_attrs:
+        raw_attrs["color.border"] = raw_attrs[presentation.Attribute.COLOR.value]
 
     if presentation.Attribute.THICKNESS.value in raw_attrs and tag_key == presentation.Tag.DIVIDER.value:
         tipo = raw_attrs.get(presentation.Attribute.TYPE.value, "horizontal")
@@ -248,13 +272,18 @@ def attrs(tag_key, input_data, classe=None):
         raw_attrs["height.text"] = raw_attrs[presentation.Attribute.HEIGHT.value]
         raw_attrs.pop(presentation.Attribute.HEIGHT.value)
 
+    if presentation.Attribute.ALIGN.value in raw_attrs and tag_key == presentation.Tag.TEXT.value:
+        raw_attrs["align.text"] = raw_attrs[presentation.Attribute.ALIGN.value]
+        raw_attrs.pop(presentation.Attribute.ALIGN.value)
+
     is_svg = tag_key in [
         presentation.Tag.SVG.value, presentation.Tag.G.value, presentation.Tag.DEFS.value, presentation.Tag.RECT.value,
         presentation.Tag.CIRCLE.value, presentation.Tag.PATH.value, presentation.Tag.TEXT_SVG.value, presentation.Tag.TSPAN.value,
         presentation.Tag.STYLE_SVG.value, presentation.Tag.FILTER.value, presentation.Tag.FE_GAUSSIAN_BLUR.value,
         presentation.Tag.FE_OFFSET.value, presentation.Tag.FE_FLOOD.value, presentation.Tag.FE_COMPOSITE.value,
         presentation.Tag.FE_MERGE.value, presentation.Tag.FE_MERGE_NODE.value, presentation.Tag.ANIMATE.value,
-        presentation.Tag.STOP.value, presentation.Tag.POLYGON.value
+        presentation.Tag.STOP.value, presentation.Tag.POLYGON.value, presentation.Tag.LINE.value,
+        presentation.Tag.FE_DROP_SHADOW.value
     ]
 
     for attr in list(raw_attrs.keys()):
@@ -317,7 +346,7 @@ class Adapter(presentation.port):
             "embed": lambda x: htpy.div(**attrs("embed", x))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.TEXT.value: {
-            "text": lambda x: htpy.span(**attrs("text", x,""))[[Markup(i) for i in x['inner']]],
+            "text": lambda x: htpy.span(**attrs("text", x,"text-xs"))[[Markup(i) for i in x['inner']]],
             "input": lambda x: htpy.span(**attrs("input", x, 'input-group-text'))[[Markup(i) for i in x['inner']]],
             "h1": lambda x: htpy.h1(**attrs("text", x, "text-6xl"))[[Markup(i) for i in x['inner']]],
             "h2": lambda x: htpy.h2(**attrs("text", x, "text-5xl"))[[Markup(i) for i in x['inner']]],
@@ -439,6 +468,8 @@ class Adapter(presentation.port):
         presentation.Tag.LINEAR_GRADIENT.value: {"lineargradient": lambda x: htpy.Element("linearGradient")(**attrs(presentation.Tag.LINEAR_GRADIENT.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.RADIAL_GRADIENT.value: {"radialgradient": lambda x: htpy.Element("radialGradient")(**attrs(presentation.Tag.RADIAL_GRADIENT.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.POLYGON.value: {"polygon": lambda x: htpy.Element("polygon")(**attrs(presentation.Tag.POLYGON.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.LINE.value: {"line": lambda x: htpy.Element("line")(**attrs(presentation.Tag.LINE.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.FE_DROP_SHADOW.value: {"fedropshadow": lambda x: htpy.Element("feDropShadow")(**attrs(presentation.Tag.FE_DROP_SHADOW.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
     def __init__(self,**constants):
