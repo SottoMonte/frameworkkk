@@ -104,6 +104,14 @@ mapping_attributes = {
         "true":"flex-1",
         "false":""
     }.get(x, "false"),
+    presentation.Attribute.OVERFLOW.value: lambda x: {
+        "auto":"overflow-auto",
+        "hidden":"overflow-hidden",
+        "visible":"overflow-visible",
+        "scroll":"overflow-scroll",
+        "clip":"overflow-clip",
+        "none":"overflow-hidden",
+    }.get(x, ""),
     presentation.Attribute.COLOR.value: lambda x: {
         "primary":"text-primary",
         "secondary":"text-secondary",
@@ -250,7 +258,7 @@ def attrs(tag_key, input_data, classe=None):
     
     classe = raw_attrs.get("class", "")
 
-    if tag_key not in [presentation.Tag.TEXT.value] and (any(attr in raw_attrs for attr in [presentation.Attribute.JUSTIFY.value, presentation.Attribute.ALIGN.value]) or tag_key in [presentation.Tag.ROW.value, presentation.Tag.COLUMN.value]):
+    if tag_key not in [presentation.Tag.TEXT.value] and (any(attr in raw_attrs for attr in [presentation.Attribute.JUSTIFY.value, presentation.Attribute.ALIGN.value,presentation.Attribute.EXPAND.value,presentation.Attribute.SPACING.value]) or tag_key in [presentation.Tag.ROW.value, presentation.Tag.COLUMN.value]):
         classe += " flex"
 
     if presentation.Attribute.COLOR.value in raw_attrs and presentation.Attribute.BORDER.value in raw_attrs:
@@ -440,7 +448,7 @@ class Adapter(presentation.port):
             "input": lambda x: htpy.div(**attrs("input", x,'input-group'))[[Markup(i) for i in x['inner']]],
             "action": lambda x: htpy.div(**attrs("button", x,'btn-group'))[[Markup(i) for i in x['inner']]],
             "card": lambda x: htpy.div(**attrs("card", x,'card-group'))[[Markup(i) for i in x['inner']]],
-            "list": lambda x: htpy.ul(**attrs("list", x,'list-group'))[[Markup(htpy.li('.list-group-item')[i]) for i in x['inner']]],
+            "list": lambda x: htpy.ul(**attrs("group", x,'flex-col'))[[Markup(htpy.li[i]) for i in x['inner']]],
             "tab": lambda x: htpy.ul(**attrs("tab", x,'nav-tabs'))[[Markup(htpy.li('.nav-item')[i]) for i in x['inner']]],
             "dropdown": lambda x: htpy.div(**attrs("dropdown", x,'dropdown'))[[Markup(i) for i in x['inner']]],
         },

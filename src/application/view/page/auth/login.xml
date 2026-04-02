@@ -5,7 +5,7 @@
         <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" height="100%">
             <circle cx="250" cy="250" r="80" stroke="#568dff" stroke-width="25" fill="none" />
             
-            <g stroke="#000000ff" stroke-width="8" stroke-linecap="round">
+            <g stroke="#666666" stroke-width="8" stroke-linecap="round">
                 <line x1="250" y1="50" x2="250" y2="130" />
                 <path d="M235 115 L250 130 L265 115" fill="none" />
                 
@@ -24,7 +24,7 @@
                 <line x1="100" y1="400" x2="160" y2="340" />
             </g>
         </svg>
-        <Text type="h5" font="bold" spacing="min" uppercase="true">Omni:domain</Text>
+        <Text type="h5" font="bold" spacing="min" color="#666666" uppercase="true">Omni:domain</Text>
     </Row>
     <Action type='button' background='#568dff' ><Text font='bold'>TRY_NOW</Text></Action>
     <Divider thickness='1px' max-width='99%' background='#000000ff' position='absolute' left='0.5%' right='0.5%' bottom='0px' />
@@ -82,10 +82,9 @@
                     <rect x="21" y="21" width="758" height="508" rx="11" class="border-highlight" pointer-events="none"/>
                 </g>
             </svg>
-
         </Container>
         <Container width="1/3" >
-            <svg width="600" height="780" viewBox="0 0 600 780" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 600 780" xmlns="http://www.w3.org/2000/svg">
                 <rect width="100%" height="100%" rx="12" fill="#1e1e1e" />
                 
                 <rect width="100%" height="35" rx="12" fill="#333333" />
@@ -129,13 +128,14 @@
             </svg>
         </Container>
         <Container width="1/3">
-            <svg viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg" class="omniport-gui-mockup" style="width: 100%; height: auto; display: block;">
+            <svg viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg" class="browser-mockup" style="width: 100%; height: auto; display: block; border-radius: 12px;">
                 <defs>
                     <style type="text/css">
                         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;display=swap');
                         
                         .window-frame { fill: #1e293b; }
                         .title-bar { fill: #0f172a; }
+                        .content-bg { fill: #0b1120; }
                         .title-text { fill: #94a3b8; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
                         
                         /* Window Buttons */
@@ -143,8 +143,9 @@
                         .btn-min { fill: #ffbd2e; }
                         .btn-max { fill: #27c93f; }
                         
-                        /* Glossy effect on top border */
-                        .border-highlight { fill: none; stroke: rgba(255,255,255,0.1); stroke-width: 1; }
+                        .border-highlight { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 1; }
+                        .address-bar { fill: #1e293b; rx: 6; }
+                        .address-text { fill: #64748b; font-family: 'Inter', sans-serif; font-size: 12px; }
                     </style>
                     
                     <filter id="shadow-lg" x="-10%" y="-10%" width="140%" height="140%">
@@ -162,15 +163,18 @@
                 <g filter="url(#shadow-lg)">
                     <rect x="20" y="20" width="760" height="510" rx="12" class="window-frame" stroke="#334155" stroke-width="1"/>
                     
-                    <path d="M20 32C20 25.3726 25.3726 20 32 20H768C774.627 20 780 25.3726 780 32V60H20V32Z" class="title-bar"/>
+                    <path d="M20 32C20 25.3726 25.3726 20 32 20H768C774.627 20 780 25.3726 780 32V65H20V32Z" class="title-bar"/>
                     
-                    <path d="M20 60H780V518C780 524.627 774.627 530 768 530H32C25.3726 530 20 524.627 20 518V60Z" fill="#0b1120" />
+                    <path d="M20 65H780V518C780 524.627 774.627 530 768 530H32C25.3726 530 20 524.627 20 518V65Z" class="content-bg" />
 
-                    <text x="400" y="46" text-anchor="middle" class="title-text">OmniPort IDE v0.1.0 — colosso.toml</text>
+                    <circle cx="45" cy="42" r="6" class="btn-close"/>
+                    <circle cx="65" cy="42" r="6" class="btn-min"/>
+                    <circle cx="85" cy="42" r="6" class="btn-max"/>
+
+                    <rect x="110" y="32" width="580" height="22" rx="6" class="address-bar" />
+                    <text x="400" y="47" text-anchor="middle" class="title-text">browser-mockup — colosso.dev</text>
                     
-                    <circle cx="45" cy="40" r="6" class="btn-close"/>
-                    <circle cx="65" cy="40" r="6" class="btn-min"/>
-                    <circle cx="85" cy="40" r="6" class="btn-max"/>
+                    <line x1="20" y1="65" x2="780" y2="65" stroke="#334155" stroke-width="1" />
 
                     <rect x="21" y="21" width="758" height="508" rx="11" class="border-highlight" pointer-events="none"/>
                 </g>
@@ -270,63 +274,172 @@
         </svg>
     </Container>
 </Row>
-<Container>
-    <Column>
-        <Container>
-            <Text type="h1" >MVA > MVC</Text>
-            <Text>[MODEL_VIEW_ACTION]</Text>
-            <Divider/>
-            <Text type="h1" >AI-OPTIMIZED ATOMICS</Text>
-            <Text>Actions are single-purpose functions. AI models (LLMs) excel at writing specific actions with 100% test coverage, unlike monolithic controllers.</Text>
-            <Text type="h1">VIBECODING READY</Text>
-            <Text>Iterate on the "Vibe" of your UI while the Core remains immutable. Your logic is a set of deterministic assets, not technical debt.</Text>
+<Row  margin="50px,0,5%,5%" background="#111111">
+    <Container width="40%">
+        <Container background="#1d2026" border="1px" color="#424655">
+            <Container color="#424655" border="0,1px,0,0" height="25px" background="#272a31" align="center" justify="between" padding="7px" >
+                <svg height="100%" viewBox="0 0 42 10" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="5" cy="5" r="5" fill="#ef4444" fill-opacity="0.4" />
+                    <circle cx="21" cy="5" r="5" fill="#eeee22ff" fill-opacity="0.4" />
+                    <circle cx="37" cy="5" r="5" fill="#64f63bff" fill-opacity="0.4" />
+                </svg>
+                <Text uppercase='true' font='mono'>src/application/controller/domain.dsl</Text>
+            </Container>
+            <Container overflow="auto">
+                <Text type='pre' padding="32px">
+any:extension := "py";
+imports: {
+    'factory':resource("src/framework/service/factory." + extension);
+};
+exports: {
+    'repository': imports.factory.repository;
+};
+type:schema := {
+    "id":          { "type": "integer"; "default": 0; "force_type": "string"; };
+    "name":        { "type": "string"; "required": true; "regex": "^[\\w\\-]+$"; };
+    "branch":      { "type": "string"; "default": "main"; "regex": "^[\\w\\-]+$"; };
+    "description": { "type": "string"; "default": ""; "regex": "^[\\w\\s\\-]+$"; };
+    "visibility":  { "type": "boolean"; "default": false; };
+};
+
+// TEST SUITE EXAMPLE
+tuple:test_suite := (
+    { 
+        "action": repository.can_format;
+        "inputs": {"template": "repos/{{owner}}/{{name}}"; "data": {"owner": "SottoMonte"; "name": "framework"}};
+        "outputs": (true, 2);
+        "assert": @received.outputs == @expected;
+        "note": "Verify if template with 2 placeholders is resolvable"; 
+    }
+);
+                </Text>
+            </Container>
         </Container>
-        <Container>
-            <Text type="h5" ># src/application/actions/create_user.py</Text>
-            <Text type="code">class CreateUserAction:
-                def execute(self, data: UserSchema) -> User:
-                    user = User.initialize(data)
-                    # Persistence Port call
-                    self.repo.save(user)
-                    return user
+        
+    </Container>
+    <Column width="20%" align="left" justify="center" margin="5%">
+        <Text color='#d7ffc5' uppercase='true' spacing='0.3em' font='mono' margin='15px,0'>_APPLICATION_LAYER</Text>
+        <Text type='h3' color='#cccccc' font='extrabold' spacing='min' uppercase='true' margin='0,20px,0,0'>THE DOMAIN LANGUAGE</Text>
+        <Text type='p' color='#cccccc' margin='0,15px,0,0'>OmniPort features a custom DSL specifically architected for writing pure domain logic within src/application. </Text>
+        <Group type='list' spacing='5px'>
+            <Row spacing='5px' color='#cccccc'>
+                <Icon type='bi' name="bi-terminal" color='#b0c6ff' />
+                <Text type='p' font='mono' spacing='min'>Declarative Schemas: Define entities with rigorous type safety and regex validation.</Text>
+            </Row>
+            <Row spacing='5px' color='#cccccc'>
+                <Icon type='bi' name="bi-check-circle" color='#b0c6ff' />
+                <Text type='p' font='mono' spacing='min'>Native test suites with declarative assertions at the logic level.</Text>
+            </Row>
+            <Row spacing='5px' color='#cccccc'>
+                <Icon type='bi' name="bi-layers" color='#b0c6ff' />
+                <Text type='p' font='mono' spacing='min'>Dual-Contract Decoupling: Core logic and UI are strictly separated into independent declarative files — DSL for domain logic and XML for presentation.</Text>
+            </Row>
+        </Group>
+    </Column>
+    <Container width="40%">
+        <Container background="#1d2026" border="1px" height="100%" color="#424655">
+            <Container color="#424655" border="0,1px,0,0" height="25px" background="#272a31" align="center" justify="between" padding="7px" >
+                <svg height="100%" viewBox="0 0 42 10" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="5" cy="5" r="5" fill="#ef4444" fill-opacity="0.4" />
+                    <circle cx="21" cy="5" r="5" fill="#eeee22ff" fill-opacity="0.4" />
+                    <circle cx="37" cy="5" r="5" fill="#64f63bff" fill-opacity="0.4" />
+                </svg>
+                <Text uppercase='true' font='mono'>src/application/view/page/index.xml</Text>
+            </Container>
+            <Container overflow="auto" >
+                <Text  type='h1' padding="32px" color="#fff">
+                    ciao
+                </Text>
+            </Container>
+        </Container>
+        
+    </Container>
+</Row>
+<Column background="#191c22" padding="10%" margin="50px,0,0,0" align="center" justify="center">
+    <Text type='h4' font='black' color='#fff' uppercase='true'>INSIDE THE SRC</Text>
+    <Text type='p' font='mono' color='#fff' uppercase='true'>THE ANATOMY OF A PURE LOGIC SYSTEM</Text>
+    <Row spacing='25px'>
+        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#2b2f37">
+            <Text type='h6' font='bold' color='#fff' uppercase='true'>src/application</Text>
+            <Group type='list' spacing='5px'>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>controller/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>model/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>view/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>policy/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>repository/</Text>
+                </Row>
+            </Group>
+        </Container>
+        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#1d3341">
+            <Text type='h6' font='bold' color='#fff' uppercase='true'>src/infrastructure</Text>
+            <Group type='list' spacing='5px'>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>presentation/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>persistence/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>message/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>actuation/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>authentication/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>authorization/</Text>
+                </Row>
+            </Group>
+        </Container>
+        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#3a3321">
+            <Text type='h6' font='bold' color='#fff' uppercase='true'>public/</Text>
+            <Group type='list' spacing='5px'>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>fonts/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>images/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>scripts/</Text>
+                </Row>
+                <Row spacing='5px' color='#cccccc'>
+                    <Icon type='bi' name="bi-plus-square" color='#b0c6ff' />
+                    <Text type='p' font='mono' spacing='min'>styles/</Text>
+                </Row>
+            </Group>
+        </Container>
+        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#243d3c">
+            <Text type='h6' font='bold' color='#fff' uppercase='true'>project.toml</Text>
+            <Text type='p' font='mono' color='#cccccc'>
+                Global orchestration file. Switch adapters with a single string change. No migration pain.
             </Text>
         </Container>
-    </Column>
-</Container>
-
-<!-- <Text type='p'>Paragrafo</Text>
-<Text type='span'>Span</Text>
-<Text type='code'>a == b</Text>
-<Text type='pre'>Pre</Text>
-<Divider type='vertical'/>
-<Input type='text' name='test' placeholder='test'/>
-<Input type='password' name='test' placeholder='test'/>
-<Input type='email' name='test' placeholder='test'/>
-<Input type='number' name='test' placeholder='test'/>
-<Input type='search' name='test' placeholder='test'/>
-<Input type='url' name='test' placeholder='test'/>
-<Input type='tel' name='test' placeholder='test'/>
-<Input type='date' name='test' placeholder='test'/>
-<Input type='time' name='test' placeholder='test'/>
-<Input type='week' name='test' placeholder='test'/>
-<Input type='month' name='test' placeholder='test'/>
-<Input type='color' name='test' placeholder='test'/>
-<Input type='file' name='test' placeholder='test'/>
-<Input type='hidden' name='test' placeholder='test'/>
-<Media height='100px' width='100px' type='img' src='https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_120x44dp.png'/>
-<Media height='100px' width='200px' type='video' src='https://www.w3schools.com/html/mov_bbb.mp4'/>
-<Icon type='bi' name='bi-alarm' size='50px'/>
-<Action type="form" action="/login" method="post">
-    <Group type='input'>
-        <Text type='input'>Username</Text>
-        <Input type='text' name='test' placeholder='test'/>
-        <Text type='input'>Password</Text>
-        <Input type='password' name='test' placeholder='test'/>
-    </Group>
-</Action>
-<Group type='action'>
-    <Action type='button'>Button1</Action>
-    <Action type='button'>Button2</Action>
-    <Action type='button'>Button3</Action>
-</Group> -->
+    </Row>
+</Column>
 {% endblock %}

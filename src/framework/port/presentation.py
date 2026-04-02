@@ -111,6 +111,7 @@ class Attribute(Enum):
     BOTTOM = "bottom"
     LEFT = "left"
     RIGHT = "right"
+    OVERFLOW = "overflow"
     UPPERCASE = "uppercase"
     LOWERCASE = "lowercase"
     TRUNCATE = "truncate"
@@ -162,7 +163,7 @@ _IDENTITY = {a.value: a.value for a in [Attribute.ID, Attribute.CLASS, Attribute
 _MEDIA = {**_IDENTITY, **{a.value: a.value for a in [Attribute.SRC, Attribute.WIDTH, Attribute.HEIGHT, Attribute.ALT]}}
 _FIELD = {**_IDENTITY, **{a.value: a.value for a in [Attribute.NAME, Attribute.VALUE, Attribute.PLACEHOLDER, Attribute.REQUIRED, Attribute.DISABLED, Attribute.READONLY, Attribute.MAX, Attribute.MIN, Attribute.MULTIPLE, Attribute.TYPE]}}
 _MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [Attribute.CONTROLS, Attribute.AUTOPLAY, Attribute.LOOP, Attribute.MUTED]}}
-_LAYOUT = {**_IDENTITY, **{a.value: a.value for a in [Attribute.WIDTH,Attribute.MAX_WIDTH, Attribute.MIN_WIDTH, Attribute.HEIGHT, Attribute.MAX_HEIGHT, Attribute.MIN_HEIGHT, Attribute.PADDING, Attribute.MARGIN, Attribute.EXPAND, Attribute.SPACING]}}
+_LAYOUT = {**_IDENTITY, **{a.value: a.value for a in [Attribute.WIDTH,Attribute.MAX_WIDTH, Attribute.MIN_WIDTH, Attribute.HEIGHT, Attribute.MAX_HEIGHT, Attribute.MIN_HEIGHT, Attribute.PADDING, Attribute.MARGIN, Attribute.EXPAND, Attribute.SPACING, Attribute.OVERFLOW]}}
 _LOCATION = {**_IDENTITY, **{a.value: a.value for a in [Attribute.JUSTIFY, Attribute.ALIGN, Attribute.POSITION, Attribute.TOP, Attribute.BOTTOM, Attribute.LEFT, Attribute.RIGHT]}}
 _STYLE = {**_IDENTITY, **{a.value: a.value for a in [Attribute.BACKGROUND, Attribute.MATTER, Attribute.COLOR, Attribute.BORDER, Attribute.RADIUS, Attribute.SHADOW, Attribute.THICKNESS]}}
 _TYPOGRAPHY = {**_LAYOUT, **{a.value: a.value for a in [Attribute.SIZE, Attribute.WEIGHT, Attribute.UPPERCASE, Attribute.LOWERCASE, Attribute.TRUNCATE, Attribute.FONT, Attribute.ALIGN]}}
@@ -178,7 +179,11 @@ _ATTRIBUTES_SCHEMA = {
     Tag.COLUMN.value: _LAYOUT | _LOCATION | _STYLE, 
     Tag.STACK.value: _LAYOUT | _LOCATION | _STYLE, 
     Tag.DIVIDER.value: _LOCATION | _LAYOUT | _STYLE | {Attribute.THICKNESS.value:"thickness"},
-    Tag.ICON.value: _IDENTITY | {Attribute.NAME.value:"class", Attribute.SIZE.value:"size"},
+    Tag.ICON.value: _IDENTITY | {Attribute.NAME.value:"class", Attribute.SIZE.value:"size", Attribute.COLOR.value:"color"},
+    Tag.GROUP.value: _IDENTITY | _LAYOUT | _LOCATION | _STYLE,
+    Tag.ACCORDION.value: _IDENTITY | _LAYOUT | _STYLE,
+    Tag.MEDIA.value: _IDENTITY | _MEDIA | _STYLE | _LAYOUT,
+    Tag.CARD.value: _IDENTITY | _LAYOUT | _STYLE,
 }
 
 _SVG_ATTRIBUTES = {a.value: a.value for a in [
@@ -311,7 +316,7 @@ class port(ABC):
         tipo = attrs.get("type") or tag
         elemento = self.tags[tag].get(tipo) or self.tags[tag].get(tag)
         if elemento is None: raise Exception(f"Tipo {tipo} non trovato in {tag}")
-        schema = _ATTRIBUTES_SCHEMA.get(tag)
+        schema = _ATTRIBUTES_SCHEMA.get(tag) or {}
         new_attrs = {}
         for attr in attrs:
             if attr not in schema: 
