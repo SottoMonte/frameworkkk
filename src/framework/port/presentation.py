@@ -34,6 +34,7 @@ class Tag(Enum):
     ICON = "icon"
     ACCORDION = "accordion"
     SVG = "svg"
+    CANVAS = "canvas"
     G = "g"
     DEFS = "defs"
     RECT = "rect"
@@ -183,6 +184,7 @@ _ATTRIBUTES_SCHEMA = {
     Tag.ACCORDION.value: _IDENTITY | _LAYOUT | _STYLE,
     Tag.MEDIA.value: _IDENTITY | _MEDIA | _STYLE | _LAYOUT,
     Tag.CARD.value: _IDENTITY | _LAYOUT | _STYLE,
+    Tag.CANVAS.value: _IDENTITY | _LAYOUT | _STYLE | _LOCATION,
 }
 
 _SVG_ATTRIBUTES = {a.value: a.value for a in [

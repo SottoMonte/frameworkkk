@@ -328,6 +328,7 @@ class Adapter(presentation.port):
                 htpy.body(**attrs(presentation.Tag.WINDOW.value, x))[
                     [Markup(i) for i in x['inner']],
                     #htpy.script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+                    htpy.script(src="static/js/grid.js")
                 ]
             ],
             "dialog": lambda x: htpy.div(class_="modal fade", id=x.get("attrs", {}).get("id", "myModal"), tabindex="-1", aria_hidden="true")[
@@ -451,6 +452,9 @@ class Adapter(presentation.port):
             "list": lambda x: htpy.ul(**attrs("group", x,'flex-col'))[[Markup(htpy.li[i]) for i in x['inner']]],
             "tab": lambda x: htpy.ul(**attrs("tab", x,'nav-tabs'))[[Markup(htpy.li('.nav-item')[i]) for i in x['inner']]],
             "dropdown": lambda x: htpy.div(**attrs("dropdown", x,'dropdown'))[[Markup(i) for i in x['inner']]],
+        },
+        presentation.Tag.CANVAS.value: {
+            "canvas": lambda x: htpy.canvas(**attrs("canvas", x))[[Markup(i) for i in x['inner']]]
         },
         presentation.Tag.SVG.value: {"svg": lambda x: htpy.Element("svg")(**attrs(presentation.Tag.SVG.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.G.value: {"g": lambda x: htpy.Element("g")(**attrs(presentation.Tag.G.value, x))[[Markup(i) for i in x['inner']]]},
