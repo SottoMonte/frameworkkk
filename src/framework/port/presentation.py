@@ -51,12 +51,14 @@ class Tag(Enum):
     FE_MERGE = "femerge"
     FE_MERGE_NODE = "femergenode"
     ANIMATE = "animate"
+    ANIMATE_TRANSFORM = "animatetransform"
     STOP = "stop"
     LINEAR_GRADIENT = "lineargradient"
     RADIAL_GRADIENT = "radialgradient"
     POLYGON = "polygon"
     LINE = "line"
     FE_DROP_SHADOW = "fedropshadow"
+    CLIP_PATH = "clippath"
     RESOURCE = "resource"
 
 class Attribute(Enum):
@@ -157,6 +159,13 @@ class Attribute(Enum):
     OFFSET = "offset"
     STOP_COLOR = "stop-color"
     STOP_OPACITY = "stop-opacity"
+    CLIP_PATH = "clip-path"
+    CLIP_PATH_UNITS = "clipPathUnits"
+    FROM = "from"
+    TO = "to"
+    BEGIN = "begin"
+    ADDITIVE = "additive"
+    ACCUMULATE = "accumulate"
     
 
 _IDENTITY = {a.value: a.value for a in [Attribute.ID, Attribute.CLASS]}
@@ -194,7 +203,9 @@ _SVG_ATTRIBUTES = {a.value: a.value for a in [
     Attribute.FLOOD_COLOR, Attribute.FLOOD_OPACITY, Attribute.TEXT_ANCHOR, Attribute.FONT_FAMILY, Attribute.FONT_SIZE,
     Attribute.FONT_WEIGHT, Attribute.FONT_STYLE, Attribute.ATTRIBUTE_NAME, Attribute.VALUES, Attribute.DUR,
     Attribute.REPEAT_COUNT, Attribute.OPACITY, Attribute.POINTS, Attribute.OFFSET, Attribute.STOP_COLOR, Attribute.STOP_OPACITY,
-    Attribute.WIDTH, Attribute.HEIGHT, Attribute.X1, Attribute.Y1, Attribute.X2, Attribute.Y2
+    Attribute.WIDTH, Attribute.HEIGHT, Attribute.X1, Attribute.Y1, Attribute.X2, Attribute.Y2,
+    Attribute.CLIP_PATH, Attribute.CLIP_PATH_UNITS, Attribute.FROM, Attribute.TO, Attribute.BEGIN,
+    Attribute.ADDITIVE, Attribute.ACCUMULATE
 ]}
 
 _ATTRIBUTES_SCHEMA |= {
@@ -215,12 +226,14 @@ _ATTRIBUTES_SCHEMA |= {
     Tag.FE_MERGE.value: _SVG_ATTRIBUTES,
     Tag.FE_MERGE_NODE.value: _SVG_ATTRIBUTES,
     Tag.ANIMATE.value: _SVG_ATTRIBUTES,
+    Tag.ANIMATE_TRANSFORM.value: _SVG_ATTRIBUTES,
     Tag.STOP.value: _SVG_ATTRIBUTES,
     Tag.LINEAR_GRADIENT.value: _SVG_ATTRIBUTES,
     Tag.RADIAL_GRADIENT.value: _SVG_ATTRIBUTES,
     Tag.POLYGON.value: _SVG_ATTRIBUTES,
     Tag.LINE.value: _SVG_ATTRIBUTES,
     Tag.FE_DROP_SHADOW.value: _SVG_ATTRIBUTES,
+    Tag.CLIP_PATH.value: _SVG_ATTRIBUTES,
 }
 
 

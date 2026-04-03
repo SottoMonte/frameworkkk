@@ -26,7 +26,7 @@
         </svg>
         <Text type="h5" font="bold" spacing="min" color="#666666" uppercase="true">Omni:domain</Text>
     </Row>
-    <Action type='button' background='#568dff' ><Text font='bold'>TRY_NOW</Text></Action>
+    <Action type='button' color='#666' background='#568dff' ><Text font='bold'>TRY_NOW</Text></Action>
     <Divider thickness='1px' max-width='99%' background='#000000ff' position='absolute' left='0.5%' right='0.5%' bottom='0px' />
 </Navigation>
 <Column padding="50px">
@@ -36,50 +36,103 @@
     </Column>
     <Row justify='center' align='center'>
         <Container width="1/3">
-            <svg viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg" class="omniport-gui-mockup" style="width: 100%; height: auto; display: block;">
+            <svg class="omniport-gui-mockup" viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg">
                 <defs>
                     <style type="text/css">
-                        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;display=swap');
-                        
+                        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&amp;display=swap');
                         .window-frame { fill: #1e293b; }
                         .title-bar { fill: #0f172a; }
-                        .title-text { fill: #94a3b8; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
-                        
-                        /* Window Buttons */
+                        .title-text { fill: #94a3b8; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; }
                         .btn-close { fill: #ff5f56; }
                         .btn-min { fill: #ffbd2e; }
                         .btn-max { fill: #27c93f; }
                         
-                        /* Glossy effect on top border */
-                        .border-highlight { fill: none; stroke: rgba(255,255,255,0.1); stroke-width: 1; }
+                        /* Flutter Style */
+                        .flutter-app-bg { fill: #ffffff; }
+                        .flutter-app-bar { fill: #02539a; }
+                        .flutter-fab { fill: #02539a; filter: drop-shadow(0px 4px 4px rgba(0,0,0,0.25)); }
+                        .counter-label { font-family: 'Roboto', sans-serif; font-size: 16px; fill: #5f6368; }
+                        .counter-number { font-family: 'Roboto', sans-serif; font-size: 48px; font-weight: 400; fill: #444746; }
                     </style>
                     
                     <filter id="shadow-lg" x="-10%" y="-10%" width="140%" height="140%">
-                        <feGaussianBlur in="SourceAlpha" stdDeviation="12"/>
-                        <feOffset dx="0" dy="20" result="offsetblur"/>
-                        <feFlood flood-color="#000000" flood-opacity="0.5"/>
-                        <feComposite in2="offsetblur" operator="in"/>
+                        <feGaussianBlur in="SourceAlpha" stdDeviation="12"></feGaussianBlur>
+                        <feOffset dx="0" dy="20" result="offsetblur"></feOffset>
+                        <feFlood flood-color="#000000" flood-opacity="0.5"></feFlood>
+                        <feComposite in2="offsetblur" operator="in"></feComposite>
                         <feMerge>
-                            <feMergeNode/>
-                            <feMergeNode in="SourceGraphic"/>
+                            <feMergeNode></feMergeNode>
+                            <feMergeNode in="SourceGraphic"></feMergeNode>
                         </feMerge>
                     </filter>
+
+                    <clipPath id="counterClip">
+                        <rect x="300" y="250" width="200" height="70" />
+                    </clipPath>
                 </defs>
 
                 <g filter="url(#shadow-lg)">
-                    <rect x="20" y="20" width="760" height="510" rx="12" class="window-frame" stroke="#334155" stroke-width="1"/>
+                    <rect class="window-frame" x="20" y="20" width="760" height="510" rx="12" stroke="#334155" stroke-width="1"></rect>
+                    <path class="title-bar" d="M20 32C20 25.3726 25.3726 20 32 20H768C774.627 20 780 25.3726 780 32V60H20V32Z"></path>
                     
-                    <path d="M20 32C20 25.3726 25.3726 20 32 20H768C774.627 20 780 25.3726 780 32V60H20V32Z" class="title-bar"/>
+                    <path d="M20 60H780V518C780 524.627 774.627 530 768 530H32C25.3726 530 20 524.627 20 518V60Z" class="flutter-app-bg"></path>
                     
-                    <path d="M20 60H780V518C780 524.627 774.627 530 768 530H32C25.3726 530 20 524.627 20 518V60Z" fill="#0b1120" />
+                    <text class="title-text" x="400" y="46" text-anchor="middle">OmniPort — Flutter Counter Clicker</text>
+                    
+                    <circle class="btn-close" cx="45" cy="40" r="6"></circle>
+                    <circle class="btn-min" cx="65" cy="40" r="6"></circle>
+                    <circle class="btn-max" cx="85" cy="40" r="6"></circle>
+                </g>
 
-                    <text x="400" y="46" text-anchor="middle" class="title-text">OmniPort IDE v0.1.0 — colosso.toml</text>
-                    
-                    <circle cx="45" cy="40" r="6" class="btn-close"/>
-                    <circle cx="65" cy="40" r="6" class="btn-min"/>
-                    <circle cx="85" cy="40" r="6" class="btn-max"/>
+                <g id="flutter-ui">
+                    <rect x="20" y="60" width="760" height="56" class="flutter-app-bar" />
+                    <text x="76" y="96" fill="white" font-family="Roboto" font-size="20" font-weight="500">Flutter Demo Home Page</text>
+                    <path d="M40 82h18M40 88h18M40 94h18" stroke="white" stroke-width="2" stroke-linecap="round"/>
 
-                    <rect x="21" y="21" width="758" height="508" rx="11" class="border-highlight" pointer-events="none"/>
+                    <text x="400" y="240" class="counter-label" text-anchor="middle">You have pushed the button this many times:</text>
+                    
+                    <g clip-path="url(#counterClip)">
+                        <g id="numberColumn">
+                            <text x="400" y="300" class="counter-number" text-anchor="middle">0</text>
+                            <text x="400" y="360" class="counter-number" text-anchor="middle">1</text>
+                            <text x="400" y="420" class="counter-number" text-anchor="middle">2</text>
+                            <text x="400" y="480" class="counter-number" text-anchor="middle">3</text>
+                            <text x="400" y="540" class="counter-number" text-anchor="middle">4</text>
+                            <text x="400" y="600" class="counter-number" text-anchor="middle">5</text>
+                            <text x="400" y="660" class="counter-number" text-anchor="middle">6</text>
+                            <text x="400" y="720" class="counter-number" text-anchor="middle">7</text>
+                            <text x="400" y="780" class="counter-number" text-anchor="middle">8</text>
+                            <text x="400" y="840" class="counter-number" text-anchor="middle">9</text>
+                            <text x="400" y="900" class="counter-number" text-anchor="middle">10</text>
+
+                            <animateTransform 
+                                attributeName="transform" type="translate" 
+                                values="0,0; 0,0; 0,-60; 0,-60; 0,-120; 0,-120; 0,-180; 0,-180; 0,-240; 0,-240; 0,-300; 0,-300; 0,-360; 0,-360; 0,-420; 0,-420; 0,-480; 0,-480; 0,-540; 0,-540; 0,-600; 0,-600"
+                                keyTimes="0; 0.083; 0.083; 0.166; 0.166; 0.25; 0.25; 0.333; 0.333; 0.416; 0.416; 0.5; 0.5; 0.583; 0.583; 0.666; 0.666; 0.75; 0.75; 0.833; 0.833; 1"
+                                dur="11s" repeatCount="indefinite" />
+                        </g>
+                    </g>
+
+                    <g id="fab">
+                        <circle cx="720" cy="470" r="28" class="flutter-fab">
+                            <animate attributeName="fill" values="#02539a;#013d75;#02539a;#02539a" 
+                                keyTimes="0; 0.1; 0.2; 1" dur="1s" repeatCount="11" />
+                        </circle>
+                        <path d="M712 470h16M720 462v16" stroke="white" stroke-width="3" stroke-linecap="round"/>
+                    </g>
+                </g>
+
+                <g id="cursor" transform="translate(720, 470)">
+                    <path d="M0,0 L0,15 L4,11 L7,17 L9,16 L6,10 L11,10 Z" fill="white" stroke="black" stroke-width="1"/>
+                    
+                    <animateTransform 
+                        attributeName="transform" 
+                        type="scale" 
+                        values="1;0.7;1;1" 
+                        keyTimes="0; 0.1; 0.2; 1" 
+                        dur="1s" 
+                        repeatCount="indefinite" 
+                        additive="sum" />
                 </g>
             </svg>
         </Container>
@@ -131,21 +184,31 @@
             <svg viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg" class="browser-mockup" style="width: 100%; height: auto; display: block; border-radius: 12px;">
                 <defs>
                     <style type="text/css">
+                        /* Font Nativi del Browser (Non Google Fonts) */
                         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;display=swap');
                         
-                        .window-frame { fill: #1e293b; }
-                        .title-bar { fill: #0f172a; }
-                        .content-bg { fill: #0b1120; }
-                        .title-text { fill: #94a3b8; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
+                        /* Window Frame  Title Bar (Originale Browser) */
+                        .window-frame { fill: #1e293b; } /* slate-800 */
+                        .title-bar { fill: #0f172a; } /* slate-900 */
+                        .border-highlight { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 1; }
+                        .address-bar { fill: #1e293b; rx: 6; } /* slate-800 */
+                        .title-text { fill: #94a3b8; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.02em; } /* slate-400 */
                         
                         /* Window Buttons */
                         .btn-close { fill: #ff5f56; }
                         .btn-min { fill: #ffbd2e; }
                         .btn-max { fill: #27c93f; }
                         
-                        .border-highlight { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 1; }
-                        .address-bar { fill: #1e293b; rx: 6; }
-                        .address-text { fill: #64748b; font-family: 'Inter', sans-serif; font-size: 12px; }
+                        /* --- NATIVE HTML/CSS STYLE UI (Interno) --- */
+                        .native-html-bg { fill: #f9fafb; } /* slate-50 - Sfondo Bianco standard */
+                        .html-app-bar { fill: #02539a; } /* Blu Flutter copiato in CSS */
+                        
+                        /* Semplificazione dell'ombra del FAB per simulare CSS box-shadow */
+                        .html-fab { fill: #02539a; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.15)); }
+                        
+                        /* Tipografia Nativa (Arial/sans-serif) */
+                        .counter-label-html { font-family: Arial, Helvetica, sans-serif; font-size: 16px; fill: #6b7280; } /* text-gray-500 */
+                        .counter-number-html { font-family: Arial, Helvetica, sans-serif; font-size: 64px; font-weight: bold; fill: #111827; } /* text-gray-900 */
                     </style>
                     
                     <filter id="shadow-lg" x="-10%" y="-10%" width="140%" height="140%">
@@ -158,25 +221,77 @@
                             <feMergeNode in="SourceGraphic"/>
                         </feMerge>
                     </filter>
+
+                    <clipPath id="numberClip">
+                        <rect x="300" y="270" width="200" height="90" rx="4" />
+                    </clipPath>
                 </defs>
 
                 <g filter="url(#shadow-lg)">
                     <rect x="20" y="20" width="760" height="510" rx="12" class="window-frame" stroke="#334155" stroke-width="1"/>
-                    
                     <path d="M20 32C20 25.3726 25.3726 20 32 20H768C774.627 20 780 25.3726 780 32V65H20V32Z" class="title-bar"/>
                     
-                    <path d="M20 65H780V518C780 524.627 774.627 530 768 530H32C25.3726 530 20 524.627 20 518V65Z" class="content-bg" />
+                    <path d="M20 65H780V518C780 524.627 774.627 530 768 530H32C25.3726 530 20 524.627 20 518V65Z" class="native-html-bg" />
 
                     <circle cx="45" cy="42" r="6" class="btn-close"/>
                     <circle cx="65" cy="42" r="6" class="btn-min"/>
                     <circle cx="85" cy="42" r="6" class="btn-max"/>
 
                     <rect x="110" y="32" width="580" height="22" rx="6" class="address-bar" />
-                    <text x="400" y="47" text-anchor="middle" class="title-text">browser-mockup — colosso.dev</text>
-                    
+                    <text x="400" y="47" text-anchor="middle" class="title-text">browser-mockup — native-html-render.dev</text>
                     <line x1="20" y1="65" x2="780" y2="65" stroke="#334155" stroke-width="1" />
-
                     <rect x="21" y="21" width="758" height="508" rx="11" class="border-highlight" pointer-events="none"/>
+                </g>
+
+                <g id="html-ui">
+                    <rect x="20" y="65" width="760" height="56" class="html-app-bar" />
+                    <text x="80" y="102" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="bold">Pure HTML Counter</text>
+                    <path d="M44 88h18M44 94h18M44 100h18" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+
+                    <text x="400" y="250" class="counter-label-html" text-anchor="middle">You have pushed the button this many times:</text>
+                    
+                    <g clip-path="url(#numberClip)">
+                        <g id="numberColumn">
+                            <text x="400" y="335" class="counter-number-html" text-anchor="middle">0</text>
+                            <text x="400" y="415" class="counter-number-html" text-anchor="middle">1</text>
+                            <text x="400" y="495" class="counter-number-html" text-anchor="middle">2</text>
+                            <text x="400" y="575" class="counter-number-html" text-anchor="middle">3</text>
+                            <text x="400" y="655" class="counter-number-html" text-anchor="middle">4</text>
+                            <text x="400" y="735" class="counter-number-html" text-anchor="middle">5</text>
+                            <text x="400" y="815" class="counter-number-html" text-anchor="middle">6</text>
+                            <text x="400" y="895" class="counter-number-html" text-anchor="middle">7</text>
+                            <text x="400" y="975" class="counter-number-html" text-anchor="middle">8</text>
+                            <text x="400" y="1055" class="counter-number-html" text-anchor="middle">9</text>
+                            <text x="400" y="1135" class="counter-number-html" text-anchor="middle">10</text>
+
+                            <animateTransform 
+                                attributeName="transform" type="translate" 
+                                values="0,0; 0,0; 0,-80; 0,-80; 0,-160; 0,-160; 0,-240; 0,-240; 0,-320; 0,-320; 0,-400; 0,-400; 0,-480; 0,-480; 0,-560; 0,-560; 0,-640; 0,-640; 0,-720; 0,-720; 0,-800; 0,-800"
+                                keyTimes="0; 0.083; 0.083; 0.166; 0.166; 0.25; 0.25; 0.333; 0.333; 0.416; 0.416; 0.5; 0.5; 0.583; 0.583; 0.666; 0.666; 0.75; 0.75; 0.833; 0.833; 1"
+                                dur="12s" repeatCount="indefinite" />
+                        </g>
+                    </g>
+
+                    <g id="fab">
+                        <circle cx="720" cy="470" r="28" class="html-fab">
+                            <animate attributeName="fill" values="#02539a;#013d75;#02539a;#02539a" 
+                                keyTimes="0; 0.1; 0.2; 1" dur="1s" repeatCount="11" />
+                        </circle>
+                        <path d="M712 470h16M720 462v16" stroke="white" stroke-width="3" stroke-linecap="round"/>
+                    </g>
+                </g>
+
+                <g id="cursor" transform="translate(720, 470)">
+                    <path d="M0,0 L0,15 L4,11 L7,17 L9,16 L6,10 L11,10 Z" fill="white" stroke="black" stroke-width="1"/>
+                    
+                    <animateTransform 
+                        attributeName="transform" 
+                        type="scale" 
+                        values="1;0.7;1;1" 
+                        keyTimes="0; 0.1; 0.2; 1" 
+                        dur="1s" 
+                        repeatCount="indefinite" 
+                        additive="sum" />
                 </g>
             </svg>
         </Container>
@@ -355,11 +470,11 @@ tuple:test_suite := (
         
     </Container>
 </Row>
-<Column background="#191c22" padding="10%" margin="50px,0,0,0" align="center" justify="center">
-    <Text type='h4' font='black' color='#fff' uppercase='true'>INSIDE THE SRC</Text>
-    <Text type='p' font='mono' color='#fff' uppercase='true'>THE ANATOMY OF A PURE LOGIC SYSTEM</Text>
+<Column background="#191c22" spacing="25px" padding="10%" margin="50px,0,0,0" align="center" justify="center">
+    <Text type='h4' font='black' color='#e1e2eb' uppercase='true'>INSIDE THE SRC</Text>
+    <Text type='p' font='mono' color='#8c90a1' uppercase='true'>THE ANATOMY OF A PURE LOGIC SYSTEM</Text>
     <Row spacing='25px'>
-        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#2b2f37">
+        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#2b2f37" padding="25px">
             <Text type='h6' font='bold' color='#fff' uppercase='true'>src/application</Text>
             <Group type='list' spacing='5px'>
                 <Row spacing='5px' color='#cccccc'>
@@ -384,7 +499,7 @@ tuple:test_suite := (
                 </Row>
             </Group>
         </Container>
-        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#1d3341">
+        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#1d3341" padding="25px">
             <Text type='h6' font='bold' color='#fff' uppercase='true'>src/infrastructure</Text>
             <Group type='list' spacing='5px'>
                 <Row spacing='5px' color='#cccccc'>
@@ -413,7 +528,7 @@ tuple:test_suite := (
                 </Row>
             </Group>
         </Container>
-        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#3a3321">
+        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#3a3321" padding="25px">
             <Text type='h6' font='bold' color='#fff' uppercase='true'>public/</Text>
             <Group type='list' spacing='5px'>
                 <Row spacing='5px' color='#cccccc'>
@@ -434,12 +549,30 @@ tuple:test_suite := (
                 </Row>
             </Group>
         </Container>
-        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#243d3c">
+        <Container width="25%" background="#1d2026" border="4px,0,0,0" color="#243d3c" padding="25px">
             <Text type='h6' font='bold' color='#fff' uppercase='true'>project.toml</Text>
             <Text type='p' font='mono' color='#cccccc'>
                 Global orchestration file. Switch adapters with a single string change. No migration pain.
             </Text>
         </Container>
+    </Row>
+</Column>
+<Column background="#1d2026" padding="5%,20%" align="center" justify="center" spacing='45px'>
+    <Text type='h1' font='bold' color='#d7ffc5' uppercase='true'>”</Text>
+    <Text type='h2' font='black' color='#e1e2eb' align='center'>
+        "IN OMNIDOMAIN, CODE IS NO LONGER TECHNICAL DEBT, IT'S A PURE DOMAIN ASSET. LET THE AI WRITE THE UI, YOU KEEP CONTROL OF THE CORE."
+    </Text>
+    <Row spacing='10px'>
+        <Action type='button' background='#2ff801' >
+            <Text type='p' font='mono' color='#222' padding="15px,50px">
+                TRY_IT_NOW
+            </Text>
+        </Action>
+        <Action type='button' border='1px' >
+            <Text type='p' font='mono' color='#e1e2eb' padding="10px,20px">
+                JOIN_THE_MANIFESTO
+            </Text>
+        </Action>
     </Row>
 </Column>
 {% endblock %}

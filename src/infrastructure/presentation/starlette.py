@@ -121,6 +121,9 @@ mapping_attributes = {
         "info":"text-info",
         "light":"text-light",
         "dark":"text-dark",
+        "white":"text-white",
+        "black":"text-black",
+        "transparent":"text-transparent",
         True:f"text-[{x}]"
     }.get(True if '#' in x else x, ""),
     "color.border": lambda x: f"border-[{x}]" if '#' in x else "",
@@ -290,8 +293,9 @@ def attrs(tag_key, input_data, classe=None):
         presentation.Tag.STYLE_SVG.value, presentation.Tag.FILTER.value, presentation.Tag.FE_GAUSSIAN_BLUR.value,
         presentation.Tag.FE_OFFSET.value, presentation.Tag.FE_FLOOD.value, presentation.Tag.FE_COMPOSITE.value,
         presentation.Tag.FE_MERGE.value, presentation.Tag.FE_MERGE_NODE.value, presentation.Tag.ANIMATE.value,
+        presentation.Tag.ANIMATE_TRANSFORM.value,
         presentation.Tag.STOP.value, presentation.Tag.POLYGON.value, presentation.Tag.LINE.value,
-        presentation.Tag.FE_DROP_SHADOW.value
+        presentation.Tag.FE_DROP_SHADOW.value, presentation.Tag.CLIP_PATH.value
     ]
 
     for attr in list(raw_attrs.keys()):
@@ -476,12 +480,14 @@ class Adapter(presentation.port):
         presentation.Tag.FE_MERGE.value: {"femerge": lambda x: htpy.Element("feMerge")(**attrs(presentation.Tag.FE_MERGE.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.FE_MERGE_NODE.value: {"femergenode": lambda x: htpy.Element("feMergeNode")(**attrs(presentation.Tag.FE_MERGE_NODE.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.ANIMATE.value: {"animate": lambda x: htpy.Element("animate")(**attrs(presentation.Tag.ANIMATE.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.ANIMATE_TRANSFORM.value: {"animatetransform": lambda x: htpy.Element("animateTransform")(**attrs(presentation.Tag.ANIMATE_TRANSFORM.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.STOP.value: {"stop": lambda x: htpy.Element("stop")(**attrs(presentation.Tag.STOP.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.LINEAR_GRADIENT.value: {"lineargradient": lambda x: htpy.Element("linearGradient")(**attrs(presentation.Tag.LINEAR_GRADIENT.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.RADIAL_GRADIENT.value: {"radialgradient": lambda x: htpy.Element("radialGradient")(**attrs(presentation.Tag.RADIAL_GRADIENT.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.POLYGON.value: {"polygon": lambda x: htpy.Element("polygon")(**attrs(presentation.Tag.POLYGON.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.LINE.value: {"line": lambda x: htpy.Element("line")(**attrs(presentation.Tag.LINE.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.FE_DROP_SHADOW.value: {"fedropshadow": lambda x: htpy.Element("feDropShadow")(**attrs(presentation.Tag.FE_DROP_SHADOW.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.CLIP_PATH.value: {"clippath": lambda x: htpy.Element("clipPath")(**attrs(presentation.Tag.CLIP_PATH.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
     def __init__(self,**constants):
