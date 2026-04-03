@@ -233,6 +233,42 @@ Risorse aggiuntive e guide.
 * `Procfile`: deployment (Heroku).
 * `requirements.txt`: dipendenze Python.
 
+## 1. Riduzione delle "Allucinazioni" (Precisione vs Caos)
+
+    Oggi: Quando chiedi a Lovable di creare un'app, l'IA genera migliaia di righe di React, TypeScript e Tailwind. Poiché questi linguaggi sono molto flessibili, l'IA spesso inventa proprietà, sbaglia la gestione degli stati o crea componenti disordinati.
+
+    Con il Framework (DSL/XML): L'IA deve scrivere in un linguaggio rigido e specializzato. È molto più facile per un'IA essere perfetta in un DSL (che ha poche regole chiare) piuttosto che in JavaScript (che ne ha milioni). Il risultato è un codice generato dall'IA che non si rompe quasi mai.
+
+## 2. Il Problema dei "Token" e della Lunghezza del Codice
+
+    Oggi: Ogni volta che modifichi un'app su Bolt.new, l'IA deve rileggere e riscrivere enormi file .tsx. Questo consuma molti token (quindi costa di più) e aumenta il rischio di errori man mano che l'app cresce.
+
+    Con il Framework: Un file XML o un DSL per la logica è infinitamente più corto di un equivalente in React/Python. L'IA può "vedere" l'intera struttura dell'app in pochi centimetri di codice, rendendo le modifiche istantanee ed economiche.
+
+## 3. "Portabilità" Totale (Web, Mobile, Desktop)
+
+    Oggi: Se crei un'app con Lovable, hai un'app Web. Se vuoi la versione per iPhone (iOS), devi praticamente ricominciare o usare strumenti di conversione che spesso creano problemi.
+
+    Con il Framework: Poiché la UI è definita in XML (astratto), la piattaforma di Vibe Coding potrebbe offrirti un tasto: "Esporta come App Nativa". Il framework prende quell'XML e lo trasforma in componenti Android o iOS reali, non in una semplice pagina web visualizzata sul telefono.
+
+## 4. Manutenzione a Lungo Termine
+
+    Oggi (Il "Vibe" svanisce): Dopo che l'IA ha generato l'app, se vuoi aggiungere una funzione complessa a mano, ti ritrovi davanti a un "muro di codice" generato da una macchina, spesso difficile da capire per un umano.
+
+    Con il Framework (Architettura Esagonale): Poiché la logica è separata dai database e dalla UI, un programmatore umano può intervenire chirurgicamente. Può cambiare il database o aggiungere una regola nel DSL senza dover decifrare migliaia di righe di codice CSS o HTML mescolato alla logica.
+
+### Confronto: Vibe Coding Tradizionale vs. OmniDomain (Colosso)
+
+| Sfida del Vibe Coding | Approccio Attuale (React/JS) | Approccio OmniDomain (DSL/XML/Hex) |
+| :--- | :--- | :--- |
+| **Costo AI** | **Alto** (file lunghi, molti token) | **Basso** (file sintetici e densi) |
+| **Errori AI** | **Frequenti** (allucinazioni nel codice) | **Rari** (sintassi vincolata e precisa) |
+| **Scalabilità** | **Difficile** (rischio codice "spaghetti") | **Facile** (struttura ordinata e modulare) |
+| **Target** | Solo Web / Prototipi rapidi | **Software Professionale / Cross-platform** |
+
+---
+
+> **Nota Tecnica:** L'approccio di **OmniDomain** riduce il "rumore" visivo per l'IA. Definendo la logica in **DSL** e la UI in **XML**, l'intelligenza artificiale deve processare meno testo, riducendo i costi di calcolo e aumentando la precisione delle risposte.
 
 ## 📌 Roadmap e TODO
 

@@ -60,6 +60,7 @@ class Tag(Enum):
     LINE = "line"
     FE_DROP_SHADOW = "fedropshadow"
     CLIP_PATH = "clippath"
+    PATTERN = "pattern"
     RESOURCE = "resource"
 
 class Attribute(Enum):
@@ -167,6 +168,11 @@ class Attribute(Enum):
     BEGIN = "begin"
     ADDITIVE = "additive"
     ACCUMULATE = "accumulate"
+    PATTERN_UNITS = "patternUnits"
+    PATTERN_CONTENT_UNITS = "patternContentUnits"
+    PATTERN_TRANSFORM = "patternTransform"
+    PRESERVE_ASPECT_RATIO = "preserveAspectRatio"
+    HREF = "href"
     
 
 _IDENTITY = {a.value: a.value for a in [Attribute.ID, Attribute.CLASS]}
@@ -208,7 +214,8 @@ _SVG_ATTRIBUTES = {a.value: a.value for a in [
     Attribute.REPEAT_COUNT, Attribute.OPACITY, Attribute.POINTS, Attribute.OFFSET, Attribute.STOP_COLOR, Attribute.STOP_OPACITY,
     Attribute.WIDTH, Attribute.HEIGHT, Attribute.X1, Attribute.Y1, Attribute.X2, Attribute.Y2,
     Attribute.CLIP_PATH, Attribute.CLIP_PATH_UNITS, Attribute.FROM, Attribute.TO, Attribute.BEGIN,
-    Attribute.ADDITIVE, Attribute.ACCUMULATE
+    Attribute.ADDITIVE, Attribute.ACCUMULATE, Attribute.PATTERN_UNITS, Attribute.PATTERN_CONTENT_UNITS,
+    Attribute.PATTERN_TRANSFORM, Attribute.PRESERVE_ASPECT_RATIO, Attribute.HREF
 ]}
 
 _ATTRIBUTES_SCHEMA |= {
@@ -237,6 +244,7 @@ _ATTRIBUTES_SCHEMA |= {
     Tag.LINE.value: _SVG_ATTRIBUTES,
     Tag.FE_DROP_SHADOW.value: _SVG_ATTRIBUTES,
     Tag.CLIP_PATH.value: _SVG_ATTRIBUTES,
+    Tag.PATTERN.value: _SVG_ATTRIBUTES,
 }
 
 

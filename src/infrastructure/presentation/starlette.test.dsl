@@ -9,74 +9,74 @@ exports: {
 driver : imports.presentation.Adapter(messenger:messenger, defender:defender);
 
 Tags: {
-    WINDOW:"window",
-    TEXT:"text",
-    INPUT:"input",
-    ACTION:"action",
-    MEDIA:"media",
-    CARD:"card",
-    NAVIGATION:"navigation",
-    GROUP:"group",
-    ROW:"row",
-    COLUMN:"column",
-    STACK:"stack",
-    CONTAINER:"container",
-    DEFENDER:"defender",
-    MESSENGER:"messenger",
-    MESSAGE:"message",
-    STOREKEEPER:"storekeeper",
-    PRESENTER:"presenter",
-    VIEW:"view",
-    DIVIDER:"divider",
-    ICON:"icon",
-    ACCORDION:"accordion",
-    RESOURCE:"resource",
+    WINDOW:"window";
+    TEXT:"text";
+    INPUT:"input";
+    ACTION:"action";
+    MEDIA:"media";
+    CARD:"card";
+    NAVIGATION:"navigation";
+    GROUP:"group";
+    ROW:"row";
+    COLUMN:"column";
+    STACK:"stack";
+    CONTAINER:"container";
+    DEFENDER:"defender";
+    MESSENGER:"messenger";
+    MESSAGE:"message";
+    STOREKEEPER:"storekeeper";
+    PRESENTER:"presenter";
+    VIEW:"view";
+    DIVIDER:"divider";
+    ICON:"icon";
+    ACCORDION:"accordion";
+    RESOURCE:"resource"
 };
 
 Attributes: {
-    ID:"id",
-    TYPE:"type",
-    SRC:"src",
-    ALT:"alt",
-    TITLE:"title",
-    WIDTH:"width",
-    MAXWIDTH:"max-width",
-    MINWIDTH:"min-width",
-    HEIGHT:"height",
-    MAXHEIGHT:"max-height",
-    MINHEIGHT:"min-height",
-    CONTROLS:"controls",
-    AUTOPLAY:"autoplay",
-    LOOP:"loop",
-    MUTED:"muted",
-    CLASS:"class",
-    NAME:"name",
-    VALUE:"value",
-    PLACEHOLDER:"placeholder",
-    REQUIRED:"required",
-    DISABLED:"disabled",
-    READONLY:"readonly",
-    MAX:"max",
-    MIN:"min",
-    SIZE:"size",
-    MULTIPLE:"multiple",
-    STYLE:"style",
+    ID:"id";
+    TYPE:"type";
+    SRC:"src";
+    ALT:"alt";
+    TITLE:"title";
+    WIDTH:"width";
+    MAXWIDTH:"max-width";
+    MINWIDTH:"min-width";
+    HEIGHT:"height";
+    MAXHEIGHT:"max-height";
+    MINHEIGHT:"min-height";
+    CONTROLS:"controls";
+    AUTOPLAY:"autoplay";
+    LOOP:"loop";
+    MUTED:"muted";
+    CLASS:"class";
+    NAME:"name";
+    VALUE:"value";
+    PLACEHOLDER:"placeholder";
+    REQUIRED:"required";
+    DISABLED:"disabled";
+    READONLY:"readonly";
+    MAX:"max";
+    MIN:"min";
+    SIZE:"size";
+    MULTIPLE:"multiple";
+    STYLE:"style"
 };
 
 Values: {
     
 };
 
-CORE: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS,];
-MEDIA: [Attributes.SRC,Attributes.ALT,Attributes.TITLE,Attributes.WIDTH,Attributes.MAXWIDTH,Attributes.MINWIDTH,Attributes.HEIGHT,Attributes.MAXHEIGHT,Attributes.MINHEIGHT,Attributes.CONTROLS,Attributes.AUTOPLAY,Attributes.LOOP,Attributes.MUTED,];
-INPUT: [Attributes.NAME,Attributes.VALUE,Attributes.PLACEHOLDER,Attributes.REQUIRED,Attributes.DISABLED,Attributes.READONLY,Attributes.MAX,Attributes.MIN,Attributes.SIZE,Attributes.MULTIPLE,];
+CORE: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS];
+MEDIA: [Attributes.SRC,Attributes.ALT,Attributes.TITLE,Attributes.WIDTH,Attributes.MAXWIDTH,Attributes.MINWIDTH,Attributes.HEIGHT,Attributes.MAXHEIGHT,Attributes.MINHEIGHT,Attributes.CONTROLS,Attributes.AUTOPLAY,Attributes.LOOP,Attributes.MUTED];
+INPUT: [Attributes.NAME,Attributes.VALUE,Attributes.PLACEHOLDER,Attributes.REQUIRED,Attributes.DISABLED,Attributes.READONLY,Attributes.MAX,Attributes.MIN,Attributes.SIZE,Attributes.MULTIPLE];
 
 Build: {
     Tags.WINDOW: CORE;
     Tags.TEXT: CORE;
-    Tags.INPUT: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS,Attributes.NAME,Attributes.VALUE,Attributes.PLACEHOLDER,Attributes.REQUIRED,Attributes.DISABLED,Attributes.READONLY,Attributes.MAX,Attributes.MIN,Attributes.SIZE,Attributes.MULTIPLE,];
+    Tags.INPUT: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS,Attributes.NAME,Attributes.VALUE,Attributes.PLACEHOLDER,Attributes.REQUIRED,Attributes.DISABLED,Attributes.READONLY,Attributes.MAX,Attributes.MIN,Attributes.SIZE,Attributes.MULTIPLE];
     Tags.ACTION: CORE;
-    Tags.MEDIA: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS,Attributes.SRC,Attributes.ALT,Attributes.TITLE,Attributes.WIDTH,Attributes.MAXWIDTH,Attributes.MINWIDTH,Attributes.HEIGHT,Attributes.MAXHEIGHT,Attributes.MINHEIGHT,Attributes.CONTROLS,Attributes.AUTOPLAY,Attributes.LOOP,Attributes.MUTED,];
+    Tags.MEDIA: [Attributes.ID,Attributes.TYPE,Attributes.STYLE,Attributes.CLASS,Attributes.SRC,Attributes.ALT,Attributes.TITLE,Attributes.WIDTH,Attributes.MAXWIDTH,Attributes.MINWIDTH,Attributes.HEIGHT,Attributes.MAXHEIGHT,Attributes.MINHEIGHT,Attributes.CONTROLS,Attributes.AUTOPLAY,Attributes.LOOP,Attributes.MUTED];
     Tags.CARD: CORE;
     Tags.NAVIGATION: CORE;
     Tags.GROUP: CORE;
@@ -187,7 +187,7 @@ tuple:test_suite := (
         "assert":@received.outputs == @expected;
         "note": "Render text with type pre";
     },
-    /* -------------------------- Layout -------------------------- */
+    // -------------------------- Layout --------------------------
     { 
         "action": driver.render_template;
         "inputs": {'text':'<Row></Row>'};
@@ -223,7 +223,7 @@ tuple:test_suite := (
         "assert":@received.outputs == @expected;
         "note": "Render divider with type vertical";
     },
-    /* -------------------------- Input -------------------------- */
+    // -------------------------- Input --------------------------
     { 
         "action": driver.render_template;
         "inputs": {'text':'<Input/>'};

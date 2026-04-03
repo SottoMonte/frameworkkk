@@ -297,7 +297,7 @@ def attrs(tag_key, input_data, classe=None):
         presentation.Tag.FE_MERGE.value, presentation.Tag.FE_MERGE_NODE.value, presentation.Tag.ANIMATE.value,
         presentation.Tag.ANIMATE_TRANSFORM.value,
         presentation.Tag.STOP.value, presentation.Tag.POLYGON.value, presentation.Tag.LINE.value,
-        presentation.Tag.FE_DROP_SHADOW.value, presentation.Tag.CLIP_PATH.value
+        presentation.Tag.FE_DROP_SHADOW.value, presentation.Tag.CLIP_PATH.value, presentation.Tag.PATTERN.value
     ]
 
     for attr in list(raw_attrs.keys()):
@@ -384,7 +384,7 @@ class Adapter(presentation.port):
         },
         presentation.Tag.INPUT.value: {
             "input": lambda x: htpy.input(type="text", class_="form-control"),
-            "select": lambda x: htpy.select(class_="form-select"),
+            "select": lambda x: htpy.select(**attrs("select", x))[[Markup(htpy.option()[i]) for i in x['inner']]],
             "textarea": lambda x: htpy.textarea(class_="form-control"),
             "text": lambda x: htpy.input(type="text", class_="form-control"), 
             "password": lambda x: htpy.input(type="password", class_="form-control"),
@@ -410,8 +410,8 @@ class Adapter(presentation.port):
             "form": lambda x: htpy.form(class_="form-control")[[Markup(i) for i in x['inner']]],
             "action": lambda x: htpy.button(**attrs("action", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
             "button": lambda x: htpy.button(**attrs("button", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
-            "submit": lambda x: htpy.input(**attrs("submit", x, "btn btn-primary"))[[Markup(i) for i in x['inner']]], 
-            "reset": lambda x: htpy.input(**attrs("reset", x, "btn btn-secondary"))[[Markup(i) for i in x['inner']]],
+            "submit": lambda x: htpy.button(**attrs("submit", x, "btn btn-primary"))[[Markup(i) for i in x['inner']]], 
+            "reset": lambda x: htpy.button(**attrs("reset", x, "btn btn-secondary"))[[Markup(i) for i in x['inner']]],
             "link": lambda x: htpy.a(**attrs("link", x, "btn link"))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.MEDIA.value: {
@@ -493,6 +493,7 @@ class Adapter(presentation.port):
         presentation.Tag.LINE.value: {"line": lambda x: htpy.Element("line")(**attrs(presentation.Tag.LINE.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.FE_DROP_SHADOW.value: {"fedropshadow": lambda x: htpy.Element("feDropShadow")(**attrs(presentation.Tag.FE_DROP_SHADOW.value, x))[[Markup(i) for i in x['inner']]]},
         presentation.Tag.CLIP_PATH.value: {"clippath": lambda x: htpy.Element("clipPath")(**attrs(presentation.Tag.CLIP_PATH.value, x))[[Markup(i) for i in x['inner']]]},
+        presentation.Tag.PATTERN.value: {"pattern": lambda x: htpy.Element("pattern")(**attrs(presentation.Tag.PATTERN.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
     def __init__(self,**constants):

@@ -128,6 +128,12 @@ type = "view"
 view = "dev/ide.xml"
 method = "GET"
 
+[[store.data.routes]]
+path = "/vibe"
+type = "view"
+view = "vibe_kanban.xml"
+method = "GET"
+
 # --- VIEWS - GOV ---
 
 [[store.data.routes]]
@@ -166,6 +172,42 @@ method = "GET"
 path = "/auth/reset-password"
 type = "view"
 view = "auth/recovery.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/portfolio"
+type = "view"
+view = "portfolio.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/anime"
+type = "view"
+view = "anime.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/waitlist"
+type = "view"
+view = "waitlist.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/cartoleria"
+type = "view"
+view = "cartoleria.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/iptv"
+type = "view"
+view = "iptv.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/anilist"
+type = "view"
+view = "anilist_profile.xml"
 method = "GET"
 
 # --- Actions ---
@@ -258,6 +300,55 @@ effect = "deny"
 match = { act = "download" }
 description = "Nega il download se la quota per il tier FREE è stata superata."
 condition = '"free" in input.principal.roles and input.principal.download_count > store.data.limits.free_tier.max_downloads'
+
+[[policies]]
+id = "rule-portfolio-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina portfolio."
+condition = 'input.path == "/portfolio"'
+
+[[policies]]
+id = "rule-anime-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina anime."
+condition = 'input.path == "/anime"'
+
+[[policies]]
+id = "rule-waitlist-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina waitlist."
+condition = 'input.path == "/waitlist"'
+
+[[policies]]
+id = "rule-cartoleria-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina cartoleria."
+condition = 'input.path == "/cartoleria"'
+
+[[policies]]
+id = "rule-iptv-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina IPTV."
+condition = 'input.path == "/iptv"'
+
+[[policies]]
+id = "rule-anilist-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina AniList Profile."
+condition = 'input.path == "/anilist"'
+
+[[policies]]
+id = "rule-vibe-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina Vibe Coding & Kanban."
+condition = 'input.path == "/vibe"'
 
 # ---------------------------------------------
 # Configurazione del Motore di Decisione

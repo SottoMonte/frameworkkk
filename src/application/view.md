@@ -1,319 +1,126 @@
-# Documentazione Schema XML Custom
+# OmniPort View System - Attribute Reference
 
-Questo documento descrive i tag validi e i relativi attributi per la configurazione dei widget tramite XML.
+This document provides a comprehensive list of tags and their supported attributes within the OmniPort framework, specifically for the Starlette presentation adapter.
 
-## Indice dei Tag
+## 📝 Templating Syntax
 
-  * [Card](https://www.google.com/search?q=%23card)
-  * [Media](https://www.google.com/search?q=%23media)
-  * [Icon](https://www.google.com/search?q=%23messenger)
-  * [Divider](https://www.google.com/search?q=%23messenger)
-  * [Navigation](https://www.google.com/search?q=%23navigation)
-  * [View](https://www.google.com/search?q=%23view)
-  * [Messenger](https://www.google.com/search?q=%23messenger)
-  * [Message](https://www.google.com/search?q=%23message)
-  * [Defender](https://www.google.com/search?q=%23defender)
-  * [Column](https://www.google.com/search?q=%23column)
-  * [Row](https://www.google.com/search?q=%23row)
-  * [Container](https://www.google.com/search?q=%23container)
-  * [Stack](https://www.google.com/search?q=%23stack)
-  * [Storekeeper](https://www.google.com/search?q=%23storekeeper)
-  * [Input](https://www.google.com/search?q=%23input)
-  * [Action](https://www.google.com/search?q=%23action)
-  * [Window](https://www.google.com/search?q=%23window)
-  * [Text](https://www.google.com/search?q=%23text)
-  * [Group](https://www.google.com/search?q=%23group)
+OmniPort uses a Jinja2-compatible syntax for layout inheritance and blocks:
+- `{% extends "layout_name.xml" %}`: Inherits from a layout in `src/application/view/layout/`.
+- `{% block block_name %}` ... `{% endblock %}`: Defines or overrides a content block.
+- `{{ variable_name }}`: Injects variables from the context.
 
-## Indice degli Attributi
+## 🏷️ Standard Tags
 
-| Attributo | Valori Ammessi | Descrizione |
-| :--- | :--- | :--- |
-| **id** | Stringa univoca | Identificatore univoco dell'elemento nel documento. |
-| **title** | Testo | Titolo principale o etichetta dell'elemento. |
-| **subtitle** | Testo | Sottotitolo o testo descrittivo secondario. |
-| **image** | URL, Path | Percorso o link all'immagine da visualizzare. |
-| **content** | Testo, HTML | Contenuto principale o corpo del componente. |
-| **class** | Stringa | Nomi delle classi CSS per lo styling. |
-| **width** | px, %, em, auto | Larghezza dell'elemento. |
-| **height** | px, %, em, auto | Altezza dell'elemento. |
-| **padding** | Valore numerico o CSS | Spazio interno tra il bordo e il contenuto. |
-| **margin** | Valore numerico o CSS | Spazio esterno attorno all'elemento. |
-| **expand** | boolean | Se `true`, l'elemento occupa tutto lo spazio disponibile. |
-| **alignment-content** | start, center, end, stretch | Allineamento degli elementi figli all'interno. |
-| **alignment-vertical** | top, center, bottom | Posizionamento verticale nel contenitore. |
-| **alignment-horizontal**| left, center, right | Posizionamento orizzontale nel contenitore. |
-| **spacing** | Valore numerico | Distanza (gap) tra gli elementi interni. |
-| **orientation** | vertical, horizontal | Direzione dello sviluppo del layout. |
-| **type** | text, email, submit, etc. | Definisce il tipo di input o di componente. |
-| **value** | Stringa, Numero | Valore memorizzato o inserito nel campo. |
-| **required** | boolean | Definisce se il campo è obbligatorio. |
-| **disabled** | boolean | Disattiva l'interazione con l'elemento. |
-| **readonly** | boolean | Impedisce la modifica ma permette la visualizzazione. |
-| **autofocus** | boolean | Forza il focus sull'elemento al caricamento. |
-| **selected** | boolean | Indica se l'elemento è attualmente selezionato. |
-| **event-click** | Nome funzione | Azione eseguita al click del mouse. |
-| **event-change** | Nome funzione | Azione eseguita alla variazione del valore. |
-| **name** | Stringa | Nome identificativo per invio dati o form. |
-| **placeholder** | Testo | Suggerimento testuale mostrato in campi vuoti. |
-| **allow** | Stringa (policy) | Permessi specifici (es. per iframe o API). |
-| **controls** | boolean | Mostra o nasconde i tasti di controllo multimediali. |
-| **autoplay** | boolean | Avvia automaticamente audio o video. |
-| **src** | URL, Path | Sorgente della risorsa esterna. |
-| **route** | Percorso / Stringa | Indirizzo di navigazione interna al sistema. |
-| **view** | Nome vista | Identifica la vista o il componente da caricare. |
-| **index** | Numero intero | Posizione dell'elemento in un elenco. |
-| **domain** | URL / Stringa | Dominio o contesto dati di riferimento. |
-| **mode** | dark, light, edit, view | Stato o tema di visualizzazione del componente. |
-| **repository** | Stringa | Riferimento alla sorgente dati (DB o API). |
-| **filter** | Stringa / Query | Criterio di filtraggio per le liste. |
-| **sort** | asc, desc, Stringa | Criterio di ordinamento dei risultati. |
-| **limit** | Numero | Quantità massima di elementi da restituire. |
-| **offset** | Numero | Numero di elementi da saltare (paginazione). |
-| **method** | GET, POST, PUT, DELETE | Metodo di richiesta HTTP. |
-| **action** | URL / Nome funzione | Operazione da eseguire all'invio del form. |
-| **active** | boolean | Indica se lo stato dell'elemento è attivo. |
-| **size** | small, medium, large | Scala dimensionale del componente. |
-| **layout** | grid, flex, block | Modello di impaginazione utilizzato. |
+Most standard tags support a set of common attribute groups:
+- **Identity**: `id`, `class`
+- **Layout**: `width`, `height`, `min-width`, `max-width`, `min-height`, `max-height`, `padding`, `margin`, `overflow`, `expand`, `spacing`
+- **Location**: `justify`, `align`, `position`, `top`, `bottom`, `left`, `right`
+- **Style**: `background`, `matter`, `color`, `border`, `radius`, `shadow`, `thickness`, `style`
 
------
+---
 
-## Card
+### `<Window>`
+Main container for pages or modals.
+- **Types**: `page`, `dialog`, `still`, `embed`
+- **Attributes**: Identity + Location + Layout + Style + `title`, `pointer`
 
-Utilizzato per rappresentare un componente scheda.
+### `<Text>`
+All text-based elements.
+- **Types**: `text`, `input`, `h1`, `h2`, `h3`, `h4`, `h5`, `h6`, `p`, `span`, `mark`, `code`, `pre`, `blockquote`, `cite`, `abbr`, `time`
+- **Attributes**: Style + Typography (`size`, `weight`, `uppercase`, `lowercase`, `truncate`, `font`, `align`, `spacing`, `expand`, `width`, `height`, `margin`, `padding`, `overflow`)
 
-  * **Attributi:**
-      * `id`, 
-      * `title`, 
-      * `subtitle`, 
-      * `image`, 
-      * `content`, 
-      * `class`, 
-      * `width`, 
-      * `height`, 
-      * `padding`, 
-      * `margin`, 
-      * `expand`: Stringa.
-      * `alignment-content`: `horizontal`, `center`, `end`, `between`, `around`.
+### `<Input>`
+Form input elements.
+- **Types**: `input`, `select`, `textarea`, `text`, `password`, `switch`, `checkbox`, `radio`, `range`, `color`, `date`, `month`, `week`, `time`, `number`, `email`, `url`, `search`, `tel`, `dropdown`, `file`, `hidden`
+- **Attributes**: Identity + `name`, `value`, `placeholder`, `required`, `disabled`, `readonly`, `max`, `min`, `multiple`, `type`
 
-## Data
+### `<Action>`
+Interactive elements like buttons or forms.
+- **Types**: `form`, `action`, `button`, `submit`, `reset`, `link`
+- **Attributes**: Identity + Layout + Style + `src`, `width`, `height`, `alt`, `pointer`
 
-Utilizzato per la visualizzazione di dati strutturati.
+### `<Container>`
+Basic layout box.
+- **Types**: `container`, `fluid`
+- **Attributes**: Identity + Layout Static + Location + Style
 
-  * **Attributi:**
-      * `id`, 
-      * `class`, 
-      * `width`, 
-      * `height`, 
-      * `value`: Stringa.
-      * `type`: `text` (default), `table`, `table.row`, `table.cell`, `table.header`, `table.body`, `progress`, `placeholder`.
+### `<Row>` / `<Column>` / `<Stack>`
+Flexbox layout wrappers.
+- **Types**: `row`, `column`, `stack`
+- **Attributes**: Identity + Layout + Location + Style
 
-## Media
+### `<Divider>`
+Visual separator.
+- **Types**: `divider`, `vertical`, `horizontal`
+- **Attributes**: Identity + Location + Layout + Style + `thickness`
 
-Gestisce contenuti multimediali.
+### `<Icon>`
+Generic icon support (Bootstrap Icons by default).
+- **Types**: `icon`, `bi`, `fa`
+- **Attributes**: Identity + `name` (as class), `size`, `color`
 
-  * **Attributi:**
-      * `allow`, 
-      * `class`, 
-      * `controls`, 
-      * `autoplay`, 
-      * `width`, 
-      * `height`, 
-      * `expand`, 
-      * `src`: Stringa.
-      * `type`: `image`, `video`, `audio`, `embed`, `carousel`, `map`, `icon`.
+### `<Navigation>`
+Navigation bars and menus.
+- **Types**: `navigation`, `bar`, `app`, `breadcrumb`, `tab`
+- **Attributes**: Identity + Location + Layout + Style
 
-## Navigation
+### `<Group>`
+Grouping elements for UI components.
+- **Types**: `input`, `action`, `card`, `list`, `tab`, `dropdown`
+- **Attributes**: Identity + Layout + Location + Style
 
-Definisce barre di navigazione, breadcrumb o impaginazione.
+### `<Grid>`
+Grid layout system.
+- **Types**: `grid`
+- **Attributes**: Identity + Layout + Style + Location
 
-  * **Attributi:**
-      * `id`, 
-      * `class`, 
-      * `width`, 
-      * `height`, 
-      * `expand`, 
-      * `padding`, 
-      * `margin`: Stringa.
-      * `alignment-content`: `horizontal`, `vertical`, `center`, `end`, `between`, `around`.
-      * `orientation`: `horizontal` (default), `vertical`.
-      * `type`: `bar` (default), `breadcrumb`, `pagination`, `accordion`, `tab`, `accordion-item`.
+### 🎨 Color Formats
+Attributes like `color` and `background` support:
+- Standard Hex: `#ffffff`
+- Hex with Alpha: `#000000ff`
+- Hex with Transparency (Tailwind style): `#0B0E14/80` (80% opacity)
+- Gradients: `#2ff801,#568dff` (comma-separated hex codes)
 
-## View
+---
 
-Monta una vista specifica basata su una rotta.
+## 🎨 SVG Elements
 
-  * **Attributi:**
-      * `route`, 
-      * `view`, 
-      * `index`: Stringa.
+SVG elements use a specific set of attributes mapped directly to the SVG standard.
 
-## Messenger
+- **Available Tags**: `<svg>`, `<g>`, `<defs>`, `<rect>`, `<circle>`, `<path>`, `<text_svg>`, `<tspan>`, `<style_svg>`, `<filter>`, `<fegaussianblur>`, `<feoffset>`, `<feflood>`, `<fecomposite>`, `<femerge>`, `<femerge_node>`, `<animate>`, `<animatetransform>`, `<stop>`, `<lineargradient>`, `<radialgradient>`, `<polygon>`, `<line>`, `<fedropshadow>`, `<clipPath>`
+- **Attributes**: `id`, `class`, `style`, `viewBox`, `d`, `cx`, `cy`, `r`, `rx`, `ry`, `x`, `y`, `dx`, `dy`, `fill`, `stroke`, `stroke-width`, `transform`, `filter`, `stdDeviation`, `in`, `in2`, `operator`, `result`, `flood-color`, `flood-opacity`, `text-anchor`, `font-family`, `font-size`, `font-weight`, `font-style`, `attributeName`, `values`, `keyTimes`, `dur`, `repeatCount`, `opacity`, `points`, `offset`, `stop-color`, `stop-opacity`, `width`, `height`, `x1`, `y1`, `x2`, `y2`, `clip-path`, `clipPathUnits`, `from`, `to`, `begin`, `additive`, `accumulate`
 
-Configura un widget di messaggistica/chat.
+---
 
-  * **Attributi:**
-      * `view`, 
-      * `domain`: Stringa.
+## ⚡ Attribute Value Mapping (Tailwind)
 
-## Message
+Attributes are parsed and mapped to internal Tailwind-like classes:
 
-Visualizza messaggi di stato, avvisi o notifiche.
+| Attribute | Logic / Example |
+| :--- | :--- |
+| `width` | `full` → `w-full`, `1/2` → `w-1/2`, `100px` → `w-[100px]` |
+| `height` | `full` → `h-full`, `50px` → `h-[50px]` |
+| `padding` | `10px` → `p-[10px]`, `10px,20px` → `py-[10px] px-[20px]` |
+| `margin` | `10px` → `m-[10px]`, `5px,10px,5px,10px` → `mt-[5px] mb-[10px] ml-[5px] mr-[10px]` |
+| `background` | `#fff` → `bg-[#fff]`, `#000,#fff` → Gradient |
+| `color` | `primary` → `text-primary`, `#555` → `text-[#555]` |
+| `justify` | `center` → `justify-center`, `between` → `justify-between` |
+| `align` | `center` → `items-center` |
+| `radius` | `none`, `small` (`rounded-sm`), `medium`, `large`, `full` |
+| `matter` | `glass` (`blur-md`), `glass-min` (`blur-sm`), `glass-medium` (`blur-lg`), `glass-max` (`blur-xl`) |
+| `shadow` | `none`, `min` (`shadow-sm`), `medium`, `large`, `max` |
+| `pointer` | `auto`, `default`, `pointer`, `wait`, `text`, `move`, `not-allowed`, `help`, `crosshair`, `grab`, `grabbing` |
+| `justify` | `start`, `end`, `center`, `between`, `around`, `evenly` |
+| `align` | `start`, `end`, `center`, `stretch` |
+| `font` | `bold` → `font-bold`, `mono` → `font-mono` |
 
-  * **Attributi:**
-      * `title`, 
-      * `subtitle`: Stringa.
-      * `type`: `info` (default), `success`, `warning`, `error`.
-      * `mode`: `alert` (default), `toast`, `inline`, `banner`.
+---
 
-## Defender
+## 🏗️ Layout Inheritance & Blocks
+When using `{% extends %}`, common layout files in `src/application/view/layout/` provide these blocks:
+- `{% block main %}`: The primary content area for a page.
+- `{% block content %}`: Content area within sidebar/app layouts.
+- `{% block bar %}`: Header or navigation specific blocks.
 
-Tag di sicurezza.
-
-  * **Attributi:** Nessuno definito nello schema.
-
-## Column
-
-Contenitore a sviluppo verticale.
-
-  * **Attributi:**
-      * `id`, 
-      * `padding`, 
-      * `margin`, 
-      * `width`, 
-      * `height`, 
-      * `class`, 
-      * `expand`: Stringa.
-
-## Row
-
-Contenitore a sviluppo orizzontale.
-
-  * **Attributi:**
-      * `id`, 
-      * `expand`, 
-      * `class`, 
-      * `width`, 
-      * `height`, 
-      * `padding`, 
-      * `margin`, 
-      * `spacing`, 
-      * `alignment-vertical`, 
-      * `alignment-horizontal`, 
-      * `alignment-content`: Stringa.
-
-## Container
-
-Contenitore principale con vincoli di layout.
-
-  * **Attributi:**
-      * `id`, 
-      * `class`, 
-      * `width`, 
-      * `height`, 
-      * `padding`, 
-      * `spacing`, 
-      * `margin`, 
-      * `expand`: Stringa.
-      * `type`: `fluid` (default), `fixed`.
-      * `alignment-content`: `horizontal`, `center`, `end`, `between`, `around`.
-
-## Storekeeper
-
-Gestisce le chiamate ai dati (Repository/API).
-
-  * **Attributi:**
-      * `repository`, 
-      * `id`, 
-      * `filter`, 
-      * `sort`, 
-      * `limit`, 
-      * `offset`: Stringa.
-      * `method`: `get` (default), `post`, `put`, `delete`.
-
-## Input
-
-Campi di input per form.
-
-  * **Attributi:**
-      * `id`, 
-      * `class`, 
-      * `width`, 
-      * `height`, 
-      * `required`, 
-      * `disabled`, 
-      * `readonly`, 
-      * `autofocus`, 
-      * `selected`, 
-      * `event-click`, 
-      * `event-change`, 
-      * `name`, 
-      * `placeholder`, 
-      * `value`: Stringa.
-      * `type`: `text` (default), `email`, `select`, `checkbox`, `textarea`, `radio`, `switch`, `color`, `range`, `password`, `listbox`, `search`, `number`, `file`, `hidden`, `date`, `time`, `month`, `week`, `url`, `tel`, `number`.
-      * `alignment-content`: `horizontal`, `center`, `end`, `between`, `around`.
-
-## Action
-
-Elementi interattivi (pulsanti, link, form).
-
-  * **Attributi:**
-      * `id`, 
-      * `tooltip`, 
-      * `spacing`, 
-      * `expand`, 
-      * `width`, 
-      * `height`, 
-      * `class`, 
-      * `action`, 
-      * `active`, 
-      * `route`, 
-      * `event-change`, 
-      * `event-click`: Stringa.
-      * `type`: `button` (default), `submit`, `form`, `reset`, `link`.
-      * `alignment-content`: `horizontal`, `center`, `end`, `between`, `around`.
-
-## Window
-
-Definisce finestre di dialogo, modali o aree radice.
-
-  * **Attributi:**
-      * `allow`, 
-      * `title`, 
-      * `layout`, 
-      * `class`, 
-      * `id`, 
-      * `width`, 
-      * `height`, 
-      * `expand`, 
-      * `action`, 
-      * `size`, 
-      * `src`: Stringa.
-      * `type`: `embed` (default), `still`, `dialog`, `page`.
-
-## Text
-
-Visualizzazione di testo semplice o blocchi di codice.
-
-  * **Attributi:**
-      * `class`, 
-      * `width`, 
-      * `height`, 
-      * `value`, 
-      * `disabled`: Stringa.
-      * `type`: `text` (default), `input`, `h1`, `h2`, `h3`, `h4`, `h5`, `h6`, `p`, `span`, `mark`, `blockquote`, `pre`, `code`, `abbr`, `cite`, `time`.
-
-## Group
-
-Raggruppa logicamente altri componenti.
-
-  * **Attributi:**
-      * `width`, 
-      * `height`, 
-      * `expand`, 
-      * `class`, 
-      * `padding`, 
-      * `spacing`, 
-      * `margin`: Stringa.
-      * `type`: `input` (default), `list`, `card`, `tab`, `action`, `dropdown`.
-      * `alignment-content`
-      * `alignment-vertical`
+### 💡 Pro Tips:
+- **Raw CSS**: If a specific style is missing, use the `style` attribute for inline CSS.
