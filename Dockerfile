@@ -11,7 +11,8 @@ COPY requirements.txt .
 
 # --- NUOVE ISTRUZIONI PER LA CACHE DELLE DIPENDENZE ---
 # NUOVO PASSO 5: Crea VENV e aggiorna pip (dovrebbe andare in cache facilmente)
-RUN mkdir -p /venv && \
+RUN apk add --no-cache build-base python3-dev libffi-dev && \
+    mkdir -p /venv && \
     pip install --no-cache-dir --upgrade pip
 
 # NUOVO PASSO 6: Installa le dipendenze (l'istruzione lunga)
