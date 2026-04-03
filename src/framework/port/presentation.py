@@ -33,6 +33,7 @@ class Tag(Enum):
     DIVIDER = "divider"
     ICON = "icon"
     ACCORDION = "accordion"
+    GRID = "grid"
     SVG = "svg"
     CANVAS = "canvas"
     G = "g"
@@ -172,7 +173,8 @@ _IDENTITY = {a.value: a.value for a in [Attribute.ID, Attribute.CLASS]}
 _MEDIA = {**_IDENTITY, **{a.value: a.value for a in [Attribute.SRC, Attribute.WIDTH, Attribute.HEIGHT, Attribute.ALT]}}
 _FIELD = {**_IDENTITY, **{a.value: a.value for a in [Attribute.NAME, Attribute.VALUE, Attribute.PLACEHOLDER, Attribute.REQUIRED, Attribute.DISABLED, Attribute.READONLY, Attribute.MAX, Attribute.MIN, Attribute.MULTIPLE, Attribute.TYPE]}}
 _MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [Attribute.CONTROLS, Attribute.AUTOPLAY, Attribute.LOOP, Attribute.MUTED]}}
-_LAYOUT = {**_IDENTITY, **{a.value: a.value for a in [Attribute.WIDTH,Attribute.MAX_WIDTH, Attribute.MIN_WIDTH, Attribute.HEIGHT, Attribute.MAX_HEIGHT, Attribute.MIN_HEIGHT, Attribute.PADDING, Attribute.MARGIN, Attribute.EXPAND, Attribute.SPACING, Attribute.OVERFLOW]}}
+_LAYOUT_STATIC = {**_IDENTITY, **{a.value: a.value for a in [Attribute.WIDTH,Attribute.MAX_WIDTH, Attribute.MIN_WIDTH, Attribute.HEIGHT, Attribute.MAX_HEIGHT, Attribute.MIN_HEIGHT, Attribute.PADDING, Attribute.MARGIN, Attribute.OVERFLOW]}}
+_LAYOUT = {**_LAYOUT_STATIC, **{a.value: a.value for a in [Attribute.EXPAND, Attribute.SPACING]}}
 _LOCATION = {**_IDENTITY, **{a.value: a.value for a in [Attribute.JUSTIFY, Attribute.ALIGN, Attribute.POSITION, Attribute.TOP, Attribute.BOTTOM, Attribute.LEFT, Attribute.RIGHT]}}
 _STYLE = {**_IDENTITY, **{a.value: a.value for a in [Attribute.BACKGROUND, Attribute.MATTER, Attribute.COLOR, Attribute.BORDER, Attribute.RADIUS, Attribute.SHADOW, Attribute.THICKNESS, Attribute.STYLE]}}
 _TYPOGRAPHY = {**_LAYOUT, **{a.value: a.value for a in [Attribute.SIZE, Attribute.WEIGHT, Attribute.UPPERCASE, Attribute.LOWERCASE, Attribute.TRUNCATE, Attribute.FONT, Attribute.ALIGN]}}
@@ -183,7 +185,7 @@ _ATTRIBUTES_SCHEMA = {
     Tag.TEXT.value: _TYPOGRAPHY | _STYLE, 
     Tag.INPUT.value: _FIELD, 
     Tag.ACTION.value: _MEDIA | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer"}, 
-    Tag.CONTAINER.value: _LAYOUT | _LOCATION | _STYLE, 
+    Tag.CONTAINER.value: _LAYOUT_STATIC | _LOCATION | _STYLE, 
     Tag.ROW.value: _LAYOUT | _LOCATION | _STYLE, 
     Tag.COLUMN.value: _LAYOUT | _LOCATION | _STYLE, 
     Tag.STACK.value: _LAYOUT | _LOCATION | _STYLE, 
@@ -194,6 +196,7 @@ _ATTRIBUTES_SCHEMA = {
     Tag.MEDIA.value: _IDENTITY | _MEDIA | _STYLE | _LAYOUT,
     Tag.CARD.value: _IDENTITY | _LAYOUT | _STYLE,
     Tag.CANVAS.value: _IDENTITY | _LAYOUT | _STYLE | _LOCATION,
+    Tag.GRID.value: _IDENTITY | _LAYOUT | _STYLE | _LOCATION,
 }
 
 _SVG_ATTRIBUTES = {a.value: a.value for a in [

@@ -251,6 +251,7 @@ mapping_attributes = {
         "center":"text-center",
         "right":"text-right",
     }.get(x, ""),
+    presentation.Attribute.THICKNESS.value: lambda x: f"border-[{x}]" if '%' in x or 'px' in x else f"border-{x}" if 'px' in x else f"border-{x}",
 }
 
 def attrs(tag_key, input_data, classe=None):
@@ -264,16 +265,17 @@ def attrs(tag_key, input_data, classe=None):
     if tag_key not in [presentation.Tag.TEXT.value] and (any(attr in raw_attrs for attr in [presentation.Attribute.JUSTIFY.value, presentation.Attribute.ALIGN.value,presentation.Attribute.EXPAND.value,presentation.Attribute.SPACING.value]) or tag_key in [presentation.Tag.ROW.value, presentation.Tag.COLUMN.value]):
         classe += " flex"
 
-    if presentation.Attribute.COLOR.value in raw_attrs and presentation.Attribute.BORDER.value in raw_attrs:
+    if presentation.Attribute.COLOR.value in raw_attrs and presentation.Tag.DIVIDER.value == tag_key:
         raw_attrs["color.border"] = raw_attrs[presentation.Attribute.COLOR.value]
+        raw_attrs.pop(presentation.Attribute.COLOR.value)
 
-    if presentation.Attribute.THICKNESS.value in raw_attrs and tag_key == presentation.Tag.DIVIDER.value:
+    '''if presentation.Attribute.THICKNESS.value in raw_attrs and tag_key == presentation.Tag.DIVIDER.value:
         tipo = raw_attrs.get(presentation.Attribute.TYPE.value, "horizontal")
         if tipo == "horizontal":
             raw_attrs[presentation.Attribute.HEIGHT.value] = raw_attrs[presentation.Attribute.THICKNESS.value]
         else:
             raw_attrs[presentation.Attribute.WIDTH.value] = raw_attrs[presentation.Attribute.THICKNESS.value]
-        raw_attrs.pop(presentation.Attribute.THICKNESS.value)
+        raw_attrs.pop(presentation.Attribute.THICKNESS.value)'''
 
     if presentation.Attribute.SPACING.value in raw_attrs and tag_key == presentation.Tag.TEXT.value:
         raw_attrs["spacing.text"] = raw_attrs[presentation.Attribute.SPACING.value]
@@ -358,6 +360,9 @@ class Adapter(presentation.port):
             ],
             "embed": lambda x: htpy.div(**attrs("embed", x))[[Markup(i) for i in x['inner']]],
         },
+        presentation.Tag.GRID.value: {
+            "grid": lambda x: htpy.div(**attrs("grid", x, "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3"))[[Markup(i) for i in x['inner']]],
+        },
         presentation.Tag.TEXT.value: {
             "text": lambda x: htpy.span(**attrs("text", x,"text-xs"))[[Markup(i) for i in x['inner']]],
             "input": lambda x: htpy.span(**attrs("input", x, 'input-group-text'))[[Markup(i) for i in x['inner']]],
@@ -432,10 +437,10 @@ class Adapter(presentation.port):
         presentation.Tag.STACK.value: { 
             "stack": lambda x: htpy.div(".position-relative")[[Markup(i) for i in x['inner']]]
         },
-        presentation.Tag.DIVIDER.value: { 
-            "divider": lambda x: htpy.hr(**attrs("divider", x,"w-full border-none")),
-            "vertical": lambda x: htpy.div(**attrs("vertical", x,"h-full border-none")),
-            "horizontal": lambda x: htpy.hr(**attrs("horizontal", x,"w-full border-none"))
+        presentation.Tag.DIVIDER.value: {
+            "divider": lambda x: htpy.hr(**attrs(presentation.Tag.DIVIDER.value, x,"w-full border-left")),
+            "vertical": lambda x: htpy.div(**attrs(presentation.Tag.DIVIDER.value, x,"h-full border-top")),
+            "horizontal": lambda x: htpy.hr(**attrs(presentation.Tag.DIVIDER.value, x,"w-full border-left"))
         },
         presentation.Tag.ICON.value: { 
             "icon": lambda x: htpy.i(**attrs("icon", x)),

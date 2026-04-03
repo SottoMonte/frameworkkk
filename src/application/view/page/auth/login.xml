@@ -27,7 +27,7 @@
         <Text type="h5" font="bold" spacing="min" color="#666666" uppercase="true">Omni:domain</Text>
     </Row>
     <Action type='button' color='#666' background='#568dff' ><Text font='bold'>TRY_NOW</Text></Action>
-    <Divider thickness='1px' max-width='99%' background='#000000ff' position='absolute' left='0.5%' right='0.5%' bottom='0px' />
+    <Divider thickness='1px' max-width='99%' color='#000000ff' position='absolute' left='0.5%' right='0.5%' bottom='0px' />
 </Navigation>
 <Column padding="50px">
     <Column justify='center' align='center' padding="3%,20%">
@@ -109,7 +109,7 @@
                                 attributeName="transform" type="translate" 
                                 values="0,0; 0,0; 0,-60; 0,-60; 0,-120; 0,-120; 0,-180; 0,-180; 0,-240; 0,-240; 0,-300; 0,-300; 0,-360; 0,-360; 0,-420; 0,-420; 0,-480; 0,-480; 0,-540; 0,-540; 0,-600; 0,-600"
                                 keyTimes="0; 0.083; 0.083; 0.166; 0.166; 0.25; 0.25; 0.333; 0.333; 0.416; 0.416; 0.5; 0.5; 0.583; 0.583; 0.666; 0.666; 0.75; 0.75; 0.833; 0.833; 1"
-                                dur="11s" repeatCount="indefinite" />
+                                dur="12s" repeatCount="indefinite" />
                         </g>
                     </g>
 
@@ -556,6 +556,68 @@ tuple:test_suite := (
             </Text>
         </Container>
     </Row>
+</Column>
+<Column margin="5%,10%">
+    <Text color='#d7ffc5' uppercase='true' spacing='0.3em' font='mono' margin='15px,0'>_FRAMEWORK_LAYER</Text>
+    <Text type='h3' color='#e1e2eb' font='extrabold' spacing='min' uppercase='true' margin='0,20px,0,0'>THE INFRASTRUCTURE MANAGERS</Text>
+    <Text type='p' color='#cccccc' margin='0,15px,0,0'>Modular handlers designed for isolated environmental interaction.</Text>
+    <Grid spacing='20px'>
+        <!-- storekeeper -->
+        <Column width="auto" spacing="10px" class="group hover:border-[#a9c99e] transition-all" background="#1d2026" color="#444" border="1px" padding="25px">
+            <Row align="center" justify="between">
+                <Text font='mono' color='#8c90a1' uppercase='true'>[PORTS: PERSISTENCE]</Text>
+                <Text type='h6' font='mono' color='#c2c6d8' uppercase='true'>[NAME: storekeeper]</Text>
+            </Row>
+            <Divider thickness="10px" color="#e1e2eb" class="group-hover:border-[#a9c99e] transition-all" />
+            <Text type='p' font='body' color='#c2c6d8'>Handles state persistence and data lifecycle across SQL, NoSQL, and caching layers like Redis.</Text>
+            <Divider thickness="1px" color="#e1e2eb" class="group-hover:border-[#a9c99e] transition-all"/>
+            <Text font='mono' color='#8c90a1' uppercase='true'>[ADAPTERS: PSQL, REDIS, S3]</Text>
+        </Column>
+        <!-- messager -->
+        <Column width="auto" spacing="10px" class="group hover:border-[#c99e9e] transition-all" background="#1d2026" color="#444" border="1px" padding="25px">
+            <Row align="center" justify="between">
+                <Text font='mono' color='#8c90a1' uppercase='true'>[PORTS: message]</Text>
+                <Text type='h6' font='mono' color='#c2c6d8' uppercase='true'>[NAME: MESSENGER]</Text>
+            </Row>
+            <Divider thickness="10px" color="#e1e2eb" class="group-hover:border-[#c99e9e] transition-all" />
+            <Text type='p' font='body' color='#c2c6d8'>Manages asynchronous communication, pub/sub patterns, and complex event-driven logic flows.</Text>
+            <Divider thickness="1px" color="#e1e2eb" class="group-hover:border-[#c99e9e] transition-all"/>
+            <Text font='mono' color='#8c90a1' uppercase='true'>[ADAPTERS: AMQP, MQTT, WS]</Text>
+        </Column>
+        <!-- presenter -->
+        <Column width="auto" spacing="10px" class="group hover:border-[#c9b19e] transition-all" background="#1d2026" color="#444" border="1px" padding="25px">
+            <Row align="center" justify="between">
+                <Text font='mono' color='#8c90a1' uppercase='true'>[PORTS: presentation]</Text>
+                <Text type='h6' font='mono' color='#c2c6d8' uppercase='true'>[NAME: presenter]</Text>
+            </Row>
+            <Divider thickness="10px" color="#e1e2eb" class="group-hover:border-[#c9b19e] transition-all" />
+            <Text type='p' font='body' color='#c2c6d8'>Translates domain models into platform-specific views for Web, GTK desktop, or SSH terminals.</Text>
+            <Divider thickness="1px" color="#e1e2eb" class="group-hover:border-[#c9b19e] transition-all"/>
+            <Text font='mono' color='#8c90a1' uppercase='true'>[ADAPTERS: HTML5, GTK4, ANSI, WASM, FLUTTER, QT]</Text>
+        </Column>
+        <!-- defender -->
+        <Column width="auto" spacing="10px" class="group hover:border-[#b59ec9] transition-all" background="#1d2026" color="#444" border="1px" padding="25px">
+            <Row align="center" justify="between">
+                <Text font='mono' color='#8c90a1' uppercase='true'>[PORTS: AUTHENTICATION, AUTHORIZATION]</Text>
+                <Text type='h6' font='mono' color='#c2c6d8' uppercase='true'>[NAME: DEFENDER]</Text>
+            </Row>
+            <Divider thickness="10px" color="#e1e2eb" class="group-hover:border-[#b59ec9] transition-all" />
+            <Text type='p' font='body' color='#c2c6d8'>Central security layer for input validation, data sanitization, and strict policy enforcement.</Text>
+            <Divider thickness="1px" color="#e1e2eb" class="group-hover:border-[#b59ec9] transition-all"/>
+            <Text font='mono' color='#8c90a1' uppercase='true'>[ADAPTERS: SUPABASE, RBAC, CRYPTO, JWT, OIDC]</Text>
+        </Column>
+        <!-- executor -->
+        <Column width="auto" spacing="10px" class="group hover:border-[#9ec9c8] transition-all" background="#1d2026" color="#444" border="1px" padding="25px">
+            <Row align="center" justify="between">
+                <Text font='mono' color='#8c90a1' uppercase='true'>[PORTS: ]</Text>
+                <Text type='h6' font='mono' color='#c2c6d8' uppercase='true'>[NAME: EXECUTOR]</Text>
+            </Row>
+            <Divider thickness="10px" color="#e1e2eb" class="group-hover:border-[#9ec9c8] transition-all" />
+            <Text type='p' font='body' color='#c2c6d8'>Orchestrates action triggers, background task scheduling, and state-machine transitions across the core application logic.</Text>
+            <Divider thickness="1px" color="#e1e2eb" class="group-hover:border-[#9ec9c8] transition-all"/>
+            <Text font='mono' color='#8c90a1' uppercase='true'>[ADAPTERS: CELERY, RQ, KAFKA, EVENTLET, ASYNCIO, CRON, WORKERS]</Text>
+        </Column>
+    </Grid>
 </Column>
 <Column background="#1d2026" padding="5%,20%" align="center" justify="center" spacing='45px'>
     <Text type='h1' font='bold' color='#d7ffc5' uppercase='true'>”</Text>
