@@ -1,0 +1,41 @@
+<Navigation type="app" background="#18181b" padding="0,16px" justify="between" align="center" width="full" height="50px" position="sticky" top="0" style="z-index: 100; border-bottom: 1px solid #000000;">
+    <!-- Left Section -->
+    <Row align="center" spacing="24px" height="full">
+        <Action type="link" src="/twitch">
+            <Icon name="bi-twitch" size="28px" color="#9146ff" pointer="pointer" />
+        </Action>
+        <Action type="link" src="/twitch/browse">
+            <Text type="h6" font="bold" color="#ffffff" hover-color="#9146ff" pointer="pointer">Browse</Text>
+        </Action>
+        <Icon name="bi-three-dots-vertical" size="20px" color="#ffffff" pointer="pointer" />
+    </Row>
+
+    <!-- Center Section (Search) -->
+    <Row align="center" width="400px" max-width="100%">
+        <Row width="full" background="#18181b" radius="large" border="1px solid #303036" align="center" overflow="hidden">
+            <Input width="full" type="search" placeholder="Search" background="transparent" color="#ffffff" height="34px" padding="0,12px" border="none" />
+            <Action type="button" background="#ffffff0a" padding="8px,12px" border-left="1px solid #303036" hover-background="#ffffff1a">
+                <Icon name="bi-search" size="18px" color="#ffffff" />
+            </Action>
+        </Row>
+    </Row>
+
+    <!-- Right Section -->
+    <Row align="center" spacing="16px" height="full">
+        <Icon name="bi-crown" size="20px" color="#ffffff" pointer="pointer" hover-color="#9146ff" />
+        <Icon name="bi-inbox" size="20px" color="#ffffff" pointer="pointer" hover-color="#9146ff" />
+        <Icon name="bi-chat-dots" size="20px" color="#ffffff" pointer="pointer" hover-color="#9146ff" />
+        
+        <Action type="button" background="#35353b" radius="medium" padding="6px,12px" hover-background="#464649">
+            <Row align="center" spacing="6px">
+                <Icon name="bi-gem" size="14px" color="#ffffff" />
+                <Text size="13px" font="bold" color="#ffffff">Get Bits</Text>
+            </Row>
+        </Action>
+
+        <Container width="32px" height="32px" background="#568dff" radius="full" align="center" justify="center" pointer="pointer">
+            <Text font="bold" color="#ffffff" size="14px">U</Text>
+            <Container position="absolute" bottom="-2px" right="-2px" width="10px" height="10px" background="#00f593" radius="full" border="2px solid #18181b" />
+        </Container>
+    </Row>
+</Navigation>

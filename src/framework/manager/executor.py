@@ -17,9 +17,14 @@ class executor:
     async def start(self):
         await self.interpreter.start()
 
-    async def dsl(self, name, source, session):
-        ast = self.language.parse(source, self.parser)
-        return await self.interpreter.run(name, ast, session, env=self.language.DSL_FUNCTIONS)
+    async def add_file(self, name, source, session):
+        return await self.interpreter.add_file(name, source)
+
+    async def create_session(self, session, env={}):
+        return await self.interpreter.create_session(session, env)
+
+    async def run_session(self, session, file, env={}):
+        return await self.interpreter.run_session(session, file, env)
         
     
     '''@flow.asynchronous(managers=('messenger',))

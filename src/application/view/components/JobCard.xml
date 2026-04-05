@@ -1,0 +1,34 @@
+<Column padding="20px" background="#ffffff" radius="large" shadow="min" margin="0,0,16px,0" border="1px solid #eef2f6" width="full">
+    <Row justify="between" align="center">
+        <Column>
+            <Text type="h3" font="bold" color="#1a202c" size="lg">{{ component.attributes.title }}</Text>
+            <Row align="center" margin="4px,0,0,0">
+                <Icon name="bi-building" size="14px" color="#718096" />
+                <Text color="#718096" size="sm" margin="0,0,0,6px">{{ component.attributes.company }}</Text>
+                <Divider type="vertical" height="12px" margin="0,12px" thickness="1px" color="#cbd5e0" />
+                <Icon name="bi-geo-alt" size="14px" color="#718096" />
+                <Text color="#718096" size="sm" margin="0,0,0,6px">{{ component.attributes.location }}</Text>
+            </Row>
+        </Column>
+        <Column align="end">
+            <Text color="#4a5568" font="bold" size="md">{{ component.attributes.salary }}</Text>
+            <Text color="#a0aec0" size="xs">{{ component.attributes.posted }}</Text>
+        </Column>
+    </Row>
+    
+    <Divider margin="16px,0" color="#f7fafc" />
+    
+    <Row justify="between" align="center">
+        <Row spacing="8px">
+            <Container padding="4px,12px" background="#edf2f7" radius="full">
+                <Text color="#4a5568" size="xs" font="bold">{{ component.attributes.type }}</Text>
+            </Container>
+            <Container padding="4px,12px" background="#ebf8ff" radius="full">
+                <Text color="#3182ce" size="xs" font="bold">{{ component.attributes.category }}</Text>
+            </Container>
+        </Row>
+        <Action type="button" background="#3182ce" padding="8px,20px" radius="medium">
+            <Text color="#ffffff" font="bold" size="sm">Apply Now</Text>
+        </Action>
+    </Row>
+</Column>

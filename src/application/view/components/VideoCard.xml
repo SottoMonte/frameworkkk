@@ -1,0 +1,50 @@
+<Column width="full" spacing="12px" pointer="pointer" transition="all 0.3s ease" hover-transform="scale(1.02)">
+    <Action type="link" src="/watch/{{ component.attributes.id }}">
+        <Container width="full" height="200px" background="#1e1e1e" radius="16px" overflow="hidden" position="relative" shadow="medium" hover-shadow="large">
+            <!-- Thumbnail Placeholder with Gradient -->
+            <Container width="full" height="full" background="#1a1a1a,#2a2a2a" align="center" justify="center">
+                <Icon name="bi-play-circle" size="48px" color="#333" />
+            </Container>
+            
+            <!-- Video Duration Badge -->
+            <Container position="absolute" bottom="12px" right="12px" background="#000000cc" padding="4px,10px" radius="6px" matter="glass-min">
+                <Text color="white" size="12px" font="bold" spacing="0.5px">{{ component.attributes.duration }}</Text>
+            </Container>
+
+            <!-- Progress Bar Overlay (Simulated) -->
+            <Container position="absolute" bottom="0" left="0" width="40%" height="3px" background="#ff0000" />
+        </Container>
+    </Action>
+
+    <Row spacing="14px" align="start" padding="4px">
+        <!-- Channel Avatar -->
+        <Container width="40px" height="40px" background="#222" radius="full" flex-shrink="0" align="center" justify="center" border="1px solid #333">
+             <Text size="16px" font="bold" color="#568dff">{% if component.attributes.thumb %}{{ component.attributes.thumb }}{% else %}VC{% endif %}</Text>
+        </Container>
+
+        <Column flex-grow="1" spacing="4px">
+            <!-- Video Title -->
+            <Text type="h6" color="#ffffff" font="bold" size="16px" line-clamp="2" line-height="1.4" hover-color="#568dff">
+                {{ component.attributes.title }}
+            </Text>
+            
+            <!-- Channel & Stats Section -->
+            <Column spacing="2px">
+                <Row align="center" spacing="4px">
+                    <Text type="p" color="#aaaaaa" size="14px" hover-color="#ffffff">{{ component.attributes.channel }}</Text>
+                    <Icon name="bi-check-circle-fill" size="12px" color="#aaaaaa" />
+                </Row>
+                <Row spacing="6px" align="center">
+                    <Text type="p" color="#888888" size="13px">{{ component.attributes.views }} views</Text>
+                    <Container width="3px" height="3px" background="#444" radius="full" />
+                    <Text type="p" color="#888888" size="13px">{{ component.attributes.time }}</Text>
+                </Row>
+            </Column>
+        </Column>
+
+        <!-- Menu Action -->
+        <Action type="button" background="transparent" padding="4px" radius="full" hover-background="#ffffff1a">
+            <Icon name="bi-three-dots-vertical" size="18px" color="#ffffff" />
+        </Action>
+    </Row>
+</Column>

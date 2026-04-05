@@ -5,6 +5,7 @@ import re
 import json
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse, ParseResult,parse_qs
+import xml.etree.ElementTree as ET
 import htpy
 from markupsafe import Markup
 
@@ -333,8 +334,25 @@ class Adapter(presentation.port):
                 ],
                 htpy.body(**attrs(presentation.Tag.WINDOW.value, x))[
                     [Markup(i) for i in x['inner']],
-                    #htpy.script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
-                    htpy.script(src="static/js/grid.js")
+                    htpy.script(src="static/js/grid.js"),
+                    htpy.script[Markup("""
+                        (function() {
+                            const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/reactive`);
+                            ws.onmessage = (e) => {
+                                const data = JSON.parse(e.data);
+                                if (data.type === 'update') {
+                                    const el = document.getElementById(data.id);
+                                    if (el) el.outerHTML = data.html;
+                                }
+                            };
+                            document.addEventListener('click', (e) => {
+                                const el = e.target.closest('[id]');
+                                if (el && (el.tagName === 'BUTTON' || el.closest('button') || el.getAttribute('pointer') === 'pointer')) {
+                                    ws.send(JSON.stringify({type: 'event', name: el.id + '.click'}));
+                                }
+                            });
+                        })();
+                    """)]
                 ]
             ],
             "dialog": lambda x: htpy.div(class_="modal fade", id=x.get("attrs", {}).get("id", "myModal"), tabindex="-1", aria_hidden="true")[
@@ -383,31 +401,31 @@ class Adapter(presentation.port):
             "time": lambda x: htpy.time(**attrs("time", x))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.INPUT.value: {
-            "input": lambda x: htpy.input(type="text", class_="form-control"),
-            "select": lambda x: htpy.select(**attrs("select", x))[[Markup(htpy.option()[i]) for i in x['inner']]],
-            "textarea": lambda x: htpy.textarea(class_="form-control"),
-            "text": lambda x: htpy.input(type="text", class_="form-control"), 
-            "password": lambda x: htpy.input(type="password", class_="form-control"),
-            "switch": lambda x: htpy.input(type="checkbox", class_="form-switch"), 
-            "checkbox": lambda x: htpy.input(type="checkbox", class_="form-check-input"),
-            "radio": lambda x: htpy.input(type="radio", class_="form-check-input"), 
-            "range": lambda x: htpy.input(class_="form-range", type="range"),
-            "color": lambda x: htpy.input(type="color", class_="form-control"), 
-            "date": lambda x: htpy.input(type="date", class_="form-control"), 
-            "month": lambda x: htpy.input(type="month", class_="form-control"), 
-            "week": lambda x: htpy.input(type="week", class_="form-control"), 
-            "time": lambda x: htpy.input(type="time", class_="form-control"),
-            "number": lambda x: htpy.input(type="number", class_="form-control"), 
-            "email": lambda x: htpy.input(type="email", class_="form-control"), 
-            "url": lambda x: htpy.input(type="url", class_="form-control"),
-            "search": lambda x: htpy.input(type="search", class_="form-control"),
-            "tel": lambda x: htpy.input(type="tel", class_="form-control"), 
-            "dropdown": lambda x: htpy.select(class_="form-select"),
-            "file": lambda x: htpy.input(type="file", class_="form-control"),
-            "hidden": lambda x: htpy.input(type="hidden"),
+            "input": lambda x: htpy.input(type="text", **attrs("input", x)),
+            "select": lambda x: htpy.select(type="select", **attrs("input", x))[[Markup(htpy.option()[i]) for i in x['inner']]],
+            "textarea": lambda x: htpy.textarea(type="textarea", **attrs("input", x)),
+            "text": lambda x: htpy.input(type="text", **attrs("input", x)), 
+            "password": lambda x: htpy.input(type="password", **attrs("input", x)),
+            "switch": lambda x: htpy.input(type="checkbox", **attrs("input", x)), 
+            "checkbox": lambda x: htpy.input(type="checkbox", **attrs("input", x)),
+            "radio": lambda x: htpy.input(type="radio", **attrs("input", x)), 
+            "range": lambda x: htpy.input(type="range", **attrs("input", x)),
+            "color": lambda x: htpy.input(type="color", **attrs("input", x)), 
+            "date": lambda x: htpy.input(type="date", **attrs("input", x)), 
+            "month": lambda x: htpy.input(type="month", **attrs("input", x)), 
+            "week": lambda x: htpy.input(type="week", **attrs("input", x)), 
+            "time": lambda x: htpy.input(type="time", **attrs("input", x)),
+            "number": lambda x: htpy.input(type="number", **attrs("input", x)), 
+            "email": lambda x: htpy.input(type="email", **attrs("input", x)), 
+            "url": lambda x: htpy.input(type="url", **attrs("input", x)),
+            "search": lambda x: htpy.input(type="search", **attrs("input", x)),
+            "tel": lambda x: htpy.input(type="tel", **attrs("input", x)), 
+            "dropdown": lambda x: htpy.select(**attrs("input", x)),
+            "file": lambda x: htpy.input(type="file", **attrs("input", x)),
+            "hidden": lambda x: htpy.input(type="hidden", **attrs("input", x)),
         },
         presentation.Tag.ACTION.value: {
-            "form": lambda x: htpy.form(class_="form-control")[[Markup(i) for i in x['inner']]],
+            "form": lambda x: htpy.form(**attrs("form", x))[[Markup(i) for i in x['inner']]],
             "action": lambda x: htpy.button(**attrs("action", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
             "button": lambda x: htpy.button(**attrs("button", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
             "submit": lambda x: htpy.button(**attrs("submit", x, "btn btn-primary"))[[Markup(i) for i in x['inner']]], 
@@ -500,6 +518,7 @@ class Adapter(presentation.port):
         self.config = constants
         self.messenger = constants.get('messenger')
         self.defender = constants.get('defender')
+        self.executor = constants.get('executor')
         self.views = dict({})
         self.ssh = {}
         cwd = os.getcwd()
@@ -520,11 +539,15 @@ class Adapter(presentation.port):
             #Middleware(CSRFMiddleware, secret=self.config['project']['key']),
             #Middleware(AuthorizationMiddleware, manager=defender)
         ]
+        self.active_websockets = {} # sid -> [websocket]
 
     async def start(self):
         loop = asyncio.get_event_loop()
         print("Starlette: Inizializzazione in corso...")
         await self.parse_route()
+        self.routes_static += [
+            WebSocketRoute("/reactive", self.reactive_websocket, name="reactive")
+        ]
         self.mount_route(self.routes_static) # 'routes' deve essere accessibile qui
         # Inizializza l'applicazione Starlette con rotte e middleware
         self.app = Starlette(debug=True, routes=self.routes_static, middleware=self.middleware_static)
@@ -796,6 +819,95 @@ class Adapter(presentation.port):
             'query': query_params,
             'fragment': frag_params
         }
+        
+        # Salviamo la rotta corrente nella sessione per il rebuild
+        sid = kargs.get('identifier')
+        if sid:
+            await self.executor.create_session(sid, {'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': matched_route['view']})
+            # Se la rotta ha un controller, eseguiamolo
+            if matched_route.get('controller'):
+                # Assicuriamoci che il file sia caricato
+                controller_data = await presentation.loader.resource("src/" + matched_route['controller'])
+                await self.executor.add_file(matched_route['controller'], controller_data, sid)
+                # Inizializziamo il controller
+                await self.executor.run_session(sid, matched_route['controller'], url_payload)
+
+        return await self.render_template(
+            file=matched_route['view'],
+            data=url_payload,
+            **kargs
+        )
+
+    async def reactive_websocket(self, websocket):
+        await websocket.accept()
+        # Recuperiamo il sid dai cookie dell'header
+        cookie_str = websocket.headers.get("cookie", "")
+        sid = None
+        if "session_identifier=" in cookie_str:
+            sid = cookie_str.split("session_identifier=")[1].split(";")[0]
+        
+        if not sid:
+             sid = str(uuid.uuid4())
+             
+        self.active_websockets.setdefault(sid, []).append(websocket)
+        
+        try:
+            while True:
+                data = await websocket.receive_json()
+                if data['type'] == 'event':
+                    # Cerchiamo il controller della rotta corrente
+                    # In una versione reale, dovremmo recuperarlo dalla sessione dell'executor
+                    # Per ora emettiamo il trigger globalmente per quel SID
+                    # L'executor farà il match con i nodi che hanno quel trigger
+                    
+                    # Recuperiamo lo stato della sessione per sapere quale file DSL invocare
+                    # In DagRunner i file sono registrati. 
+                    # Potremmo dover iterare su tutti i file della sessione.
+                    # Ma emit() di DagRunner richiede fname.
+                    
+                    # Per semplicità, emettiamo su tutti i file DSL caricati per questa sessione
+                    # o meglio, salviamo il 'current_controller' nella sessione.
+                    session_info = self.executor.interpreter.runner.sessions.get(sid)
+                    if session_info:
+                        for fname in list(session_info.get('running_files', [])):
+                             self.executor.interpreter.runner.emit(sid, fname, data['name'])
+                             
+        except Exception:
+            pass
+        finally:
+            if sid in self.active_websockets:
+                self.active_websockets[sid].remove(websocket)
+
+    async def rebuild(self, node_id, context=dict()):
+        sid = context.get('sid')
+        view_file = context.get('current_view', 'index.xml') # Fallback o errore?
+        
+        # Carichiamo il file XML
+        text = await presentation.loader.resource("src/" + view_file)
+        
+        # Jinja2 render prima del parsing XML
+        template = self.env.from_string(text)
+        rendered_text = template.render(context)
+        
+        xml = ET.fromstring(rendered_text)
+        
+        # Cerchiamo il nodo con node_id
+        target_node = None
+        if xml.attrib.get('id') == node_id:
+            target_node = xml
+        else:
+            for node in xml.iter():
+                if node.attrib.get('id') == node_id:
+                    target_node = node
+                    break
+        
+        if target_node is not None:
+             html = await self.render_node(target_node, context)
+             # Inviamo l'aggiornamento a tutti i websocket attivi per questo SID
+             if sid in self.active_websockets:
+                 msg = json.dumps({'type': 'update', 'id': node_id, 'html': html})
+                 for ws in self.active_websockets[sid]:
+                     await ws.send_text(msg)
 
         # chiama il modello / builder come nel tuo flusso
         #url_payload = await language.normalize(url_payload,scheme_url)

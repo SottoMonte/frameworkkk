@@ -178,7 +178,7 @@ class Attribute(Enum):
 
 _IDENTITY = {a.value: a.value for a in [Attribute.ID, Attribute.CLASS]}
 _MEDIA = {**_IDENTITY, **{a.value: a.value for a in [Attribute.SRC, Attribute.WIDTH, Attribute.HEIGHT, Attribute.ALT]}}
-_FIELD = {**_IDENTITY, **{a.value: a.value for a in [Attribute.NAME, Attribute.VALUE, Attribute.PLACEHOLDER, Attribute.REQUIRED, Attribute.DISABLED, Attribute.READONLY, Attribute.MAX, Attribute.MIN, Attribute.MULTIPLE, Attribute.TYPE]}}
+_FIELD = {**_IDENTITY, **{a.value: a.value for a in [Attribute.NAME, Attribute.VALUE, Attribute.PLACEHOLDER, Attribute.REQUIRED, Attribute.DISABLED, Attribute.READONLY, Attribute.MAX, Attribute.MIN, Attribute.MULTIPLE]}}
 _MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [Attribute.CONTROLS, Attribute.AUTOPLAY, Attribute.LOOP, Attribute.MUTED]}}
 _LAYOUT_STATIC = {**_IDENTITY, **{a.value: a.value for a in [Attribute.WIDTH,Attribute.MAX_WIDTH, Attribute.MIN_WIDTH, Attribute.HEIGHT, Attribute.MAX_HEIGHT, Attribute.MIN_HEIGHT, Attribute.PADDING, Attribute.MARGIN, Attribute.OVERFLOW]}}
 _LAYOUT = {**_LAYOUT_STATIC, **{a.value: a.value for a in [Attribute.EXPAND, Attribute.SPACING]}}
@@ -190,7 +190,7 @@ _ATTRIBUTES_SCHEMA = {
     Tag.WINDOW.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE | {Attribute.TITLE.value:"title", Attribute.POINTER.value:"pointer"},
     Tag.NAVIGATION.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE,
     Tag.TEXT.value: _TYPOGRAPHY | _STYLE, 
-    Tag.INPUT.value: _FIELD, 
+    Tag.INPUT.value: _FIELD | _LAYOUT | _STYLE, 
     Tag.ACTION.value: _MEDIA | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer"}, 
     Tag.CONTAINER.value: _LAYOUT_STATIC | _LOCATION | _STYLE, 
     Tag.ROW.value: _LAYOUT | _LOCATION | _STYLE, 
@@ -326,6 +326,10 @@ class port(ABC):
     async def node_union(self, node, context):
         pass
 
+    @abstractmethod
+    async def rebuild(self, node_id, view=None, context=dict()):
+        pass
+
     def combine_children(self, children):
         return "".join(children)
 
@@ -372,6 +376,7 @@ class port(ABC):
                 typee = setting.get('type')
                 view = setting.get('view')
                 layout = setting.get('layout')
+                controller = setting.get('controller')
 
                 if view:
                     view = 'application/view/page/' + view
@@ -402,13 +407,15 @@ class port(ABC):
                                 new_path = new_path.replace(part, combination[i], 1)
                         self.routes[new_path] = {
                             'view': view, 'type': typee,
-                            'method': method, 'layout': layout
+                            'method': method, 'layout': layout,
+                            'controller': controller
                         }
                 else:
                     # Caso 2/3: percorsi statici o con parametri dinamici
                     self.routes[path_attribute] = {
                         'view': view, 'type': typee,
-                        'method': method, 'layout': layout
+                        'method': method, 'layout': layout,
+                        'controller': controller
                     }
 
         except Exception as e:
@@ -431,11 +438,14 @@ class port(ABC):
             user = await self.defender.whoami(identifier=constants.get('identifier'))
         else:
             user = {}
-        
-        content = template.render(constants|{'user':user})
-        xml = ET.fromstring(content)
-        view = await self.render_node(xml,constants|{'user':user})
-        return view
+        try:
+            content = template.render(constants|{'user':user})
+            xml = ET.fromstring(content)
+            view = await self.render_node(xml,constants|{'user':user})
+            return view
+        except Exception as e:
+            print(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {constants.get('file','')}")
+            raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {constants.get('file','')}")
 
     async def render_node(self, node, context):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
@@ -486,7 +496,7 @@ class port(ABC):
             children.append(await self.render_node(child, new_context))
 
         # Se è il nodo root fittizio o uno slot residuo, restituiamo solo i figli uniti
-        if tag == "root" or tag == Tag.SLOT.value:
+        if tag == "root" :
             return self.combine_children(children)
 
         # Gestione ID e Stato

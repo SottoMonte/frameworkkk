@@ -1,0 +1,18 @@
+<window type="page" title="Reactive Counter">
+    <container padding="40px" align="center" justify="center" background="#f8fafc" min-height="100vh">
+       
+            <column spacing="24px" align="center">
+                <text size="24px" weight="bold" color="#0f172a">DSL Counter</text>
+                <text id="counter_text" size="48px" weight="black" color="#2563eb">{{ count or 0 }}</text>
+                <row spacing="12px">
+                    <action id="decrement_btn" padding="12px 24px" radius="12px" background="#ef4444" color="#ffffff" shadow="md">
+                        <text weight="bold">- Decrement</text>
+                    </action>
+                    <action id="increment_btn" padding="12px 24px" radius="12px" background="#10b981" color="#ffffff" shadow="md">
+                        <text weight="bold">+ Increment</text>
+                    </action>
+                </row>
+                <text size="14px" color="#64748b">Powered by DSL  Starlette WebSocket</text>
+            </column>
+    </container>
+</window>

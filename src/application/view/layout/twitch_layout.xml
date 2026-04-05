@@ -1,0 +1,15 @@
+<Window type="page" background="#0e0e10" overflow="hidden" height="full" width="full">
+    <!-- Main Top Navigation -->
+    <TwitchTopNav />
+
+    <!-- Main Content Area with Sidebar -->
+    <Row width="full" flex-grow="1" height="calc(100vh - 50px)">
+        <!-- Left Sidebar -->
+        <TwitchSidebar />
+
+        <!-- Main Page Content -->
+        <Container flex-grow="1" width="full" height="full" overflow="auto" background="#0e0e10">
+            {% block content %}{% endblock %}
+        </Container>
+    </Row>
+</Window>

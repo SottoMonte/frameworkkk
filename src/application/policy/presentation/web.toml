@@ -222,6 +222,55 @@ type = "view"
 view = "repair_shop.xml"
 method = "GET"
 
+[[store.data.routes]]
+path = "/jobs"
+type = "view"
+view = "jobs.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/video"
+type = "view"
+view = "video_home.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/watch/{$id}"
+type = "view"
+view = "video_watch.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/upload"
+type = "view"
+view = "video_upload.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/twitch"
+type = "view"
+view = "twitch_home.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/twitch/browse"
+type = "view"
+view = "twitch_browse.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/twitch/channel/{$id}"
+type = "view"
+view = "twitch_channel.xml"
+method = "GET"
+
+[[store.data.routes]]
+path = "/counter"
+type = "view"
+view = "counter.xml"
+controller = "application/controller/counter.dsl"
+method = "GET"
+
 # --- Actions ---
 
 [[store.data.routes]]
@@ -370,11 +419,46 @@ description = "Consente l'accesso pubblico alla pagina del negozio di riparazion
 condition = 'input.path == "/riparazioni"'
 
 [[policies]]
+id = "rule-jobs-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina di ricerca lavoro."
+condition = 'input.path == "/jobs"'
+
+[[policies]]
 id = "rule-test-components-public"
 effect = "allow"
 match = { type = "view" }
 description = "Consente l'accesso pubblico alla pagina test componenti."
 condition = 'input.path == "/test-components"'
+
+[[policies]]
+id = "rule-video-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla piattaforma video."
+condition = 'input.path == "/video" or input.path == "/upload"'
+
+[[policies]]
+id = "rule-watch-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla visione dei video."
+condition = 'input.path |> startswith("/watch/")'
+
+[[policies]]
+id = "rule-twitch-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico al clone di Twitch."
+condition = 'input.path |> startswith("/twitch")'
+
+[[policies]]
+id = "rule-counter-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina counter."
+condition = 'input.path == "/counter"'
 
 # ---------------------------------------------
 # Configurazione del Motore di Decisione

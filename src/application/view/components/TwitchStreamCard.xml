@@ -1,0 +1,54 @@
+<Column width="full" spacing="12px" pointer="pointer" transition="transform 0.2s" hover-transform="translateY(-4px)">
+    <!-- Thumbnail with Badges -->
+    <Action type="link" src="/twitch/channel/{{ component.attributes.name | lower }}">
+        <Container width="full" height="180px" background="#18181b" radius="large" overflow="hidden" position="relative" border="1px solid #1f1f23">
+            <!-- Simulated Gameplay Background (Gradient) -->
+            <Container width="full" height="full" background="#1a1a1a,#2a2a2a" align="center" justify="center">
+                <Icon name="bi-play-circle" size="40px" color="#333" />
+            </Container>
+
+            <!-- Live Badge (Top Left) -->
+            <Container position="absolute" top="10px" left="10px" background="#eb0400" padding="2px,8px" radius="small">
+                <Text color="white" size="12px" font="bold" uppercase="true">LIVE</Text>
+            </Container>
+
+            <!-- Viewers (Bottom Left) -->
+            <Container position="absolute" bottom="10px" left="10px" background="#00000088" padding="2px,8px" radius="small" matter="glass-min">
+                <Text color="white" size="12px" font="bold">{{ component.attributes.viewers }} viewers</Text>
+            </Container>
+        </Container>
+    </Action>
+
+    <!-- Info Section -->
+    <Row spacing="12px" align="start">
+        <!-- Channel Avatar -->
+        <Container width="40px" height="40px" background="#9146ff" radius="full" flex-shrink="0" align="center" justify="center" border="2px solid #9146ff">
+            <Text size="14px" font="bold" color="#ffffff">{{ component.attributes.thumb }}</Text>
+        </Container>
+
+        <Column flex-grow="1" spacing="2px">
+            <!-- Stream Title -->
+            <Text type="h6" color="#ffffff" font="bold" size="15px" truncate="true" hover-color="#9146ff">
+                {{ component.attributes.title }}
+            </Text>
+            
+            <!-- Channel Name -->
+            <Text type="p" color="#adadb8" size="14px" hover-color="#9146ff">{{ component.attributes.name }}</Text>
+            
+            <!-- Category -->
+            <Text type="p" color="#adadb8" size="14px" hover-color="#ffffff">{{ component.attributes.category }}</Text>
+            
+            <!-- Tags (Simulated) -->
+            <Row spacing="8px" margin="4px,0,0,0">
+                <Container background="#26262c" padding="2px,10px" radius="full">
+                    <Text size="11px" color="#efeff1" font="bold">English</Text>
+                </Container>
+                <Container background="#26262c" padding="2px,10px" radius="full">
+                    <Text size="11px" color="#efeff1" font="bold">Competitive</Text>
+                </Container>
+            </Row>
+        </Column>
+        
+        <Icon name="bi-three-dots-vertical" size="18px" color="#ffffff" />
+    </Row>
+</Column>

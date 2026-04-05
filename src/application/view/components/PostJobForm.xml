@@ -1,0 +1,58 @@
+<Column padding="32px" background="#ffffff" radius="large" shadow="medium" margin="24px,0" border="1px solid #e2e8f0" width="full">
+    <Text type="h2" font="extrabold" color="#2d3748" size="2xl">Post a Job Opening</Text>
+    <Text type="p" color="#718096" size="md" margin="8px,0,24px,0">Fill in the details below to find the best talent for your company.</Text>
+
+    <Action type="form" method="POST" action="/create">
+        <Row spacing="16px" margin="0,0,16px,0">
+            <Column width="1/2">
+                <Text font="bold" color="#4a5568" size="sm" margin="0,0,8px,0">Job Title</Text>
+                <Input type="text" name="title" placeholder="e.g. Senior Software Engineer" width="full" padding="12px,16px" radius="medium" border="1px solid #e2e8f0" color="#1a202c" background="#ffffff" class="focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200" shadow="min" />
+            </Column>
+            <Column width="1/2">
+                <Text font="bold" color="#4a5568" size="sm" margin="0,0,8px,0">Company Name</Text>
+                <Input type="text" name="company" placeholder="e.g. Acme Inc." width="full" padding="12px,16px" radius="medium" border="1px solid #e2e8f0" color="#1a202c" background="#ffffff" class="focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200" shadow="min" />
+            </Column>
+        </Row>
+
+        <Row spacing="16px" margin="0,0,16px,0">
+            <Column width="1/2">
+                <Text font="bold" color="#4a5568" size="sm" margin="0,0,8px,0">Location</Text>
+                <Input type="text" name="location" placeholder="e.g. New York, Remote" width="full" padding="12px,16px" radius="medium" border="1px solid #e2e8f0" color="#1a202c" background="#ffffff" class="focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200" shadow="min" />
+            </Column>
+            <Column width="1/2">
+                <Text font="bold" color="#4a5568" size="sm" margin="0,0,8px,0">Category</Text>
+                <Input type="select" name="category" width="full" padding="12px,16px" radius="medium" border="1px solid #e2e8f0" color="#1a202c" background="#ffffff" class="focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200appearance-none" shadow="min">
+                    <Text value="engineering">Engineering</Text>
+                    <Text value="design">Design</Text>
+                    <Text value="marketing">Marketing</Text>
+                    <Text value="sales">Sales</Text>
+                </Input>
+            </Column>
+        </Row>
+
+        <Row spacing="16px" margin="0,0,16px,0">
+            <Column width="1/2">
+                <Text font="bold" color="#4a5568" size="sm" margin="0,0,8px,0">Job Type</Text>
+                <Input type="select" name="type" width="full" padding="12px,16px" radius="medium" border="1px solid #e2e8f0" color="#1a202c" background="#ffffff" class="focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200" shadow="min">
+                    <Text value="full-time">Full-time</Text>
+                    <Text value="part-time">Part-time</Text>
+                    <Text value="contract">Contract</Text>
+                    <Text value="freelance">Freelance</Text>
+                </Input>
+            </Column>
+            <Column width="1/2">
+                <Text font="bold" color="#4a5568" size="sm" margin="0,0,8px,0">Salary Range</Text>
+                <Input type="text" name="salary" placeholder="e.g. $80k - $120k" width="full" padding="12px,16px" radius="medium" border="1px solid #e2e8f0" color="#1a202c" background="#ffffff" class="focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200" shadow="min" />
+            </Column>
+        </Row>
+
+        <Column margin="0,0,24px,0">
+            <Text font="bold" color="#4a5568" size="sm" margin="0,0,8px,0">Job Description</Text>
+            <Input type="textarea" name="description" placeholder="Tell us about the role..." height="150px" width="full" padding="12px,16px" radius="medium" border="1px solid #e2e8f0" color="#1a202c" background="#ffffff" class="focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200" shadow="min" />
+        </Column>
+
+        <Action type="submit" background="#2f855a" padding="12px,0" radius="medium" width="full">
+            <Text color="#ffffff" font="bold" size="md">Post Job Opening</Text>
+        </Action>
+    </Action>
+</Column>

@@ -1,0 +1,38 @@
+<Column background="#0f0f0f" width="240px" height="full" position="sticky" top="56px" padding="12px,0" spacing="4px" style="z-index: 40; min-height: 100vh;">
+    <Row align="center" padding="8px,24px" background="#272727" radius="8px" margin="0,12px" pointer="pointer">
+        <Icon name="bi-house-door-fill" size="20px" color="#ffffff" />
+        <Text type="p" color="#ffffff" margin="0,0,0,24px" size="14px">Home</Text>
+    </Row>
+    <Row align="center" padding="8px,24px" radius="8px" margin="0,12px" pointer="pointer" hover-background="#272727">
+        <Icon name="bi-play-circle" size="20px" color="#ffffff" />
+        <Text type="p" color="#ffffff" margin="0,0,0,24px" size="14px">Shorts</Text>
+    </Row>
+    <Row align="center" padding="8px,24px" radius="8px" margin="0,12px" pointer="pointer" hover-background="#272727">
+        <Icon name="bi-collection-play" size="20px" color="#ffffff" />
+        <Text type="p" color="#ffffff" margin="0,0,0,24px" size="14px">Subscriptions</Text>
+    </Row>
+
+    <Divider margin="12px,12px,12px,24px" color="#303030" />
+
+    <Text type="h6" color="#ffffff" padding="0,24px" font="bold" size="16px">You</Text>
+    <Row align="center" padding="8px,24px" radius="8px" margin="0,12px" pointer="pointer" hover-background="#272727">
+        <Icon name="bi-clock-history" size="20px" color="#ffffff" />
+        <Text type="p" color="#ffffff" margin="0,0,0,24px" size="14px">History</Text>
+    </Row>
+    <Row align="center" padding="8px,24px" radius="8px" margin="0,12px" pointer="pointer" hover-background="#272727">
+        <Icon name="bi-list-ul" size="20px" color="#ffffff" />
+        <Text type="p" color="#ffffff" margin="0,0,0,24px" size="14px">Playlists</Text>
+    </Row>
+    <Row align="center" padding="8px,24px" radius="8px" margin="0,12px" pointer="pointer" hover-background="#272727">
+        <Icon name="bi-play-btn" size="20px" color="#ffffff" />
+        <Text type="p" color="#ffffff" margin="0,0,0,24px" size="14px">Your videos</Text>
+    </Row>
+    <Row align="center" padding="8px,24px" radius="8px" margin="0,12px" pointer="pointer" hover-background="#272727">
+        <Icon name="bi-clock" size="20px" color="#ffffff" />
+        <Text type="p" color="#ffffff" margin="0,0,0,24px" size="14px">Watch Later</Text>
+    </Row>
+    <Row align="center" padding="8px,24px" radius="8px" margin="0,12px" pointer="pointer" hover-background="#272727">
+        <Icon name="bi-hand-thumbs-up" size="20px" color="#ffffff" />
+        <Text type="p" color="#ffffff" margin="0,0,0,24px" size="14px">Liked videos</Text>
+    </Row>
+</Column>

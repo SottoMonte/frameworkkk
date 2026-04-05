@@ -1,0 +1,20 @@
+<Action type="link" src="/twitch/channel/{{ component.attributes.name | lower }}">
+    <Row width="full" height="50px" padding="5px,12px" align="center" spacing="12px" transition="background 0.2s" hover-background="#26262c" pointer="pointer">
+        <!-- Avatar -->
+        <Container width="30px" height="30px" radius="full" background="#9146ff" align="center" justify="center" flex-shrink="0">
+            <Text font="bold" color="#ffffff" size="12px">{{ component.attributes.thumb }}</Text>
+        </Container>
+
+        <!-- Information -->
+        <Column flex-grow="1" overflow="hidden">
+            <Row justify="between" align="center">
+                <Text type="h6" font="bold" size="14px" color="#ffffff" truncate="true">{{ component.attributes.name }}</Text>
+                <Row align="center" spacing="4px">
+                    <Container width="8px" height="8px" background="#eb0400" radius="full" />
+                    <Text size="12px" color="#efeff1">{{ component.attributes.viewers }}K</Text>
+                </Row>
+            </Row>
+            <Text size="12px" color="#adadb8" truncate="true">{{ component.attributes.category }}</Text>
+        </Column>
+    </Row>
+</Action>

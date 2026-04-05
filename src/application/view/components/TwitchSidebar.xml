@@ -1,0 +1,25 @@
+<Navigation type="app" background="#1f1f23" padding="10px,0" width="240px" height="calc(100vh - 50px)" position="sticky" top="50px" overflow="auto" style="border-right: 1px solid #18181b;">
+    <Column width="full" spacing="8px">
+        <Row padding="5px,12px" justify="between" align="center" width="full">
+            <Text type="h6" font="bold" size="13px" color="#ffffff" uppercase="true">Followed Channels</Text>
+            <Icon name="bi-arrow-left" size="14px" color="#ffffff" pointer="pointer" />
+        </Row>
+        <Column spacing="0" width="full">
+            <TwitchChannelCard name="xQc" thumb="XQ" category="Just Chatting" viewers="65.2" />
+            <TwitchChannelCard name="shroud" thumb="SH" category="Valorant" viewers="42.1" />
+            <TwitchChannelCard name="Ninja" thumb="NI" category="Fortnite" viewers="12.5" />
+            <TwitchChannelCard name="HasanAbi" thumb="HA" category="Just Chatting" viewers="28.9" />
+            <TwitchChannelCard name="Pokimane" thumb="PO" category="Just Chatting" viewers="15.4" />
+        </Column>
+
+        <Row padding="20px,12px,5px,12px" justify="between" align="center" width="full">
+            <Text type="h6" font="bold" size="13px" color="#ffffff" uppercase="true">Recommended Channels</Text>
+        </Row>
+        <Column spacing="0" width="full">
+            <TwitchChannelCard name="Summit1g" thumb="S1" category="DayZ" viewers="18.3" />
+            <TwitchChannelCard name="Asmongold" thumb="AS" category="World of Warcraft" viewers="35.6" />
+            <TwitchChannelCard name="Ibai" thumb="IB" category="Special Events" viewers="112" />
+            <TwitchChannelCard name="Sodapoppin" thumb="SO" category="Variety" viewers="22.1" />
+        </Column>
+    </Column>
+</Navigation>

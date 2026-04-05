@@ -1,0 +1,30 @@
+<Navigation type="app" background="#0f0f0f" padding="10px,20px" justify="between" align="center" width="full" height="56px" position="sticky" top="0" style="z-index: 50;">
+    <Row align="center" spacing="20px">
+        <Icon name="bi-list" size="24px" color="#ffffff" pointer="pointer" />
+        <Row align="center" spacing="4px">
+            <Icon name="bi-play-fill" size="28px" color="#ff0000" />
+            <Text type="h5" font="bold" color="#ffffff" spacing="-1px">YouTube</Text>
+        </Row>
+    </Row>
+
+    <Row align="center" width="50%" max-width="600px">
+        <Row width="full" background="#121212" radius="full" border="1px solid #303030" padding="0,4px,0,16px" align="center">
+            <Action  type="button" background="#222222" radius="full" padding="8px,20px" border-left="1px solid #303030">
+                <Icon name="bi-search" size="16px" color="#ffffff" />
+            </Action>
+            <Input width="full" type="search" placeholder="Search" background="transparent" color="#ffffff" height="36px" />
+            
+        </Row>
+        <Action type="button" background="#181818" radius="full" margin="0,0,0,12px" padding="10px">
+            <Icon name="bi-mic-fill" size="18px" color="#ffffff" />
+        </Action>
+    </Row>
+
+    <Row align="center" spacing="20px">
+        <Icon name="bi-camera-video" size="20px" color="#ffffff" pointer="pointer" />
+        <Icon name="bi-bell" size="20px" color="#ffffff" pointer="pointer" />
+        <Container width="32px" height="32px" background="#568dff" radius="full" align="center" justify="center">
+            <Text font="bold" color="#ffffff" size="14px">A</Text>
+        </Container>
+    </Row>
+</Navigation>
