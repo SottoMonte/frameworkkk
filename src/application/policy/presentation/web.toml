@@ -32,6 +32,12 @@ type = "view"
 view = "auth/login.xml"
 method = "GET"
 
+[[store.data.routes]]
+path = "/test-components"
+type = "view"
+view = "test_components.xml"
+method = "GET"
+
 # --- VIEWS - OPS ---
 
 [[store.data.routes]]
@@ -210,6 +216,12 @@ type = "view"
 view = "anilist_profile.xml"
 method = "GET"
 
+[[store.data.routes]]
+path = "/riparazioni"
+type = "view"
+view = "repair_shop.xml"
+method = "GET"
+
 # --- Actions ---
 
 [[store.data.routes]]
@@ -349,6 +361,20 @@ effect = "allow"
 match = { type = "view" }
 description = "Consente l'accesso pubblico alla pagina Vibe Coding & Kanban."
 condition = 'input.path == "/vibe"'
+
+[[policies]]
+id = "rule-repair-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina del negozio di riparazioni."
+condition = 'input.path == "/riparazioni"'
+
+[[policies]]
+id = "rule-test-components-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina test componenti."
+condition = 'input.path == "/test-components"'
 
 # ---------------------------------------------
 # Configurazione del Motore di Decisione

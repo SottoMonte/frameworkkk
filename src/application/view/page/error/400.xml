@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<layout id="error-page-404" class="error-page">
+<Row id="error-page-404" class="error-page">
     <group type="container" class="error-container" expand="full" alignment-horizontal="center" alignment-vertical="center">
         <graph type="icon" value="error" class="error-icon" width="120" height="120" />
         
@@ -18,4 +18,4 @@
             </click>
         </action>
     </group>
-</layout>
+</Row>

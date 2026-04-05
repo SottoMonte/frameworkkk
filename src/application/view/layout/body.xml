@@ -81,7 +81,7 @@
         <Action type="dropdown" tooltip="Help"><Row><Media type="icon" src="bi-phone"/><Text>Telephones</Text></Row></Action>
     </Navigation>
     <!-- Content !-->
-    {{ inner }}
+    {{ inner | safe }}
     <!-- Footer !-->
     <Navigation class="bg-primary">
         <Row>

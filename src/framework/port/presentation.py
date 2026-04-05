@@ -8,6 +8,7 @@ import markupsafe
 import re
 
 import itertools
+import os
 
 from enum import Enum
 
@@ -443,14 +444,49 @@ class port(ABC):
         if tag.lower() == "svg":
             in_svg = True
 
+        # Controllo se il tag è un componente (custom tag)
+        component_paths = [
+            f"src/application/view/components/{tag}.xml",
+            f"src/application/view/component/{tag}.xml"
+        ]
+
+        for path in component_paths:
+            if os.path.exists(path):
+                # Rimuove "src/" per passarlo a render_template
+                # poiché render_template aggiunge già "src/"
+                relative_path = path.replace("src/", "", 1)
+                
+                # 1. Cattura i nodi figli originali come stringa XML pura (non renderizzata)
+                # Questo evita che il parser XML veda tag HTML durante l'espansione
+                inner_xml = "".join([ET.tostring(child, encoding='unicode') for child in list(node)])
+                
+                # 2. Prepara ID e Attributi
+                node_id = node.attrib.get('id', str(uuid.uuid4()))
+                attributes = {k.split('}')[-1]: v for k, v in node.attrib.items()}
+                attributes['id'] = node_id
+                
+                # 3. Renderizza il componente iniettando l'XML non ancora processato
+                return await self.render_template(
+                    **(context | {
+                        'file': relative_path,
+                        'inner': inner_xml,
+                        'component': {
+                            'id': node_id,
+                            'attributes': attributes,
+                            'inner': inner_xml
+                        }
+                    })
+                )
+
+        # Gestione Standard dei tag DSL
         children = []
         new_context = context.copy()
         new_context['in_svg'] = in_svg
         for child in list(node):
             children.append(await self.render_node(child, new_context))
 
-        # Se è il nodo root fittizio, restituiamo solo i figli uniti
-        if tag == "root":
+        # Se è il nodo root fittizio o uno slot residuo, restituiamo solo i figli uniti
+        if tag == "root" or tag == Tag.SLOT.value:
             return self.combine_children(children)
 
         # Gestione ID e Stato

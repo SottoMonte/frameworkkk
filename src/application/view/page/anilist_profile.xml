@@ -48,7 +48,7 @@
         </Container>
 
         <!-- Profile Header (Highly Responsive) -->
-        <Container width="full" background="#151f2e" padding="0,0,0,0" shadow="medium">
+        <Container width="auto" padding="80px,0" background="#151f2e" shadow="medium">
             <Column max-width="1200px" width="full" margin="0,auto" padding="0,20px">
                 
                 <Row align="end" spacing="20px" md-spacing="40px" margin="-60px,0,0,0" md-margin="-100px,0,0,0">

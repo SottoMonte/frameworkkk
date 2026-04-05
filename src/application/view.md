@@ -8,6 +8,38 @@ OmniPort uses a Jinja2-compatible syntax for layout inheritance and blocks:
 - `{% extends "layout_name.xml" %}`: Inherits from a layout in `src/application/view/layout/`.
 - `{% block block_name %}` ... `{% endblock %}`: Defines or overrides a content block.
 - `{{ variable_name }}`: Injects variables from the context.
+- `{{ inner | safe }}`: Injects child nodes (used in custom components).
+
+## 🧩 Custom Components
+
+OmniPort allows you to create reusable UI components by defining XML files in `src/application/view/components/`.
+
+### Creating a Component
+Create an XML file, for example `src/application/view/components/Card.xml`:
+```xml
+<Column class="p-6 bg-white rounded-xl shadow-xl border border-gray-100">
+    <Text type="h3" font="bold" color="#111">{{ component.attributes.title }}</Text>
+    <Divider margin="10px,0" />
+    <Container>
+        {{ inner | safe }}
+    </Container>
+</Column>
+```
+
+### Using a Component
+Use the filename (without extension) as the tag name:
+```xml
+<Card title="Featured Product">
+    <Text>This is the content inside the card.</Text>
+    <Action type="button">Buy Now</Action>
+</Card>
+```
+
+### Component Context
+Inside a component template, you have access to:
+- `component.attributes`: A dictionary of all attributes passed to the tag.
+- `component.id`: The unique ID generated for this component instance.
+- `{{ inner | safe }}`: Injects the nested XML children of the tag. **Required** for components that wrap other elements.
 
 ## 🏷️ Standard Tags
 

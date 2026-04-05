@@ -23,6 +23,9 @@ When working with this framework, you are **ONLY** allowed to:
 - `model/`: Entity definitions and schemas in `.json`.
 - `repository/`: Strategic data access patterns.
 - `view/`: User interface definitions using `.xml`.
+    - `page/`: Main application pages.
+    - `layout/`: Shared layout templates.
+    - `components/`: Reusable UI components.
 - `policy/`: Security and business rules (e.g., `.rego` or `.dsl`).
 
 ## ✍️ DSL (Domain Specific Language)
@@ -71,6 +74,7 @@ For a complete list of tags and attributes, always refer to [src/application/vie
 - `<Divider>`: Visual separators.
 - `<Icon>`: Icons (e.g., `bi-terminal`).
 - `<SVG>`: Native SVG elements are supported.
+- **Custom Components**: Any XML file in `view/components/` can be used as a custom tag (e.g. `<MyCard />`). Use `{{ inner | safe }}` to inject children inside your component.
 
 ### Common Attributes (mapped to Tailwind):
 - `width`, `height`: pixel or percentage (e.g., `width="full"`, `height="100px"`).

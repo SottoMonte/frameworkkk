@@ -32,6 +32,6 @@
         </Container>
     </Navigation>
     <!-- Content !-->
-    {{ inner }}
+    {{ inner | safe }}
     <!-- Footer !-->
 </Column>
