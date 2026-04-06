@@ -2,8 +2,8 @@
 
   counter_logic : {
     // Valore corrente del counter (default 0, persiste in sessione)
-    count: 0; 
-
+    count: 0;
+    
     // Incrementa: aggiorna lo stato E rebuild del nodo UI in un'unica chiamata
     increment_btn() -> {
         "1": messenger.post(

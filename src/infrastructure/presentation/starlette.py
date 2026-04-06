@@ -839,12 +839,6 @@ class Adapter(presentation.port):
             'fragment': frag_params
         }
 
-        rendered_html = await self.render_template(
-            file=matched_route['view'],
-            data=url_payload,
-            **kargs
-        )
-
         # Salviamo la rotta corrente nella sessione per il rebuild
         #sid = kargs.get('identifier')
         sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
@@ -857,12 +851,22 @@ class Adapter(presentation.port):
                 # Assicuriamoci che il file sia caricato
                 ppppname = "src/" + matched_route['controller']
                 controller_data = await presentation.loader.resource(ppppname)
-                #print(f"{controller_data}")
                 await self.executor.add_file(ppppname, controller_data)
-                # Inizializziamo il controller
-                #print(f"\n\nController data: {controller_data}",sid, ppppname, url_payload)
+                
+                # Inizializziamo il controller (o recuperiamo lo stato di sessione)
                 resultato = await self.executor.run_session(sid, ppppname, {})
-                #print(f"\n\nRisultato: {resultato}")
+                
+                # Passiamo l'intero contesto della sessione al template Jinja
+                full_ctx = self.executor.interpreter.runner.context(sid)
+                if full_ctx:
+                    kargs.update(full_ctx)
+
+        # Ora renderizziamo l'HTML *con* il contesto del controller e lo stato salvato!
+        rendered_html = await self.render_template(
+            file=matched_route['view'],
+            data=url_payload,
+            **kargs
+        )
 
         return rendered_html
 
@@ -930,7 +934,19 @@ class Adapter(presentation.port):
         print("BOOOOOOOOM")
         node = self.DOM.get(node_id)
         
-        rendered_node = await self.render_template(text=node, **context)
+        # Invece di usare solo il frammento "context", recuperiamo tutto lo stato aggiornato
+        # in modo che i template possano usare `counter_logic.count` in tutti i casi
+        full_ctx = {}
+        if hasattr(self, 'executor') and self.executor:
+            try:
+                full_ctx = self.executor.interpreter.runner.context(session_id) or {}
+            except Exception as e:
+                print(f"Errore recupero contesto per rebuild: {e}")
+                
+        # Uniamo i due per sicurezza, dando priorità al context appena passato
+        final_context = {**full_ctx, **context}
+        
+        rendered_node = await self.render_template(text=node, **final_context)
 
         sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
         if rendered_node:
