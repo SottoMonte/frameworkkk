@@ -850,7 +850,7 @@ class Adapter(presentation.port):
         sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
 
         if sid:
-            await self.executor.create_session(sid, {'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': matched_route['view']})
+            await self.executor.create_session(sid, {'messenger': self.messenger, 'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': matched_route['view']})
             # Se la rotta ha un controller, eseguiamolo
             print(f"Controller: {matched_route}")
             if matched_route.get('controller'):
@@ -861,7 +861,7 @@ class Adapter(presentation.port):
                 await self.executor.add_file(ppppname, controller_data)
                 # Inizializziamo il controller
                 #print(f"\n\nController data: {controller_data}",sid, ppppname, url_payload)
-                resultato = await self.executor.run_session(sid, ppppname, {'presenter': self.config.get('presenter')})
+                resultato = await self.executor.run_session(sid, ppppname, {})
                 #print(f"\n\nRisultato: {resultato}")
 
         return rendered_html

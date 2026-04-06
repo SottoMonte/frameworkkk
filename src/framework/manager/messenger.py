@@ -9,8 +9,23 @@ class messenger():
         pass
 
     async def post(self, **constants):
-        for provider in self.providers:
-            await provider.post(**constants)
+        session_id = constants['session']
+        payload = constants.get('payload')
+        domain = constants.get('domain')
+        node_id = constants.get('node')  # opzionale: id del nodo DOM da aggiornare
+
+        file_path = None
+        event_name = None
+
+        if ':' in domain:
+            controller = domain.split(':')[0]
+            event_name = domain.split(':')[1]
+            file_path = f"src/application/controller/{controller}.dsl"
+
+        # 1. Aggiorna lo stato nella sessione
+        if file_path and event_name:
+            print(f"[messenger] update_state: {event_name} = {payload} (session: {session_id})")
+            self.executor.interpreter.runner.update_state(session_id, file_path, event_name, payload)
 
     async def read(self, **constants):
         prohibited = constants['prohibited'] if 'prohibited' in constants else []
@@ -24,7 +39,7 @@ class messenger():
             task = asyncio.create_task(provider.read(location=profile,**constants))
             operations.append(task)
         
-        return await executor.first_completed(operations=operations)
+        return await self.executor.first_completed(operations=operations)
         '''finished, unfinished = await asyncio.wait(operations, return_when=asyncio.FIRST_COMPLETED)
         for operation in finished:
             return operation.result()

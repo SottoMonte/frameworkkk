@@ -45,6 +45,17 @@ def _set(ctx, path, val):
         ctx = ctx.setdefault(p, {})
     ctx[parts[-1]] = val
 
+def _deep_merge_defaults(target: dict, source: dict):
+    """Merge source into target SOLO per le chiavi non ancora presenti.
+    Per dict annidati, ricorre senza sovrascrivere i valori esistenti.
+    Questo permette a update_state() di avere priorità sui valori iniziali del DSL."""
+    for k, v in source.items():
+        if k not in target:
+            target[k] = v
+        elif isinstance(target[k], dict) and isinstance(v, dict):
+            _deep_merge_defaults(target[k], v)
+        # else: target ha già il valore → non sovrascrivere
+
 def _key(fname: str, node_name: str) -> str:
     return f"{fname}::{node_name}"
 
@@ -249,9 +260,10 @@ class DagRunner:
 
         session = self.sessions[sid]
 
-        # Aggiorna ctx con i dati della richiesta corrente
+        # Aggiorna ctx con i dati della richiesta corrente usando deep merge
+        # le chiavi esistenti (impostate da update_state/messenger.post) hanno priorità
         if ctx_update:
-            session["ctx"].update(ctx_update)
+            _deep_merge_defaults(session["ctx"], ctx_update)
 
         session["running_files"].add(fname)
 
@@ -567,12 +579,27 @@ class DagRunner:
     # REACTIVE API
     # ─────────────────────────────────────────
 
+    def update_state(self, sid: str, fname: str, path: str, value: Any):
+        """Aggiorna una variabile nel contesto della sessione senza triggerare nessun nodo."""
+        if sid not in self.sessions:
+            return
+        session = self.sessions[sid]
+        _set(session["ctx"], path, value)
+
     def emit(self, sid: str, fname: str, name: str, value: Any = None):
         """Trigger manuale di un nodo specifico."""
+        if sid not in self.sessions:
+            return
         session = self.sessions[sid]
         if value is not None:
             _set(session["ctx"], name, value)
-        self.queue.put_nowait((sid, fname, name))
+        # Accoda solo se il nodo esiste davvero nel file
+        if fname in self.nodes and name in self.nodes[fname]:
+            if _key(fname, name) in session.get("done", {}):
+                session["done"][_key(fname, name)].clear()
+            self.queue.put_nowait((sid, fname, name))
+        else:
+            print(f"[emit] Nodo '{name}' non trovato in '{fname}' — ignorato")
 
     async def wait_node(self, sid: str, fname: str, name: str):
         """Attende il completamento di un nodo specifico."""

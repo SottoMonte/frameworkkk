@@ -1,17 +1,29 @@
 {
 
   counter_logic : {
-    // Recuperiamo il valore corrente o usiamo 0 come default
-    count: 11; 
+    // Valore corrente del counter (default 0, persiste in sessione)
+    count: 0; 
 
-    // Quando arriva il trigger 'increment_btn', calcola count+1 e rinfresca la UI
-    increment_btn() -> presenter.rebuild("counter_display", sid, {count: 12});
+    // Incrementa: aggiorna lo stato E rebuild del nodo UI in un'unica chiamata
+    increment_btn() -> {
+        "1": messenger.post(
+            session: sid,
+            domain: "counter:counter_logic.count",
+            payload: (counter_logic.count + 1),
+            node: "counter_display"
+        ) ;
+        "2": presenter.rebuild("counter_display", sid, {count: counter_logic.count});
+    };
 
-    // Quando arriva il trigger 'decrement_btn', calcola count-1 e rinfresca la UI
-    decrement_btn() -> presenter.rebuild("counter_display", sid, {count: 11});
-  };
-
-  increment_btn() -> presenter.rebuild("counter_display", sid, {count: 9});
-  decrement_btn() -> presenter.rebuild("counter_display", sid, {count: 8});
+    decrement_btn() -> {
+        "1": messenger.post(
+            session: sid,
+            domain: "counter:counter_logic.count",
+            payload: (counter_logic.count - 1),
+            node: "counter_display"
+        ) ;
+        "2": presenter.rebuild("counter_display", sid, {count: counter_logic.count});
+    };
+  }
 
 }
