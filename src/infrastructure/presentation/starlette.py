@@ -339,6 +339,7 @@ class Adapter(presentation.port):
                         (function() {
                             const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/reactive`);
                             ws.onmessage = (e) => {
+                                console.log(e.data);
                                 const data = JSON.parse(e.data);
                                 if (data.type === 'update') {
                                     const el = document.getElementById(data.id);
@@ -857,8 +858,12 @@ class Adapter(presentation.port):
         
         if not sid:
              sid = str(uuid.uuid4())
+
+        print(f"SID: {sid}")
              
         self.active_websockets.setdefault(sid, []).append(websocket)
+
+        #print(f"Active websockets: {self.active_websockets}")
         
         try:
             while True:
@@ -888,46 +893,21 @@ class Adapter(presentation.port):
                 self.active_websockets[sid].remove(websocket)
 
     async def rebuild(self, node_id, session_id, context):
-        print(f"Rebuild: {node_id}", session_id)
         
         node = self.DOM.get(node_id)
         
         rendered_node = await self.render_template(text=node, **context)
-        print("####################rendered_node",rendered_node)
-        '''sid = context.get('sid')
-        view_file = context.get('current_view', 'index.xml') # Fallback o errore?
-        
-        # Carichiamo il file XML
-        text = await presentation.loader.resource("src/" + view_file)
-        
-        # Jinja2 render prima del parsing XML
-        template = self.env.from_string(text)
-        rendered_text = template.render(context)
-        
-        xml = ET.fromstring(rendered_text)
-        
-        # Cerchiamo il nodo con node_id
-        target_node = None
-        if xml.attrib.get('id') == node_id:
-            target_node = xml
-        else:
-            for node in xml.iter():
-                if node.attrib.get('id') == node_id:
-                    target_node = node
-                    break'''
-        sid = "kargs.get('identifier')"
-        if True:
+
+        sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
+        if rendered_node:
              #html = await self.render_node(target_node, context)
              # Inviamo l'aggiornamento a tutti i websocket attivi per questo SID
-             print("####################active_websockets",self.active_websockets)
              if sid in self.active_websockets:
-                 msg = json.dumps({'type': 'update', 'id': node_id, 'html': ''})
-                 for ws in self.active_websockets[sid]:
-                     await ws.send_text(msg)
+                msg = json.dumps({'type': 'update', 'id': node_id, 'html': rendered_node})
+                for ws in self.active_websockets[sid]:
+                    await ws.send_text(msg)
 
-        # chiama il modello / builder come nel tuo flusso
-        #url_payload = await language.normalize(url_payload,scheme_url)
-        #return await self.render_template(file=matched_route['view'], url=url_payload, mode=['main'], identifier=kargs.get('identifier'))
+        return rendered_node
 
     def mount_route(self, routes):
         for path, data in self.routes.items():
