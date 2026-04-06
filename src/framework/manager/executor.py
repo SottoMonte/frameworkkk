@@ -17,7 +17,7 @@ class executor:
     async def start(self):
         await self.interpreter.start()
 
-    async def add_file(self, name, source, session):
+    async def add_file(self, name, source):
         return await self.interpreter.add_file(name, source)
 
     async def create_session(self, session, env={}):

@@ -12,11 +12,11 @@
                 </Column>
 
                 <Row spacing="16px" justify="center" width="full">
-                    <Action click="counter_logic.decrement_btn" id="dec_btn" background="#1e293b" color="white" radius="12px" padding="12px,24px" border="1px,rgba(255,255,255,0.1)" pointer="pointer">
+                    <Action click="counter:counter_logic.decrement_btn" id="dec_btn" background="#1e293b" color="white" radius="12px" padding="12px,24px" border="1px,rgba(255,255,255,0.1)" pointer="pointer">
                         <Icon name="bi-dash-lg" size="large" />
                     </Action>
                     
-                    <Action click="counter_logic.increment_btn" id="inc_btn" background="#38bdf8" color="#0f172a" radius="12px" padding="12px,24px" font="bold" pointer="pointer">
+                    <Action click="counter:counter_logic.increment_btn" id="inc_btn" background="#38bdf8" color="#0f172a" radius="12px" padding="12px,24px" font="bold" pointer="pointer">
                         <Icon name="bi-plus-lg" size="large" />
                     </Action>
                 </Row>

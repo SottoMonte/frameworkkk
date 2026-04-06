@@ -1,12 +1,17 @@
 {
+
   counter_logic : {
-    count : 0;
-    increment_btn() -> count + 1 |> print;
-    decrement_btn() -> count - 1 |> print;
+    // Recuperiamo il valore corrente o usiamo 0 come default
+    count: 11; 
+
+    // Quando arriva il trigger 'increment_btn', calcola count+1 e rinfresca la UI
+    increment_btn() -> presenter.rebuild("counter_display", sid, {count: 12});
+
+    // Quando arriva il trigger 'decrement_btn', calcola count-1 e rinfresca la UI
+    decrement_btn() -> presenter.rebuild("counter_display", sid, {count: 11});
   };
-  aaaa:10;
-  CCCC:print(presenter.rebuild);
-  iuds:print(sid);
-  //zzz:presenter.rebuild("counter_display",sid,{count:aaaa});
-  //increment_btn(schedule:5) -> presenter.rebuild("counter_display",sid,{count:aaaa});
+
+  increment_btn() -> presenter.rebuild("counter_display", sid, {count: 9});
+  decrement_btn() -> presenter.rebuild("counter_display", sid, {count: 8});
+
 }

@@ -366,10 +366,28 @@ class FlowNodeBuilder:
                     "kwargs": kwargs,
                     "path": task_path
                 })
-            # Ricorsione su tutti i figli
+            
+            # Se è una coppia, aggiungiamo la chiave al path per i figli
+            if t == "pair":
+                # Estraiamo il nome della chiave (che può essere un nodo 'var')
+                key_node = node.get("key")
+                key = key_node.get("name") if isinstance(key_node, dict) and "name" in key_node else str(key_node)
+                
+                new_path = f"{path}.{key}" if path else key
+                await self._collect_tasks(node.get("value"), new_path, env=env)
+                return
+
+            # Se è un dict, scendiamo negli items mantenendo il path corrente
+            if t == "dict":
+                for item in node.get("items", []):
+                    await self._collect_tasks(item, path, env=env)
+                return
+
+            # Ricorsione generica su altri nodi
             for k, v in node.items():
-                if k != "meta":
+                if k not in ("meta", "type"):
                     await self._collect_tasks(v, path, env=env)
+
         elif isinstance(node, (list, tuple)):
             for item in node:
                 await self._collect_tasks(item, path, env=env)
@@ -819,17 +837,6 @@ class Interpreter:
     async def stop(self):
         await self.runner.stop()
 
-    async def run(self, name, ast, session, env={}):
-        self._tasks = [] # Reset tasks for this run
-        self._stack = []
-        self._dag = []
-        result , _ = await self.visit(ast, env, path="")
-        flow_nodes = await self._build_flow_nodes(env|result)
-        #print("\n\n###############################FLOW NODES",flow_nodes)
-        await self.runner.add_file(name,flow_nodes)
-        self.runner.create_session(session,name,env|result)
-        return result
-
     async def add_file(self, name, code):
         self._tasks = [] # Reset tasks for this run
         self._stack = []
@@ -839,12 +846,11 @@ class Interpreter:
             print("ERROR", f"Errore di parsing DSL in {name}: {ast}")
             return
         self.cache_ast[name] = ast
-        #result , _ = await self.visit(ast, DSL_FUNCTIONS, path="")
-        #flow_nodes = await self._build_flow_nodes(DSL_FUNCTIONS)
-        flow_nodes = await self.builder.build(ast, env=DSL_FUNCTIONS)
-        #print(flow_nodes)
         
-        await self.runner.add_file(name,flow_nodes)
+        # Usiamo il builder che propaga correttamente i percorsi
+        flow_nodes = await self.builder.build(ast, env=DSL_FUNCTIONS)
+        
+        await self.runner.add_file(name, flow_nodes)
 
     async def create_session(self, session, env={}):
         self.runner.create_session(session,env)

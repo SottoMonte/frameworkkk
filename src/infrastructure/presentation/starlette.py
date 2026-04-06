@@ -346,11 +346,27 @@ class Adapter(presentation.port):
                                     if (el) el.outerHTML = data.html;
                                 }
                             };
-                            document.addEventListener('click', (e) => {
-                                const el = e.target.closest('[id]');
-                                if (el && (el.tagName === 'BUTTON' || el.closest('button') || el.getAttribute('pointer') === 'pointer')) {
-                                    ws.send(JSON.stringify({type: 'event', name: el.id + '.click'}));
-                                }
+
+                            // Mappa eventi DOM -> attributo data-* sul nodo
+                            const EVENT_ATTRS = {
+                                'click':      'data-click',
+                                'dblclick':   'data-dblclick',
+                                'mouseover':  'data-mouseover',
+                                'mouseout':   'data-mouseout',
+                                'keydown':    'data-keydown',
+                                'keyup':      'data-keyup',
+                                'keypress':   'data-keypress',
+                            };
+
+                            Object.entries(EVENT_ATTRS).forEach(([domEvent, dataAttr]) => {
+                                document.addEventListener(domEvent, (e) => {
+                                    const el = e.target.closest(`[${dataAttr}]`);
+                                    if (el) {
+                                        const trigger = el.getAttribute(dataAttr);
+                                        console.log(`[${domEvent}] Sending trigger:`, trigger);
+                                        ws.send(JSON.stringify({type: 'event', name: trigger}));
+                                    }
+                                });
                             });
                         })();
                     """)]
@@ -541,6 +557,7 @@ class Adapter(presentation.port):
             #Middleware(AuthorizationMiddleware, manager=defender)
         ]
         self.active_websockets = {} # sid -> [websocket]
+        self.DOM = {} 
 
     async def start(self):
         loop = asyncio.get_event_loop()
@@ -829,7 +846,8 @@ class Adapter(presentation.port):
         )
 
         # Salviamo la rotta corrente nella sessione per il rebuild
-        sid = "kargs.get('identifier')"
+        #sid = kargs.get('identifier')
+        sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
 
         if sid:
             await self.executor.create_session(sid, {'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': matched_route['view']})
@@ -840,7 +858,7 @@ class Adapter(presentation.port):
                 ppppname = "src/" + matched_route['controller']
                 controller_data = await presentation.loader.resource(ppppname)
                 #print(f"{controller_data}")
-                await self.executor.add_file(ppppname, controller_data, sid)
+                await self.executor.add_file(ppppname, controller_data)
                 # Inizializziamo il controller
                 #print(f"\n\nController data: {controller_data}",sid, ppppname, url_payload)
                 resultato = await self.executor.run_session(sid, ppppname, {'presenter': self.config.get('presenter')})
@@ -860,7 +878,9 @@ class Adapter(presentation.port):
              sid = str(uuid.uuid4())
 
         print(f"SID: {sid}")
-             
+
+        sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
+
         self.active_websockets.setdefault(sid, []).append(websocket)
 
         #print(f"Active websockets: {self.active_websockets}")
@@ -868,23 +888,37 @@ class Adapter(presentation.port):
         try:
             while True:
                 data = await websocket.receive_json()
+                print(f"Data: {data}")
                 if data['type'] == 'event':
-                    # Cerchiamo il controller della rotta corrente
-                    # In una versione reale, dovremmo recuperarlo dalla sessione dell'executor
-                    # Per ora emettiamo il trigger globalmente per quel SID
-                    # L'executor farà il match con i nodi che hanno quel trigger
+                    event_full_name = data['name']
+                    print(f"Data: {data['name']}")
                     
-                    # Recuperiamo lo stato della sessione per sapere quale file DSL invocare
-                    # In DagRunner i file sono registrati. 
-                    # Potremmo dover iterare su tutti i file della sessione.
-                    # Ma emit() di DagRunner richiede fname.
+                    # Estrazione file e trigger name (es. counter:logic.increment)
+                    if ":" in event_full_name:
+                        dsl_alias, event_name = event_full_name.split(":", 1)
+                        file_path = f"src/application/controller/{dsl_alias}.dsl"
+                    else:
+                        event_name = event_full_name
+                        # Fallback: usiamo l'ultimo controller caricato per questa sessione se disponibile
+                        session_info = self.executor.interpreter.runner.sessions.get(sid, {})
+                        running_files = list(session_info.get('running_files', []))
+                        file_path = running_files[0] if running_files else "src/application/controller/counter.dsl"
                     
-                    # Per semplicità, emettiamo su tutti i file DSL caricati per questa sessione
-                    # o meglio, salviamo il 'current_controller' nella sessione.
-                    session_info = self.executor.interpreter.runner.sessions.get(sid)
-                    if session_info:
-                        for fname in list(session_info.get('running_files', [])):
-                             self.executor.interpreter.runner.emit(sid, fname, data['name'])
+                    # Il file e la sessione sono già inizializzati da mount_view al page load.
+                    # Qui aggiungiamo il file solo se per qualche motivo non fosse ancora caricato
+                    # (es. controller specificato via WS prima del page load HTTP).
+                    if file_path not in self.executor.interpreter.runner.nodes:
+                        try:
+                            content = await presentation.loader.resource(file_path)
+                            await self.executor.add_file(file_path, content)
+                        except Exception as e:
+                            print(f"Errore caricamento file {file_path}: {e}")
+                    
+                    print(f"Emitting {event_name} for {file_path} (SID: {sid})")
+                    try:
+                        self.executor.interpreter.runner.emit(sid, file_path, event_name)
+                    except Exception as e:
+                         print(f"Errore durante l'emissione dell'evento: {e}")
                              
         except Exception:
             pass
@@ -893,7 +927,7 @@ class Adapter(presentation.port):
                 self.active_websockets[sid].remove(websocket)
 
     async def rebuild(self, node_id, session_id, context):
-        
+        print("BOOOOOOOOM")
         node = self.DOM.get(node_id)
         
         rendered_node = await self.render_template(text=node, **context)
