@@ -21,10 +21,10 @@ class executor:
         return await self.interpreter.add_file(name, source)
 
     async def create_session(self, session, env={}):
-        return await self.interpreter.create_session(session, env)
+        return await self.interpreter.create_session(session, env|self.language.DSL_FUNCTIONS)
 
     async def run_session(self, session, file, env={}):
-        return await self.interpreter.run_session(session, file, env)
+        return await self.interpreter.run_session(session, file, env|self.language.DSL_FUNCTIONS)
         
     
     '''@flow.asynchronous(managers=('messenger',))

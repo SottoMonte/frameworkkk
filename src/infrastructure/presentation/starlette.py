@@ -786,7 +786,8 @@ class Adapter(presentation.port):
                 matched_route = {
                     'view': route_data.get('view'),
                     'params': {},
-                    'layout': route_data.get('layout')
+                    'layout': route_data.get('layout'),
+                    'controller': route_data.get('controller')
                 }
 
                 for i, name in enumerate(param_names):
@@ -819,24 +820,32 @@ class Adapter(presentation.port):
             'query': query_params,
             'fragment': frag_params
         }
-        
-        # Salviamo la rotta corrente nella sessione per il rebuild
-        sid = kargs.get('identifier')
-        if sid:
-            await self.executor.create_session(sid, {'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': matched_route['view']})
-            # Se la rotta ha un controller, eseguiamolo
-            if matched_route.get('controller'):
-                # Assicuriamoci che il file sia caricato
-                controller_data = await presentation.loader.resource("src/" + matched_route['controller'])
-                await self.executor.add_file(matched_route['controller'], controller_data, sid)
-                # Inizializziamo il controller
-                await self.executor.run_session(sid, matched_route['controller'], url_payload)
 
-        return await self.render_template(
+        rendered_html = await self.render_template(
             file=matched_route['view'],
             data=url_payload,
             **kargs
         )
+
+        # Salviamo la rotta corrente nella sessione per il rebuild
+        sid = "kargs.get('identifier')"
+
+        if sid:
+            await self.executor.create_session(sid, {'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': matched_route['view']})
+            # Se la rotta ha un controller, eseguiamolo
+            print(f"Controller: {matched_route}")
+            if matched_route.get('controller'):
+                # Assicuriamoci che il file sia caricato
+                ppppname = "src/" + matched_route['controller']
+                controller_data = await presentation.loader.resource(ppppname)
+                #print(f"{controller_data}")
+                await self.executor.add_file(ppppname, controller_data, sid)
+                # Inizializziamo il controller
+                #print(f"\n\nController data: {controller_data}",sid, ppppname, url_payload)
+                resultato = await self.executor.run_session(sid, ppppname, {'presenter': self.config.get('presenter')})
+                #print(f"\n\nRisultato: {resultato}")
+
+        return rendered_html
 
     async def reactive_websocket(self, websocket):
         await websocket.accept()
@@ -878,8 +887,14 @@ class Adapter(presentation.port):
             if sid in self.active_websockets:
                 self.active_websockets[sid].remove(websocket)
 
-    async def rebuild(self, node_id, context=dict()):
-        sid = context.get('sid')
+    async def rebuild(self, node_id, session_id, context):
+        print(f"Rebuild: {node_id}", session_id)
+        
+        node = self.DOM.get(node_id)
+        
+        rendered_node = await self.render_template(text=node, **context)
+        print("####################rendered_node",rendered_node)
+        '''sid = context.get('sid')
         view_file = context.get('current_view', 'index.xml') # Fallback o errore?
         
         # Carichiamo il file XML
@@ -899,19 +914,20 @@ class Adapter(presentation.port):
             for node in xml.iter():
                 if node.attrib.get('id') == node_id:
                     target_node = node
-                    break
-        
-        if target_node is not None:
-             html = await self.render_node(target_node, context)
+                    break'''
+        sid = "kargs.get('identifier')"
+        if True:
+             #html = await self.render_node(target_node, context)
              # Inviamo l'aggiornamento a tutti i websocket attivi per questo SID
+             print("####################active_websockets",self.active_websockets)
              if sid in self.active_websockets:
-                 msg = json.dumps({'type': 'update', 'id': node_id, 'html': html})
+                 msg = json.dumps({'type': 'update', 'id': node_id, 'html': ''})
                  for ws in self.active_websockets[sid]:
                      await ws.send_text(msg)
 
         # chiama il modello / builder come nel tuo flusso
         #url_payload = await language.normalize(url_payload,scheme_url)
-        return await self.render_template(file=matched_route['view'], url=url_payload, mode=['main'], identifier=kargs.get('identifier'))
+        #return await self.render_template(file=matched_route['view'], url=url_payload, mode=['main'], identifier=kargs.get('identifier'))
 
     def mount_route(self, routes):
         for path, data in self.routes.items():

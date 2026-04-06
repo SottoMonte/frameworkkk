@@ -850,6 +850,14 @@ class Interpreter:
         self.runner.create_session(session,env)
 
     async def run_session(self, session, file, env={}):
-        result , _ = await self.visit(self.cache_ast[file], env, path="")
-        result |= await self.runner.run_file(session,file,env|result)
-        return result
+        # Unione automatica: quello che c'è in sessione + quello che passi ora
+        ctx = self.runner.context(session) | env
+        
+        # Eval del DSL con il contesto completo
+        result , _ = await self.visit(self.cache_ast[file], ctx, path="")
+        
+        # Esecuzione del workflow: run_file aggiornerà la sessione con i nuovi 'result'
+        exec_results = await self.runner.run_file(session, file, result)
+        
+        # Uniamo tutto per la risposta finale
+        return result | exec_results

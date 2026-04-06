@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import xml.etree.ElementTree as ET
+from bs4 import BeautifulSoup
 from jinja2 import Environment, select_autoescape,FileSystemLoader,BaseLoader,ChoiceLoader,Template,DebugUndefined
 from html import escape
 import uuid
@@ -254,6 +255,7 @@ class port(ABC):
 
     def initialize(self):
         self.components = {}
+        self.DOM = {}
         self.data = {}
         self.routes = {}
         # DOM
@@ -332,6 +334,41 @@ class port(ABC):
 
     def combine_children(self, children):
         return "".join(children)
+
+    def estrai_da_nodo(self, nodo_padre, target_id):
+        """
+        Cerca un elemento per ID partendo da un nodo già esistente
+        e lo restituisce come stringa XML.
+        """
+        # Cerchiamo il sotto-nodo partendo dal nodo_padre
+        elemento = nodo_padre.find(f".//*[@id='{target_id}']")
+        
+        if elemento is not None:
+            # Serializziamo il nodo trovato
+            return ET.tostring(elemento, encoding='unicode', method='xml').strip()
+        
+        return None
+
+    def estrai_da_xml_string(self, xml_string, target_id):
+        if not xml_string:
+            return None
+
+        try:
+            # Usiamo 'html.parser' che è SEMPRE presente in Python.
+            # È meno schizzinoso di 'xml' e non richiede lxml.
+            soup = BeautifulSoup(xml_string, 'html.parser')
+            
+            # Cerchiamo l'elemento con l'id specifico
+            elemento = soup.find(attrs={"id": target_id})
+            
+            if elemento:
+                # Serializziamo il risultato
+                return str(elemento).strip()
+                
+        except Exception as e:
+            print(f"Errore durante l'estrazione: {e}")
+        
+        return None
 
     def mount_tag(self, tag, attrs={}, inner=[], in_svg=False):
         if "}" in tag:
@@ -441,18 +478,22 @@ class port(ABC):
         try:
             content = template.render(constants|{'user':user})
             xml = ET.fromstring(content)
-            view = await self.render_node(xml,constants|{'user':user})
+            view = await self.render_node(text,xml,constants|{'user':user})
             return view
         except Exception as e:
             print(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {constants.get('file','')}")
             raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {constants.get('file','')}")
 
-    async def render_node(self, node, context):
+    async def render_node(self, parent,node, context):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
         tag = node.tag.split('}')[-1] if '}' in node.tag else node.tag
         in_svg = context.get('in_svg', False)
         if tag.lower() == "svg":
             in_svg = True
+
+        ID = node.attrib.get('id')
+        if ID != None and ID not in self.DOM:
+            self.DOM[ID] = self.estrai_da_xml_string(parent,ID)
 
         # Controllo se il tag è un componente (custom tag)
         component_paths = [
@@ -493,7 +534,7 @@ class port(ABC):
         new_context = context.copy()
         new_context['in_svg'] = in_svg
         for child in list(node):
-            children.append(await self.render_node(child, new_context))
+            children.append(await self.render_node(parent,child, new_context))
 
         # Se è il nodo root fittizio o uno slot residuo, restituiamo solo i figli uniti
         if tag == "root" :

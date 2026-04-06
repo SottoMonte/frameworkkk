@@ -38,7 +38,7 @@ class presenter():
         driver = self._get_driver()
         return driver.components[name] if driver else None
         
-    async def rebuild(self,**constants):
+    async def rebuild(self,node_id,session_id,context):
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
-            await driver.rebuild(node_id=constants.get('node_id'), context=constants.get('context', {}))
+            await driver.rebuild(node_id,session_id,context)

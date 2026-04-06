@@ -26,7 +26,7 @@ import traceback
 # ─────────────────────────────────────────────
 
 PORT_REGISTRY: dict[str, list[str]] = {
-    "presentation":   ["defender", "messenger","executor"],
+    "presentation":   ["defender", "messenger","executor","presenter"],
     "persistence":    ["executor"],
     "message":        ["storekeeper", "messenger"],
     "authentication": [],

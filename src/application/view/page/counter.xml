@@ -1,18 +1,40 @@
-<window type="page" title="Reactive Counter">
-    <container padding="40px" align="center" justify="center" background="#f8fafc" min-height="100vh">
-       
-            <column spacing="24px" align="center">
-                <text size="24px" weight="bold" color="#0f172a">DSL Counter</text>
-                <text id="counter_text" size="48px" weight="black" color="#2563eb">{{ count or 0 }}</text>
-                <row spacing="12px">
-                    <action id="decrement_btn" padding="12px 24px" radius="12px" background="#ef4444" color="#ffffff" shadow="md">
-                        <text weight="bold">- Decrement</text>
-                    </action>
-                    <action id="increment_btn" padding="12px 24px" radius="12px" background="#10b981" color="#ffffff" shadow="md">
-                        <text weight="bold">+ Increment</text>
-                    </action>
-                </row>
-                <text size="14px" color="#64748b">Powered by DSL  Starlette WebSocket</text>
-            </column>
-    </container>
-</window>
+<Window type="page" title="DSL Reactive Counter">
+    <Container padding="40px" background="#0f172a" min-height="100vh" align="center" justify="center">
+        <Row background="rgba(30, 41, 59, 0.7)" padding="32px" radius="24px" border="1px,rgba(255,255,255,0.1)" matter="glass" shadow="large" width="400px">
+            <Column spacing="24px" align="center">
+                <Text size="small" color="rgba(148, 163, 184, 1)" uppercase="true" font="bold">Framework DSL Demo</Text>
+                
+                <Column align="center" spacing="8px">
+                    <Text id="counter_display" size="60px" color="#38bdf8" font="bold">
+                        {{ count|default(0) }}
+                    </Text>
+                    <Text size="small" color="rgba(148, 163, 184, 1)">Current value from DSL State</Text>
+                </Column>
+
+                <Row spacing="16px" justify="center" width="full">
+                    <Action id="dec_btn" background="#1e293b" color="white" radius="12px" padding="12px,24px" border="1px,rgba(255,255,255,0.1)" pointer="pointer">
+                        <Icon name="bi-dash-lg" size="large" />
+                    </Action>
+                    
+                    <Action id="inc_btn" background="#38bdf8" color="#0f172a" radius="12px" padding="12px,24px" font="bold" pointer="pointer">
+                        <Icon name="bi-plus-lg" size="large" />
+                    </Action>
+                </Row>
+
+                <Divider background="rgba(255,255,255,0.05)" />
+
+                <Column width="full" spacing="12px">
+                    <Text size="small" color="rgba(148, 163, 184, 1)">Global Message</Text>
+                    <Input id="message_input" name="message" value="{{ message|default('Hello World') }}" placeholder="Type something..." background="rgba(15, 23, 42, 0.5)" border="1px,rgba(255,255,255,0.1)" color="white" padding="12px" radius="8px" width="full" />
+                    <Text id="message_display" color="#94a3b8" size="medium" font="italic">
+                        "{{ message|default('Hello World') }}"
+                    </Text>
+                </Column>
+                
+                <Action id="reset_btn" background="transparent" color="#f43f5e" font="small" uppercase="true" pointer="pointer">
+                    Reset Counter
+                </Action>
+            </Column>
+        </Row>
+    </Container>
+</Window>

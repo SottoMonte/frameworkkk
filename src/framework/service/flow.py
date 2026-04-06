@@ -212,16 +212,22 @@ class DagRunner:
 
     def create_session(self, sid: str, ctx: Optional[Dict] = None):
         """
-        Crea una sessione persistente per un utente.
-        Non esegue nulla — usa run_file() per avviare operazioni.
+        Inizializza o aggiorna una sessione persistente.
+        Se esiste già, unisce il nuovo contesto a quello esistente.
         """
-        self.sessions[sid] = {
-            "ctx":           dict(ctx or {}),
+        session = self.sessions.setdefault(sid, {
+            "ctx":           {},
             "results":       {},       # "fname::node_name" -> Result
-            "done":          {},       # "fname::node_name" -> Event (popolato da run_file)
+            "done":          {},       # "fname::node_name" -> Event
             "schedulers":    {},       # "fname::node_name" -> Task heartbeat
             "running_files": set(),    # fname attualmente in esecuzione
-        }
+        })
+        if ctx:
+            session["ctx"].update(ctx)
+
+    def context(self, sid: str) -> Dict:
+        """Restituisce il contesto della sessione sid."""
+        return self.sessions.get(sid, {}).get("ctx", {})
 
     async def run_file(self, sid: str, fname: str, ctx_update: Optional[Dict] = None):
         """
