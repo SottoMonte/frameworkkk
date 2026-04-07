@@ -41,6 +41,35 @@ Inside a component template, you have access to:
 - `component.id`: The unique ID generated for this component instance.
 - `{{ inner | safe }}`: Injects the nested XML children of the tag. **Required** for components that wrap other elements.
 
+## ⚡ Reactive WebSockets (bind)
+
+OmniPort features a built-in server-driven reactive engine. By using the `bind` attribute, an XML element will automatically re-render and patch itself via WebSockets whenever the underlying DSL state changes.
+
+### Basic Usage
+```xml
+<Text id="counter_display" bind="counter_logic.count">
+    {{ counter_logic.count }}
+</Text>
+```
+
+### Cross-Controller Reactivity
+You can bind an element to state managed by a *completely different* DSL controller using the `alias:path` syntax.
+```xml
+<Text id="auth_header" bind="auth:user.name">
+    Welcome back, {{ auth_state.user.name }}!
+</Text>
+```
+
+### ⚠️ IMPORTANT: Explicit ID Required
+If you use the `bind` attribute, **you MUST provide an explicit `id` attribute** on the same element.
+```xml
+<!-- ❌ WRONG: Will throw a framework Exception -->
+<Container bind="cart:items.count"> ... </Container>
+
+<!-- ✅ CORRECT: Has an explicit id -->
+<Container id="cart_indicator" bind="cart:items.count"> ... </Container>
+```
+
 ## 🏷️ Standard Tags
 
 Most standard tags support a set of common attribute groups:

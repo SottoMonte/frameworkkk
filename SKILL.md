@@ -30,7 +30,8 @@ When working with this framework, you are **ONLY** allowed to:
 
 ## ✍️ DSL (Domain Specific Language)
 
-The framework uses a custom DSL for reactive tasks and logic.
+The framework uses a custom DSL for reactive tasks and logic. 
+**IMPORTANT:** Whenever you are tasked to create or modify business logic in a `.dsl` file, you **MUST** first read [src/application/dsl.md](file:///home/asd/framework/src/application/dsl.md) to understand the complete syntax and available built-in functions.
 
 ### DSL Features:
 - **Assignment**: `var_name := value;`
@@ -95,6 +96,17 @@ For a complete list of tags and attributes, always refer to [src/application/vie
         </Action>
     </Row>
 </Column>
+```
+
+### ⚡ Server-Driven Reactivity (WebSockets)
+You can make any XML element strictly reactive to DSL state changes without writing JS. Use the `bind` attribute to connect it to a node in the DAG.
+- **Syntax**: `bind="dsl_alias:node_path"` (e.g. `bind="counter:counter_logic.count"`).
+- **Mandatory**: Every element using `bind=` **MUST** explicitly define an `id="..."` attribute, or the framework will explicitly crash to prevent DAG memory leaks.
+
+```xml
+<Text id="live_counter" bind="counter:counter_logic.count">
+    Value: {{ counter_logic.count }}
+</Text>
 ```
 
 ## ⚙️ pyproject.toml Configuration
