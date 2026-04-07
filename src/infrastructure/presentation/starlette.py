@@ -860,6 +860,7 @@ class Adapter(presentation.port):
                 full_ctx = self.executor.interpreter.runner.context(sid)
                 if full_ctx:
                     kargs.update(full_ctx)
+                kargs['controller_file'] = ppppname
 
         # Ora renderizziamo l'HTML *con* il contesto del controller e lo stato salvato!
         rendered_html = await self.render_template(
@@ -892,10 +893,10 @@ class Adapter(presentation.port):
         try:
             while True:
                 data = await websocket.receive_json()
-                print(f"Data: {data}")
+                #print(f"Data: {data}")
                 if data['type'] == 'event':
                     event_full_name = data['name']
-                    print(f"Data: {data['name']}")
+                    #print(f"Data: {data['name']}")
                     
                     # Estrazione file e trigger name (es. counter:logic.increment)
                     if ":" in event_full_name:
@@ -918,7 +919,7 @@ class Adapter(presentation.port):
                         except Exception as e:
                             print(f"Errore caricamento file {file_path}: {e}")
                     
-                    print(f"Emitting {event_name} for {file_path} (SID: {sid})")
+                    #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                     try:
                         self.executor.interpreter.runner.emit(sid, file_path, event_name)
                     except Exception as e:
@@ -931,7 +932,6 @@ class Adapter(presentation.port):
                 self.active_websockets[sid].remove(websocket)
 
     async def rebuild(self, node_id, session_id, context):
-        print("BOOOOOOOOM")
         node = self.DOM.get(node_id)
         
         # Invece di usare solo il frammento "context", recuperiamo tutto lo stato aggiornato

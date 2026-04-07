@@ -567,5 +567,54 @@ class port(ABC):
         if node.text:
             children.append(node.text)
 
+        bind_var = attributes.pop("bind", None)
+        if bind_var:
+            if ":" in bind_var:
+                dsl_alias, var_path = bind_var.split(":", 1)
+                controller_file = f"src/application/controller/{dsl_alias}.dsl"
+            else:
+                var_path = bind_var
+                controller_file = context.get("controller_file")
+
+            # Assicuriamoci che l'executor e l'interpreter siano disponibili (in Adapter lo sono)
+            if hasattr(self, "executor") and self.executor and hasattr(self.executor, "interpreter"):
+                runner = self.executor.interpreter.runner
+                
+                # Se il path non è caricato e stiamo chiamando un alias specifico potremmo non avere le nodes caricate.
+                # Per resilienza assumiamo che esista, ma gestiamo il caso.
+                if controller_file and controller_file in runner.nodes:
+                    bind_node_name = f"_auto_bind_{node_id}_{var_path}"
+                    
+                    if bind_node_name not in runner.nodes[controller_file]:
+                        async def auto_bind_task(inputs):
+                            sid = inputs.get("sid")
+                            if sid:
+                                await self.rebuild(node_id, sid, inputs)
+                            return True
+                            
+                        bind_node = {
+                            "name":        bind_node_name,
+                            "fn":          auto_bind_task,
+                            "default":     None,
+                            "deps":        [var_path],
+                            "policy":      "all",
+                            "meta":        False,
+                            "trigger":     None,
+                            "schedule":    None,
+                            "duration":    None,
+                            "timeout":     30,
+                            "retries":     0,
+                            "retry_delay": 0,
+                            "when":        None,
+                            "path":        bind_node_name,
+                            "cache":       False,
+                            "on_start":    None,
+                            "on_success":  None,
+                            "on_error":    None,
+                            "on_end":      None,
+                        }
+                        
+                        runner.attach_node(controller_file, bind_node)
+
         # mount_view: Il driver crea l'istanza del widget/tag
         return self.mount_tag(tag, attributes, children, in_svg)

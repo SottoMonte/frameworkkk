@@ -230,6 +230,22 @@ class DagRunner:
         for store in (self.graphs, self.nodes, self.triggers):
             store.pop(name, None)
 
+    def attach_node(self, fname: str, node_def: dict):
+        """Aggiunge dinamicamente un nodo reattivo a un DAG."""
+        if fname not in self.graphs:
+            return
+            
+        name = node_def["name"]
+        if name in self.nodes[fname]:
+            return
+            
+        self.nodes[fname][name] = node_def
+        self.graphs[fname].add_node(name)
+        
+        for dep in node_def.get("deps", []):
+            if dep in self.nodes[fname]:
+                self.graphs[fname].add_edge(dep, name)
+
     # ─────────────────────────────────────────
     # SESSION — identità utente persistente
     #
