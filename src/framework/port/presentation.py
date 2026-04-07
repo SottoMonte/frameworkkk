@@ -558,17 +558,22 @@ class port(ABC):
             return self.combine_children(children)
 
         # Gestione ID e Stato
-        node_id = node.attrib.get('id', str(uuid.uuid4()))
+        node_id = node.attrib.get('id')
         attributes = {}
         for k, v in node.attrib.items():
             attr_name = k.split('}')[-1] if '}' in k else k
             attributes[attr_name] = v
-        attributes['id'] = node_id
+            
+        if node_id:
+            attributes['id'] = node_id
         if node.text:
             children.append(node.text)
 
         bind_var = attributes.pop("bind", None)
         if bind_var:
+            if not node_id:
+                raise Exception(f"Errore UI Reattiva: Un elemento con attributo 'bind' ({bind_var}) DEVE avere un attributo 'id' esplicito per permettere l'aggiornamento tramite WebSockets. Nodo incriminato: <{tag}>")
+                
             if ":" in bind_var:
                 dsl_alias, var_path = bind_var.split(":", 1)
                 controller_file = f"src/application/controller/{dsl_alias}.dsl"
