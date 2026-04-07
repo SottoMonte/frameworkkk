@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<Row id="{{ component.id }}">
-    {{ inner }}
-</Row>
