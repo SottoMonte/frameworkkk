@@ -45,6 +45,12 @@ def _set(ctx, path, val):
         ctx = ctx.setdefault(p, {})
     ctx[parts[-1]] = val
 
+def _set_default(ctx, path, val):
+    parts = path.split(".")
+    for p in parts[:-1]:
+        ctx = ctx.setdefault(p, {})
+    ctx.setdefault(parts[-1], val)
+
 def _deep_merge_defaults(target: dict, source: dict):
     """Merge source into target SOLO per le chiavi non ancora presenti.
     Per dict annidati, ricorre senza sovrascrivere i valori esistenti.
@@ -178,6 +184,8 @@ class DagRunner:
         self.nodes    = {}   # fname -> {node_name -> node_def}
         self.triggers = {}   # fname -> {node_name -> [listeners]}
 
+        self._file_defaults = {}
+
         self.sessions  = {}
         self.queue     = asyncio.Queue()
         self.tasks     = []
@@ -208,6 +216,15 @@ class DagRunner:
 
         self.graphs[name] = G
         self.nodes[name]  = nm
+        self._file_defaults[name] = {
+            n["name"]: n["default"]
+            for n in nodes
+            if n.get("default") is not None
+        }
+
+        for session in self.sessions.values():
+            for k, v in self._file_defaults[name].items():
+                _set_default(session["ctx"], k, v)
 
     async def delete_file(self, name: str):
         for store in (self.graphs, self.nodes, self.triggers):
@@ -233,6 +250,12 @@ class DagRunner:
             "schedulers":    {},       # "fname::node_name" -> Task heartbeat
             "running_files": set(),    # fname attualmente in esecuzione
         })
+
+        # 1. inietta i default di tutti i file registrati — priorità minima
+        for defaults in self._file_defaults.values():
+            for k, v in defaults.items():
+                _set_default(session["ctx"], k, v)
+
         if ctx:
             session["ctx"].update(ctx)
 

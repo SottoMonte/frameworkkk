@@ -412,7 +412,11 @@ class FlowNodeBuilder:
                 resolved = self.interpreter._resolve_scope(t_path, d, available)
                 if resolved in available and resolved != t_path:
                     deps.add(resolved)
-            kw['deps'] = list(deps) + kw.get('deps', [])
+            
+            if kw.get('deps', []) == False:
+                kw['deps'] = []
+            else:
+                kw['deps'] = list(deps) + kw.get('deps', [])
 
             # Funzione nodo
             def make_task_fn(ast, interpreter_ref, t_path):
@@ -793,7 +797,10 @@ class Interpreter:
             if t_path in deps:
                 deps.discard(t_path)
 
-            kw['deps'] = list(deps) + kw.get('deps', [])
+            if kw.get('deps', []) == False:
+                kw['deps'] = []
+            else:
+                kw['deps'] = list(deps) + kw.get('deps', [])
             
             def make_task_fn(ast, interpreter_ref, t_path):
                 if ast.get("type") == "pipe":

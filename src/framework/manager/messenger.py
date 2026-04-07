@@ -25,7 +25,8 @@ class messenger():
         # 1. Aggiorna lo stato nella sessione
         if file_path and event_name:
             print(f"[messenger] update_state: {event_name} = {payload} (session: {session_id})")
-            self.executor.interpreter.runner.update_state(session_id, file_path, event_name, payload)
+            #self.executor.interpreter.runner.update_state(session_id, file_path, event_name, payload)
+            self.executor.interpreter.runner.emit(session_id, file_path, event_name, payload)
 
     async def read(self, **constants):
         prohibited = constants['prohibited'] if 'prohibited' in constants else []
