@@ -271,6 +271,14 @@ view = "counter.xml"
 controller = "application/controller/counter.dsl"
 method = "GET"
 
+[[store.data.routes]]
+path = "/tris"
+type = "view"
+view = "tris.xml"
+controller = "application/controller/tris.dsl"
+method = "GET"
+
+
 # --- Actions ---
 
 [[store.data.routes]]
@@ -459,6 +467,13 @@ effect = "allow"
 match = { type = "view" }
 description = "Consente l'accesso pubblico alla pagina counter."
 condition = 'input.path == "/counter"'
+
+[[policies]]
+id = "rule-tris-public"
+effect = "allow"
+match = { type = "view" }
+description = "Consente l'accesso pubblico alla pagina tris."
+condition = 'input.path == "/tris"'
 
 # ---------------------------------------------
 # Configurazione del Motore di Decisione

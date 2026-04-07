@@ -58,7 +58,7 @@ item: (pair|type_sequence) ASSIGN_OP sequence ";"?
      | function_value
 
 ?tuple: "(" [sequence] ")" -> tuple_node | "(" [type_sequence] ")" -> tuple_node
-pair.6: atom ":" atom
+pair.6: atom ":" expr
 ?list: "[" [sequence] "]" -> list_node
 
 function_call: identifier "(" [sequence|type_sequence] ")"
