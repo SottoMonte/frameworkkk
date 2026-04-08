@@ -1,7 +1,7 @@
 {
-    # ======================================================================
-    # === 1. DATI DI CONTESTO (INPUT E STORE) ===
-    # ======================================================================
+    /* ======================================================================
+     === 1. DATI DI CONTESTO (INPUT E STORE) ===
+     ====================================================================== */
 
     input: {
         context: { i: ("sub", "obj", "act", "type"); };
@@ -20,7 +20,7 @@
         path: "/profile"; 
     };
     
-    # ----------------------------------------------------------------------
+    // ----------------------------------------------------------------------
     
     store: {
         data: {
@@ -42,14 +42,14 @@
         };
     };
 
-    # ======================================================================
-    # === 2. POLICY RULES (REGOLE CONDIZIONALI) ===
-    # ======================================================================
+    /* ======================================================================
+     === 2. POLICY RULES (REGOLE CONDIZIONALI) ===
+     ====================================================================== */
     
-    # Le policies sono rappresentate come una lista/tupla di dizionari.
+    // Le policies sono rappresentate come una lista/tupla di dizionari.
     policies: (
         
-        # Regola 1: Chiunque può leggere documenti PUBLISHED (se ha il ruolo corretto)
+        // Regola 1: Chiunque può leggere documenti PUBLISHED (se ha il ruolo corretto)
         {
             id: "rule-1-read-published";
             effect: "allow";
@@ -59,27 +59,27 @@
             condition: '(input.resource.status == "PUBLISHED") && ("premium" in input.principal.roles)';
         },
         
-        # Regola 2: L'owner può editare
+        // Regola 2: L'owner può editare
         {
             id: "rule-2-owner-edit";
             effect: "allow";
             match: { act: "edit"; };
-            # Uso di MistQL per la condizione booleana
+            // Uso di MistQL per la condizione booleana
             condition: 'input.principal.id == input.resource.owner_id';
         },
 
-        # Regola 3: Limite di Download per utenti Free
+        // Regola 3: Limite di Download per utenti Free
         {
             id: "rule-3-download-limit";
             effect: "deny";
             match: { act: "download"; };
             description: "Nega il download se la quota per il tier FREE è stata superata.";
-            # MistQL non supporta l'operatore 'in' sulle stringhe, ma supponiamo 
-            # che supporti 'in' sulle tuple/liste e l'accesso ai campi
+            // MistQL non supporta l'operatore 'in' sulle stringhe, ma supponiamo 
+            // che supporti 'in' sulle tuple/liste e l'accesso ai campi
             condition: '"free" in input.principal.roles && input.principal.download_count > store.data.limits.free_tier.max_downloads';
         },
         
-        # Regola 4: Autorizzazione al Profilo/Dashboard (Ricerca Condizionale)
+        // Regola 4: Autorizzazione al Profilo/Dashboard (Ricerca Condizionale)
         {
             id: "rule-4-profile-dashboard";
             effect: "allow";

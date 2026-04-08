@@ -8,9 +8,9 @@ key = "rSc4ExXBDvtKF03pHd8W3Kz5VfSW7z0ITQsAR46nELg"                       # Chia
 mode = "development"                        # Modalita applicazione development/production
 
 [project.policy]
-presentation = "web.toml"
-persistence = "redis.toml"
-message = "log.toml"
+presentation = "demo.dsl"
+#persistence = "redis.toml"
+#message = "log.toml"
 
 [message.backend]
 adapter = "redis"

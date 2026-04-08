@@ -8,8 +8,6 @@ class executor:
         self.defender = constants.get('defender')
         self.language = constants.get('language')
         self.interpreter = self.language.Interpreter()
-        self.parser = self.language.create_parser()
-        #self.ast    = self.language.parse(source, parser)
 
     async def stop(self):
         await self.interpreter.stop()

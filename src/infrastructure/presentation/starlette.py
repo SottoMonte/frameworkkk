@@ -762,94 +762,21 @@ class Adapter(presentation.port):
         return HTMLResponse(html)
 
     async def mount_view(self, url,**kargs):
-        def process_url(url, default_base_url):
-            """
-            Unisce raw_url con default_base_url per completare scheme/netloc/etc. usa _replace()
-            """
-            base = urlparse(default_base_url)
-            parsed = urlparse(url)
-
-            merged = parsed._asdict()  # scheme, netloc, path, params, query, fragment
-            for field in base._fields:
-                if not merged.get(field):          # se vuoto -> copia dal base
-                    merged[field] = getattr(base, field)
-
-            return parsed._replace(**merged)
-        parsed_url = process_url(url, self.url)   # self.url = base url
-
-        matched_route = None
-
-        for route_path, route_data in self.routes.items():
-            # costruiamo il pattern regex in modo sicuro:
-            parts = []
-            last_idx = 0
-            param_names = []
-
-            # trova tutte le {...} nel route_path
-            for m in re.finditer(r'\{([^}]+)\}', route_path):
-                # escape della parte statica prima della match
-                parts.append(re.escape(route_path[last_idx:m.start()]))
-                # gruppo di cattura per quel segmento
-                parts.append('([^/]+)')
-                # salva il nome del parametro, rimuovendo eventuale '$' iniziale
-                param_names.append(m.group(1).lstrip('$'))
-                last_idx = m.end()
-
-            # aggiungi la parte finale (escaped)
-            parts.append(re.escape(route_path[last_idx:]))
-            regex_pattern = '^' + ''.join(parts) + '$'
-
-            match = re.search(regex_pattern, parsed_url.path)
-            if match:
-                matched_route = {
-                    'view': route_data.get('view'),
-                    'params': {},
-                    'layout': route_data.get('layout'),
-                    'controller': route_data.get('controller')
-                }
-
-                for i, name in enumerate(param_names):
-                    matched_route['params'][name] = match.group(i + 1)
-
-                break  # prima corrispondenza -> esci
-
-        if not matched_route:
-            #await messenger.post(domain='debug', message=f"Nessuna rotta corrispondente per l'URL: {url}")
-            return None
-
-        # log (opzionale)
-        #await messenger.post(domain='debug', message=f"Percorso trovato: {matched_route['view']} per l'URL: {url}")
-        #await messenger.post(domain='debug', message=f"Parametri estratti: {matched_route['params']}")
-
-        # parametri query e fragment come dict di liste
-        query_params = parse_qs(parsed_url.query, keep_blank_values=True)
-        frag_params = parse_qs(parsed_url.fragment, keep_blank_values=True)
-
-        # path come lista di segmenti (evita elemento vuoto se path è '/')
-        stripped = parsed_url.path.lstrip('/')
-        path_list = stripped.split('/') if stripped else []
-
-        url_payload = {
-            'url': self.url,
-            'protocol': parsed_url.scheme,
-            'host': parsed_url.hostname,
-            'port': parsed_url.port,
-            'path': path_list,
-            'query': query_params,
-            'fragment': frag_params
-        }
+        resolved = self.resolve(url, 'GET', base_url=self.url)
+        route,url = resolved.get('metadata', {}),resolved.get('url_details', {})
+        
 
         # Salviamo la rotta corrente nella sessione per il rebuild
         #sid = kargs.get('identifier')
         sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
 
         if sid:
-            await self.executor.create_session(sid, {'messenger': self.messenger, 'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': matched_route['view']})
+            await self.executor.create_session(sid, {'messenger': self.messenger, 'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': route['view']})
             # Se la rotta ha un controller, eseguiamolo
-            print(f"Controller: {matched_route}")
-            if matched_route.get('controller'):
+            #print(f"Controller: {matched_route}")
+            if route.get('controller'):
                 # Assicuriamoci che il file sia caricato
-                ppppname = "src/" + matched_route['controller']
+                ppppname = "src/" + route['controller']
                 controller_data = await presentation.loader.resource(ppppname)
                 await self.executor.add_file(ppppname, controller_data)
                 
@@ -863,11 +790,7 @@ class Adapter(presentation.port):
                 kargs['controller_file'] = ppppname
 
         # Ora renderizziamo l'HTML *con* il contesto del controller e lo stato salvato!
-        rendered_html = await self.render_template(
-            file=matched_route['view'],
-            data=url_payload,
-            **kargs
-        )
+        rendered_html = await self.render_template(file=route.get('view'), data=url, **kargs)
 
         return rendered_html
 

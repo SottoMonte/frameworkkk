@@ -154,12 +154,25 @@ class BatchSetup:
             for s in specs
         }
 
+        adapters,managers,services = [],[],[]
+
         for name in TopologicalSorter(dep_graph).static_order():
+            
             if name in singletons:
                 self._c.set(name, singletons[name])
                 continue
             if name not in registry:
                 continue
+
+            if 'src/infrastructure' in registry[name].get("path"):
+                #print(f"[*] Port: {name}", registry[name])
+                adapters.append(name)
+            elif 'src/framework/manager' in registry[name].get("path"):
+                #print(f"[*] Manager: {name}", registry[name])
+                managers.append(name)
+            else:
+                #print(f"[*] Service: {name}", registry[name])
+                services.append(name)
 
             spec = registry[name]
             obj  = await self._b.build(spec)
@@ -168,6 +181,10 @@ class BatchSetup:
                 self._c.append_to_port(spec["port"], obj)
             else:
                 self._c.set(name, obj)
+
+        print(f"[+] Adapters: {adapters}")
+        print(f"[+] Managers: {managers}")
+        print(f"[+] Services: {services}")
 
 
 # ─────────────────────────────────────────────
@@ -188,9 +205,11 @@ class ProjectLoader:
             for cfg in services.values()
         ]
 
+    def get_config(self):
+        return self._c.config()
+
     def _make_spec(self, port: str, cfg: dict) -> dict:
         adapter = cfg.get("adapter")
-        print(f"[*] Port: {port}.{adapter}")
         return {
             "name":     "Adapter",
             "path":     f"src/infrastructure/{port}/{adapter}.py",
@@ -250,27 +269,6 @@ _SERVICES: list[dict] = [
     {"name": "persistence",  "path": "src/framework/port/persistence.py",   "mod_deps": [],                   "is_class": False, "config": {}},
 ]
 
-_MANAGERS: list[dict] = [
-    {"name": "loader",      "path": "src/framework/manager/loader.py",      "mod_deps": ["container"],                    "cls_deps": [],                                          "is_class": True, "config": {}},
-    {"name": "messenger",   "path": "src/framework/manager/messenger.py",   "mod_deps": ["flow"],                         "cls_deps": ["executor", "messages"],                    "is_class": True, "config": {}},
-    {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language"],                    "is_class": True, "config": {}},
-    {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": [],                                          "is_class": True, "config": {}},
-    {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger"],          "is_class": True, "config": {}},
-    {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [],                               "cls_deps": ["executor", "persistences"],                "is_class": True, "config": {}},
-    {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],               "is_class": True, "config": {}},
-]
-
-_MANAGERS_WITH_ARGS: set[str] = {"executor", "defender", "tester"}
-
-
-def _inject_args(specs: list[dict], args) -> list[dict]:
-    return [
-        {**s, "config": {**s["config"], "args": args}}
-        if s["name"] in _MANAGERS_WITH_ARGS else s
-        for s in specs
-    ]
-
-
 # ─────────────────────────────────────────────
 # Loader — orchestratore pubblico
 # ─────────────────────────────────────────────
@@ -302,11 +300,22 @@ class Loader:
             return f.read()
 
     async def bootstrap(self, args):
-        managers      = _inject_args(_MANAGERS, args)
+        print("[*] Framework bootstrapped. Running...")
         project_specs = self._project.load("pyproject.toml") if '--test' not in args else []
-
+        config = self._project.get_config()
+        
+        _MANAGERS: list[dict] = [
+            {"name": "loader",      "path": "src/framework/manager/loader.py",      "mod_deps": ["container"],                    "cls_deps": [],                                          "is_class": True, "config": {}},
+            {"name": "messenger",   "path": "src/framework/manager/messenger.py",   "mod_deps": ["flow"],                         "cls_deps": ["executor", "messages"],                    "is_class": True, "config": {}},
+            {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language"],                    "is_class": True, "config": {}},
+            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader"],                      "is_class": True, "config": {'args':args, 'project':config['project']}},
+            {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger"],         "is_class": True, "config": {'args':args}},
+            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [],                               "cls_deps": ["executor", "persistences"],                "is_class": True, "config": {}},
+            {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],               "is_class": True, "config": {}},
+        ]
+        
         await self._batch.run(
-            _SERVICES + managers + project_specs,
+            _SERVICES + _MANAGERS + project_specs,
             singletons={"loader": self, "container": self._container},
         )
 
@@ -320,9 +329,7 @@ class Loader:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, _on_signal)
 
-        print("[*] Framework bootstrapped. Running...")
-
-        manager_names = [s["name"] for s in managers]
+        manager_names = [s["name"] for s in _MANAGERS]
         try:
             await self._lifecycle.start_all(manager_names)
             await stop_event.wait()

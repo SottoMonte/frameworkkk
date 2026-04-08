@@ -8,7 +8,38 @@ class defender:
 
         :param constants: Configurazioni iniziali, deve includere 'providers'.
         """
-        self.providers = constants.get('providers', dict())
+        self.language = constants.get('language')
+        self.loader = constants.get('loader')
+        self.config = constants.get('project', dict())
+        self.interpreter = self.language.Interpreter()
+        self.policies = {}
+
+    async def stop(self):
+        await self.interpreter.stop()
+    
+    async def start(self):
+        await self.interpreter.start()
+        policies = self.config.get('policy', dict())
+        await self.create_session('demo', {})
+        for policy in policies:
+            filename = policies.get(policy)
+            path = f"src/application/policy/{policy}/{filename}"
+            code = await self.loader.resource(path)
+            await self.add_file(path, code)
+            self.policies[policy] = await self.run_session('demo', path)
+            print(f"[+] Policy: {policy}/{filename}")
+
+    async def add_file(self, name, source):
+        return await self.interpreter.add_file(name, source)
+
+    async def create_session(self, session, env={}):
+        return await self.interpreter.create_session(session, env|self.language.DSL_FUNCTIONS)
+
+    async def run_session(self, session, file, env={}):
+        return await self.interpreter.run_session(session, file, env|self.language.DSL_FUNCTIONS)
+
+    def get_policy(self, policy):
+        return self.policies.get(policy)
     
     #@language.asynchronous(managers=('storekeeper',))
     async def authenticate(self, storekeeper, **constants):
@@ -64,22 +95,13 @@ class defender:
         """
         ip = constants.get('ip', '')
         return any(session.get('ip') == ip for session in self.sessions.values())
-
-    async def whoami(self, **constants) -> Any:
-        """
-        Determina l'identità dell'utente associato a un determinato indirizzo IP.
-
-        :param constants: Deve includere 'ip'.
-        :return: Identificatore dell'utente se trovato, altrimenti None.
-        """
-        #return await storekeeper.gather(repository='sessions',filter=constants)
-        return None
     
-    async def whoami2(self, **constants) -> Any:
+    async def whoami(self, **constants) -> Any:
         
-        for backend in self.providers:
+        '''for backend in self.providers:
             identity = await backend.whoami(token=constants.get('token', ''))
-            return identity
+            return identity'''
+        pass
 
     async def detection(self, **constants) -> bool:
         """

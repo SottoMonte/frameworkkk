@@ -7,10 +7,9 @@ import uuid
 import untangle
 import markupsafe
 import re
-
 import itertools
 import os
-
+from urllib.parse import urlparse, parse_qs, urljoin
 from enum import Enum
 
 class Tag(Enum):
@@ -412,17 +411,13 @@ class port(ABC):
         #print(tag,new_attrs)
         return self.node_create(elemento,new_attrs,inner)
 
-    async def parse_route(self):
+    async def parse_route2(self):
         # Regex per opzioni multiple senza virgolette (es. {a|b})
         regex_simple_options = r'\{([a-zA-Z0-9_|]+)\}'
         # Regex per parametri dinamici tipo {$id} -> {id}
         regex_dynamic_param = r'\{\$([a-zA-Z0-9_]+)\}'
         
-        #rotta = f"application/policy/presentation/{self.config.get('project',).get('policy').get('presentation')}"
-        rotta = f"src/application/policy/presentation/web.toml"
-        file = await loader.resource(rotta)
-        policy = await scheme.convert(file,dict,'toml')
-        routes = policy.get('store').get('data').get('routes')
+        routes = self.defender.get_policy('presentation').get('routes').values()
         try:
             for setting in routes:
                 path_attribute = setting.get('path')
@@ -471,11 +466,111 @@ class port(ABC):
                         'method': method, 'layout': layout,
                         'controller': controller
                     }
-
+            print(f"[+] Routes: {list(self.routes.keys())}")
         except Exception as e:
-            #print(f"Si è verificato un errore durante il parsing del file: {e}")
+            print(f"[!] Error: {e}")
             pass
     
+    async def parse_route(self):
+        routes_cfg = self.defender.get_policy('presentation').get('routes', {}).values()
+        
+        try:
+            for s in routes_cfg:
+                # 1. Preparazione metadati e path di base
+                view = f"application/view/page/{s['view']}" if s.get('view') else None
+                path = s.get('path') or (view.replace('.xml', '') if view else "")
+                
+                # 2. Normalizzazione {$id} -> {id}
+                path = re.sub(r'\{\$([a-zA-Z0-9_]+)\}', r'{\1}', path)
+                
+                # 3. Analisi opzioni multiple {a|b}
+                matches = list(re.finditer(r'\{([a-zA-Z0-9_|]+)\}', path))
+                # Estraiamo i set di opzioni solo se contengono '|'
+                opt_sets = [m.group(1).split('|') for m in matches if '|' in m.group(1)]
+                placeholders = [m.group(0) for m in matches if '|' in m.group(1)]
+
+                # 4. Generazione combinazioni (se non ci sono opzioni, itera una volta sul path originale)
+                combinations = itertools.product(*opt_sets) if opt_sets else [(None,)]
+                
+                for combo in combinations:
+                    new_path = path
+                    if opt_sets:
+                        for i, val in enumerate(combo):
+                            new_path = new_path.replace(placeholders[i], val, 1)
+                    
+                    # --- AGGIUNTA: CONVERSIONE IN REGEX ---
+                    # Trasforma {id} in (?P<id>[^/]+) per catturare il valore durante il match
+                    # Trasforma il path in una regex completa (es. ^/user/(?P<id>[^/]+)$)
+                    pattern = re.sub(r'\{([a-zA-Z0-9_]+)\}', r'(?P<\1>[^/]+)', new_path)
+                    regex_compiled = re.compile(f"^{pattern}$")
+                    # --------------------------------------
+
+                    # Salvataggio rotta arricchito
+                    self.routes[new_path] = {
+                        **{k: s.get(k) for k in ['method', 'type', 'layout', 'controller']},
+                        'view': view,
+                        'pattern': regex_compiled # Fondamentale per il dispatcher
+                    }
+
+            print(f"[+] Routes: {list(self.routes.keys())}")
+        except Exception as e:
+            print(f"[!] Error: {e}")
+
+    from urllib.parse import urlparse, parse_qs, urljoin
+
+    def resolve(self, request_url, request_method, base_url=None):
+        try:
+            # 1. Normalizzazione URL
+            # Se request_url è relativo (es. "/home"), urljoin lo unisce a base_url
+            full_url = urljoin(base_url, request_url) if base_url else request_url
+            parsed = urlparse(full_url)
+            
+            # Pulizia del path: togliamo slash vuoti per la lista, ma manteniamo il path stringa per il match
+            path_list = [p for p in parsed.path.split('/') if p]
+            
+            # Trasformiamo query e fragment in dizionari puliti
+            query_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.query).items()}
+            frag_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.fragment).items()}
+
+            url_payload = {
+                'url': full_url,
+                'protocol': parsed.scheme,
+                'host': parsed.hostname,
+                'port': parsed.port,
+                'path': path_list,
+                'query': query_params,
+                'fragment': frag_params
+            }
+
+            # 2. Ciclo di Matching (Corretto con .values() per evitare TypeError)
+            for route_data in self.routes.values():
+                # Il match va fatto sulla stringa parsed.path
+                match = route_data['pattern'].match(parsed.path)
+                
+                if match:
+                    # Recuperiamo i metadati (che contengono 'method', 'view', etc.)
+                    metadata = route_data.get('metadata', route_data)
+                    
+                    # Controllo Metodo HTTP (se presente nei metadati)
+                    if metadata.get('method') and metadata['method'] != request_method:
+                        continue
+                    
+                    # Estrazione parametri dinamici dalla Regex (es. {'id': '123'})
+                    dynamic_params = match.groupdict()
+                    
+                    return {
+                        'metadata': metadata,
+                        'params': dynamic_params,
+                        'url_details': url_payload
+                    }
+
+            print(f"[-] No route matched for: {parsed.path}")
+            return None
+
+        except Exception as e:
+            print(f"[!] Resolve Error: {e}")
+            return None
+
     async def render_template(self, **constants):
         if 'text' in constants:
             text = constants['text']
