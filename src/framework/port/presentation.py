@@ -516,8 +516,6 @@ class port(ABC):
         except Exception as e:
             print(f"[!] Error: {e}")
 
-    from urllib.parse import urlparse, parse_qs, urljoin
-
     def resolve(self, request_url, request_method, base_url=None):
         try:
             # 1. Normalizzazione URL
@@ -557,7 +555,11 @@ class port(ABC):
                     
                     # Estrazione parametri dinamici dalla Regex (es. {'id': '123'})
                     dynamic_params = match.groupdict()
+
+                    authorized = self.defender.authorized('presentation', action=request_method, resource=metadata.get('view'), location="/" + "/".join(url_payload['path']))
                     
+                    if not authorized:
+                        return None
                     return {
                         'metadata': metadata,
                         'params': dynamic_params,

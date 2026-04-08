@@ -759,10 +759,15 @@ class Adapter(presentation.port):
     async def render_view(self,request):
         request.session["url_precedente"] = str(request.url)
         html = await self.mount_view(str(request.url),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
-        return HTMLResponse(html)
+        if html:
+            return HTMLResponse(html)
+        else:
+            return HTMLResponse(content="404 Not Found", status_code=404)
 
     async def mount_view(self, url,**kargs):
         resolved = self.resolve(url, 'GET', base_url=self.url)
+        if not resolved:
+            return None
         route,url = resolved.get('metadata', {}),resolved.get('url_details', {})
         
 

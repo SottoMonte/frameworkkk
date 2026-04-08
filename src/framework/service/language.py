@@ -35,6 +35,7 @@ item: (pair|type_sequence) ASSIGN_OP sequence ";"?
       | ("not" | "!") logic        -> not_op
       | logic ("and" | "&") logic  -> and_op
       | logic ("or"  | "|") logic  -> or_op
+      | logic ("in" | "~") logic -> in_op
 
 ?comparison: sum
            | comparison COMPARISON_OP sum -> binary_op
@@ -145,6 +146,7 @@ OPS = {
     '>=': operator.ge,  '<=': operator.le,
     'and': lambda a, b: a and b,
     'or':  lambda a, b: a or b,
+    'in':  lambda a, b: a in b,
 }
 
 # ── Transformer ───────────────────────────────────────────────────────────────
@@ -238,6 +240,7 @@ class DSLTransformer(Transformer):
     def not_op(self, meta, a):  return self._m({"type":"not","value":a[0]}, meta)
     def and_op(self, meta, a):  return self._m({"type":"binop","op":"and","left":a[0],"right":a[1]}, meta)
     def or_op(self, meta, a):   return self._m({"type":"binop","op":"or", "left":a[0],"right":a[1]}, meta)
+    def in_op(self, meta, a):   return self._m({"type":"binop","op":"in", "left":a[0],"right":a[1]}, meta)
 
     def pipe_node(self, meta, items):
         # Il primo elemento è sempre lo step iniziale (senza alias)

@@ -6,24 +6,49 @@ type:route := {
 };
 
 type:policy := {
-    "id": { "type": "string" };
-    "effect": { "type": "string"; "default": "GET" };
-    "match": { "type": "string" };
+    "effect": { "type": "string"; "regex": "^(allow|deny)$"; "default": "deny" };
+    "target": { 
+        "schema": { "action": { "type": "string" }; "resource": { "type": "string" }; "location": { "type": "string" }; "context": { "type": "dict" } }; 
+        "default": { "action": ""; "resource": ""; "location": ""; "context": {} };
+    };
     "description": { "type": "string"; "default": "" };
-    "condition": { "type": "string"; "default": "" };
-    "type": { "type": "string"; "default": ""; "regex": "^(ABAC|RBAC|PBAC|MAC)$" };
+    "condition": { "default": true };
 };
 
-function:check_abac := (dict:user, dict:resource, dict:env){
-    // Esempio: l'utente può modificare la risorsa solo se ne è il proprietario
-    // o se è in orario di ufficio
-    is_owner: user.id == resource.owner_id;
-    is_office_hours: env.hour >= 9 & env.hour <= 18;
-    
-    authorized: is_owner or (user.role == "staff" & is_office_hours);
-}(bool:authorized);
+type:user := {
+  "identifier": { "type": "string" };
+  "username": { "type": "string" };
+  "role": { "type": "string"; "regex": "^(admin|user|guest)$" };
+  "avatar": { "type": "string" };
+};
 
+type:role := {
+    "id": { "type": "string" };
+    "name": { "type": "string" };
+    "description": { "type": "string" };
+    "resources": { "type": "list"; "schema": { "type": "string" } };
+};
 
+roles:{
+    role:admin := {
+        id:"role-1";
+        name:"admin";
+        description:"admin";
+        resources:["all"];
+    };
+    role:user := {
+        id:"role-2";
+        name:"user";
+        description:"user";
+        resources:["all"];
+    };
+    role:guest := {
+        id:"role-3";
+        name:"guest";
+        description:"guest";
+        resources:["application/view/page/auth/login.xml"];
+    };
+}
 
 routes: {
     route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"auth/login.xml" };
@@ -34,6 +59,19 @@ routes: {
 }
 
 policies: {
-    policy:GET_INDEX := {id:"policy-1"; effect:"allow"; match:"/" ;description:"Allow access to /"; condition:"true"; "type":"ABAC";};
+    policy:GET_ALLOW_PATH := {
+        effect:"allow";
+        target: { action: "GET"; };
+        description:""; 
+        condition: @resource in roles.guest.resources | @user.role == "admin";
+    };
 }
     
+
+rules : {
+    "/": [policies.GET_ALLOW_PATH];
+    "/profile": [policies.GET_ALLOW_PATH];
+    "/login": [policies.GET_ALLOW_PATH];
+    "/logout": [policies.GET_ALLOW_PATH];
+    "/admin": [policies.GET_ALLOW_PATH];
+}

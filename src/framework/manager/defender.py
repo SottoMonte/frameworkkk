@@ -76,6 +76,42 @@ class defender:
                 return {'success': True,'results':[token]}
         return {'success': False}
 
+    def  authorized(self, policy, **constants) -> bool:
+        policy = self.get_policy(policy)
+        rules = policy.get('rules', {})
+        action, resource, location = constants.get('action', ''), constants.get('resource', ''), constants.get('location', '')
+        target = {'action':action, 'resource':resource, 'location':location}
+        filted_rules = []
+        all_resutl = []
+        if location in rules:
+            filted_rules = rules.get(location)
+        elif resource in rules:
+            filted_rules = rules.get(resource)
+        else:
+            pass
+
+        print("--------------->",constants)  
+        for rule in filted_rules:
+            print("--------------->",rule)
+            for_target = rule.get('target', {}) | target
+            condition = rule.get('condition')
+            if condition:
+                tes = condition(**for_target)
+                effect = rule.get('effect')
+                if effect == 'allow':
+                    all_resutl.append(tes)
+                elif effect == 'deny':
+                    all_resutl.append(not tes)
+            else:
+                all_resutl.append(False)
+        return all(all_resutl)
+            
+            
+        
+        
+        
+        
+
     async def authenticated(self, **constants) -> bool:
         """
         Verifica se una sessione è autenticata.
