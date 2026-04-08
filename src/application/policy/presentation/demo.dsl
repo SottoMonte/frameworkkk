@@ -56,14 +56,22 @@ routes: {
     route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"login.xml" };
     route:GET_LOGOUT := { path:"/logout"; method:"GET"; "type":"view"; view:"logout.xml" };
     route:GET_ADMIN := { path:"/admin"; method:"GET"; "type":"view"; view:"admin.xml" };
+    route:GET_ERROR_404 := { path:"/404"; method:"GET"; "type":"view"; view:"error/404.xml" };
+    route:GET_USER_PROFILE := { path:"/user/{id}"; method:"GET"; "type":"view"; view:"user/profile.xml" };
 }
 
 policies: {
     policy:GET_ALLOW_PATH := {
         effect:"allow";
         target: { action: "GET"; };
-        description:""; 
-        condition: @resource in roles.guest.resources | @user.role == "admin";
+        description:"Allow GET method for resources in guest role"; 
+        condition: (@resource in roles.guest.resources) & (@action == "GET");
+    };
+    policy:GET_ALLOW_ALL := {
+        effect:"allow";
+        target: { action: "GET"; };
+        description:"Allow all GET requests";
+        condition: @action == "GET";
     };
 }
     
@@ -74,4 +82,6 @@ rules : {
     "/login": [policies.GET_ALLOW_PATH];
     "/logout": [policies.GET_ALLOW_PATH];
     "/admin": [policies.GET_ALLOW_PATH];
+    "/user/{id}": [policies.GET_ALLOW_ALL];
+    //"/404": [policies.GET_ALLOW_ALL];
 }

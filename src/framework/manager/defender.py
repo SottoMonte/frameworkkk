@@ -90,21 +90,27 @@ class defender:
         else:
             pass
 
-        print("--------------->",constants)  
+        print("--------------->2",constants)  
         for rule in filted_rules:
-            print("--------------->",rule)
+            print("--------------->3",rule)
             for_target = rule.get('target', {}) | target
+            print("--------------->4",for_target)
             condition = rule.get('condition')
-            if condition:
+            if callable(condition):
                 tes = condition(**for_target)
                 effect = rule.get('effect')
                 if effect == 'allow':
                     all_resutl.append(tes)
                 elif effect == 'deny':
                     all_resutl.append(not tes)
+            elif isinstance(condition, bool):
+                if rule.get('effect') == 'allow':
+                    all_resutl.append(condition)
+                elif rule.get('effect') == 'deny':
+                    all_resutl.append(not condition)
             else:
                 all_resutl.append(False)
-        return all(all_resutl)
+        return all(all_resutl) if len(all_resutl) > 0 else False
             
             
         

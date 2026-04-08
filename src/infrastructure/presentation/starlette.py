@@ -20,6 +20,7 @@ try:
     from starlette.middleware.cors import CORSMiddleware
     #from starlette.middleware.csrf import CSRFMiddleware
     from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.exceptions import HTTPException
     from starlette.staticfiles import StaticFiles
 
     import os
@@ -557,7 +558,12 @@ class Adapter(presentation.port):
             #Middleware(AuthorizationMiddleware, manager=defender)
         ]
         self.active_websockets = {} # sid -> [websocket]
-        self.DOM = {} 
+        self.DOM = {}
+
+    async def http_exception_handler(self,request, exc):
+        html = await self.mount_view("/"+str(exc.status_code),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
+        return HTMLResponse(content=html, status_code=exc.status_code)
+        #return JSONResponse({"errore": exc.detail}, status_code=exc.status_code)
 
     async def start(self):
         loop = asyncio.get_event_loop()
@@ -568,7 +574,7 @@ class Adapter(presentation.port):
         ]
         self.mount_route(self.routes_static) # 'routes' deve essere accessibile qui
         # Inizializza l'applicazione Starlette con rotte e middleware
-        self.app = Starlette(debug=True, routes=self.routes_static, middleware=self.middleware_static)
+        self.app = Starlette(debug=True, routes=self.routes_static, exception_handlers={HTTPException: self.http_exception_handler}, middleware=self.middleware_static)
         #print(di['message'][0].logger,'###########')
         # Parametri di configurazione base per Uvicorn
         uvicorn_config_params = {
@@ -762,7 +768,8 @@ class Adapter(presentation.port):
         if html:
             return HTMLResponse(html)
         else:
-            return HTMLResponse(content="404 Not Found", status_code=404)
+            html = await self.mount_view("/404",identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
+            return HTMLResponse(content=html, status_code=404)
 
     async def mount_view(self, url,**kargs):
         resolved = self.resolve(url, 'GET', base_url=self.url)

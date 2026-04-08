@@ -507,7 +507,7 @@ class port(ABC):
 
                     # Salvataggio rotta arricchito
                     self.routes[new_path] = {
-                        **{k: s.get(k) for k in ['method', 'type', 'layout', 'controller']},
+                        **{k: s.get(k) for k in ['method', 'type', 'layout', 'controller', 'path']},
                         'view': view,
                         'pattern': regex_compiled # Fondamentale per il dispatcher
                     }
@@ -555,8 +555,7 @@ class port(ABC):
                     
                     # Estrazione parametri dinamici dalla Regex (es. {'id': '123'})
                     dynamic_params = match.groupdict()
-
-                    authorized = self.defender.authorized('presentation', action=request_method, resource=metadata.get('view'), location="/" + "/".join(url_payload['path']))
+                    authorized = self.defender.authorized('presentation', action=request_method, resource=metadata.get('view'), location=metadata.get('path'))
                     
                     if not authorized:
                         return None
