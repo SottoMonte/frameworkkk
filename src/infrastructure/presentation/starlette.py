@@ -78,8 +78,13 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         
         path = request.url.path
         method = request.method
+
+        if path.startswith("/static/"):
+            return await call_next(request)
+            re
         
         data = self.defender.resolve(self.routes, path, method)
+
         if not data:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404
             return HTMLResponse(status_code=404)
@@ -365,11 +370,15 @@ class Adapter(presentation.port):
                     htpy.title[x.get("attrs", {}).get("title", "Today's menu")],
                     #htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"),
                     htpy.link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"),
+                    htpy.link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"),
                     htpy.script(src="https://cdn.tailwindcss.com"),
                 ],
                 htpy.body(**attrs(presentation.Tag.WINDOW.value, x))[
                     [Markup(i) for i in x['inner']],
                     htpy.script(src="static/js/grid.js"),
+                    htpy.script(src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"),
+                    htpy.script(src="static/js/dsl.js"),
+
                     htpy.script[Markup("""
                         (function() {
                             const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/reactive`);
@@ -595,9 +604,9 @@ class Adapter(presentation.port):
         self.DOM = {}
 
     async def http_exception_handler(self,request, exc):
-        html = await self.mount_view("/"+str(exc.status_code),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
-        #return JSONResponse({"errore": exc.detail}, status_code=exc.status_code)
-        return HTMLResponse(content=html, status_code=exc.status_code)
+        #html = await self.mount_view("/"+str(exc.status_code),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
+        return JSONResponse({"errore": exc.detail}, status_code=exc.status_code)
+        #return HTMLResponse(content=html, status_code=exc.status_code)
         
 
     async def start(self):
@@ -607,7 +616,7 @@ class Adapter(presentation.port):
         self.routes_static += [
             WebSocketRoute("/reactive", self.reactive_websocket, name="reactive")
         ]
-        self.mount_route(self.routes_static) # 'routes' deve essere accessibile qui
+        await self.mount_route(self.routes_static) # 'routes' deve essere accessibile qui
         # Inizializza l'applicazione Starlette con rotte e middleware
         self.app = Starlette(debug=True, routes=self.routes_static, exception_handlers={HTTPException: self.http_exception_handler}, middleware=self.middleware_static)
         #print(di['message'][0].logger,'###########')
@@ -818,12 +827,18 @@ class Adapter(presentation.port):
                 ppppname = "src/application/controller/" + controller + ".dsl"
                 controller_data = await presentation.loader.resource(ppppname)
                 await self.executor.add_file(ppppname, controller_data)
+
+                #print("---------------------@@@>",self.executor.interpreter.runner.get_file_context(sid, ppppname))
+                    
                 
                 # Inizializziamo il controller (o recuperiamo lo stato di sessione)
-                resultato = await self.executor.run_session(sid, ppppname, {})
+                #resultato = await self.executor.run_session(sid, ppppname, {})
+                
                 
                 # Passiamo l'intero contesto della sessione al template Jinja
                 resultato = self.executor.interpreter.runner.context(sid)
+
+                resultato |= self.executor.interpreter.runner.get_file_context(sid, ppppname)
                 
                 if resultato:
                     full_ctx.setdefault(controller,{})
@@ -908,7 +923,7 @@ class Adapter(presentation.port):
 
         return rendered_node
 
-    def mount_route(self, routes):
+    async def mount_route(self, routes):
         for path, data in self.routes.items():
             typee = data.get('type')
             method = data.get('method')

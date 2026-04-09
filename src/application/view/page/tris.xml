@@ -23,7 +23,7 @@
             </Column>
 
             <!-- Board -->
-            <Grid style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 300px; height: 300px;">
+            <Grid spacing="10px" width="300px" height="300px" >
                 <Action click="tris:tris_logic.play_0" id="btn_0" background="#1e293b" radius="16px" border="1px,rgba(255,255,255,0.1)" pointer="pointer" width="100%" height="100%" align="center" justify="center">
                     <Text id="t_0" bind="tris:tris_logic.c0" size="48px" font="bold" color="white">{{ tris.tris_logic.c0|default('') }}</Text>
                 </Action>

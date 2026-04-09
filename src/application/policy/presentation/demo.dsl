@@ -52,7 +52,7 @@ roles:{
 }
 
 routes: {
-    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"auth/login.xml" };
+    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"auth/login.xml"; controller:"tris" };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };
     route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"login.xml" };
     route:GET_LOGOUT := { path:"/logout"; method:"GET"; "type":"view"; view:"logout.xml" };
@@ -90,5 +90,6 @@ rules : {
     "/home": [policies.GET_ALLOW_ALL];
     "/user/{id}": [policies.GET_ALLOW_ALL];
     "/tris": [policies.GET_ALLOW_ALL];
+    "/static/js/dsl.js": [policies.GET_ALLOW_ALL];
     //"/404": [policies.GET_ALLOW_ALL];
 }

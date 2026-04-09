@@ -51,6 +51,25 @@ def _set_default(ctx, path, val):
         ctx = ctx.setdefault(p, {})
     ctx.setdefault(parts[-1], val)
 
+def _get_from_path(ctx: dict, path: str, default: Any = None) -> Any:
+    """
+    Recupera un valore dal contesto navigando i nodi separati dal punto.
+    Esempio: _get_from_path(ctx, "user.profile.name")
+    """
+    if not path:
+        return default
+        
+    parts = path.split(".")
+    current = ctx
+    
+    for p in parts:
+        if isinstance(current, dict) and p in current:
+            current = current[p]
+        else:
+            return default
+            
+    return current
+
 def _deep_merge_defaults(target: dict, source: dict):
     """Merge source into target SOLO per le chiavi non ancora presenti.
     Per dict annidati, ricorre senza sovrascrivere i valori esistenti.
@@ -617,6 +636,23 @@ class DagRunner:
     # ─────────────────────────────────────────
     # REACTIVE API
     # ─────────────────────────────────────────
+
+    def get_file_context(self, sid: str, fname: str) -> Dict:
+        session = self.sessions.get(sid)
+        if not session or fname not in self.nodes:
+            return {}
+
+        file_ctx = {}
+        # Itera sui nodi definiti in quel file
+        for node_name, node_def in self.nodes[fname].items():
+            path = node_def.get("path")
+            if path:
+                # Recupera il valore dal ctx della sessione usando il path
+                # (Nota: dovresti implementare una funzione di 'get' speculare a '_set')
+                valore = _get_from_path(session["ctx"], path)
+                if valore is not None:
+                    file_ctx[path] = valore
+        return file_ctx
 
     def update_state(self, sid: str, fname: str, path: str, value: Any):
         """Aggiorna una variabile nel contesto della sessione senza triggerare nessun nodo."""
