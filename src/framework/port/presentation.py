@@ -410,67 +410,7 @@ class port(ABC):
 
         #print(tag,new_attrs)
         return self.node_create(elemento,new_attrs,inner)
-
-    async def parse_route2(self):
-        # Regex per opzioni multiple senza virgolette (es. {a|b})
-        regex_simple_options = r'\{([a-zA-Z0-9_|]+)\}'
-        # Regex per parametri dinamici tipo {$id} -> {id}
-        regex_dynamic_param = r'\{\$([a-zA-Z0-9_]+)\}'
-        
-        routes = self.defender.get_policy('presentation').get('routes').values()
-        try:
-            for setting in routes:
-                path_attribute = setting.get('path')
-                method = setting.get('method')
-                typee = setting.get('type')
-                view = setting.get('view')
-                layout = setting.get('layout')
-                controller = setting.get('controller')
-
-                if view:
-                    view = 'application/view/page/' + view
-                    if not path_attribute:
-                        path_attribute = view.replace('.xml', '')
-
-                # 🔥 Normalizza subito i parametri dinamici {$id} → {id}
-                path_attribute = re.sub(regex_dynamic_param, r'{\1}', path_attribute)
-
-                # Trova tutte le parti dinamiche con opzioni multiple
-                all_matches = re.finditer(regex_simple_options, path_attribute)
-                dynamic_parts = []
-                options_sets = []
-
-                for match in all_matches:
-                    dynamic_parts.append(match.group(0))  # es. "{means|product}"
-                    options_str = match.group(1)          # es. "means|product"
-                    options = options_str.split('|')      # es. ["means", "product"]
-                    options_sets.append(options)
-
-                if dynamic_parts:
-                    # Caso 1: opzioni multiple → espandi combinazioni
-                    for combination in itertools.product(*options_sets):
-                        new_path = path_attribute
-                        for i, part in enumerate(dynamic_parts):
-                            # sostituisci solo le opzioni multiple, NON i parametri dinamici
-                            if '|' in part:
-                                new_path = new_path.replace(part, combination[i], 1)
-                        self.routes[new_path] = {
-                            'view': view, 'type': typee,
-                            'method': method, 'layout': layout,
-                            'controller': controller
-                        }
-                else:
-                    # Caso 2/3: percorsi statici o con parametri dinamici
-                    self.routes[path_attribute] = {
-                        'view': view, 'type': typee,
-                        'method': method, 'layout': layout,
-                        'controller': controller
-                    }
-            print(f"[+] Routes: {list(self.routes.keys())}")
-        except Exception as e:
-            print(f"[!] Error: {e}")
-            pass
-    
+ 
     async def parse_route(self):
         routes_cfg = self.defender.get_policy('presentation').get('routes', {}).values()
         
@@ -528,10 +468,9 @@ class port(ABC):
         if 'view' not in constants:
             constants['view'] = {}
 
-        if 'user' not in constants:
-            user = await self.defender.whoami(identifier=constants.get('identifier'))
-        else:
-            user = {}
+        session = constants.get('session', {})
+
+        user = await self.defender.whoami(session_id=session.get('id'),ip=session.get('ip'))
         try:
             content = template.render(constants|{'user':user})
             xml = ET.fromstring(content)

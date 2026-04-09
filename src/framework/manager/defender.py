@@ -133,7 +133,7 @@ class defender:
         ip = constants.get('ip', '')
         return any(session.get('ip') == ip for session in self.sessions.values())
     
-    async def whoami(self, **constants) -> Any:
+    async def whoami(self, ip=None, session_id=None) -> Any:
         
         '''for backend in self.providers:
             identity = await backend.whoami(token=constants.get('token', ''))
@@ -141,7 +141,7 @@ class defender:
         if False:
             pass
         else:
-            return {"role":"guest","name":"guest","id":"guest","ip":constants.get('ip')}
+            return {"role":"guest","name":"guest","id":"guest","ip":ip}
 
     def resolve(self, risorse, request_url, request_method, base_url=None,**kargs):
         

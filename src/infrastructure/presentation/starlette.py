@@ -73,14 +73,19 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         # Esempio: decidiamo se accettare la richiesta in base al path
         if "id" not in request.session:
             request.session["id"] = str(uuid.uuid4())
+        ip = request.client.host
+        request.session["ip"] = ip
+        session_id = request.session["id"]
+        
+        
         path = request.url.path
         method = request.method
-        print(path, method,self.routes.keys())
+        
         data = self.defender.resolve(self.routes, path, method)
         if not data:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404
             return HTMLResponse(status_code=404)
-        request.state.metadata = data.get('metadata', {})
+        request.state.metadata = data.get('metadata', {})|{'ip':ip}
         request.state.url = request.state.metadata.get('url_details', {})
         request.state.params = data.get('params', {})
         # Logica di decisione (senza scomodare il resolve del router)
@@ -804,8 +809,6 @@ class Adapter(presentation.port):
         controller = metadata.get('controller')
         sid = session.get('id')
 
-        print(f"SID: {sid}")
-
         full_ctx = {}
 
         if sid:
@@ -829,7 +832,7 @@ class Adapter(presentation.port):
                 full_ctx['controller_file'] = ppppname
 
         # Ora renderizziamo l'HTML *con* il contesto del controller e lo stato salvato!
-        rendered_html = await self.render_template(file=view, data=url,**full_ctx)
+        rendered_html = await self.render_template(file=view, data=url,**full_ctx|{'session':session.copy()})
 
         return rendered_html
 
@@ -848,7 +851,7 @@ class Adapter(presentation.port):
                 #print(f"Data: {data}")
                 if data['type'] == 'event':
                     event_full_name = data['name']
-                    print(f"Event: {event_full_name}")
+                    #print(f"Event: {event_full_name}")
                     #print(f"Data: {data['name']}")
                     
                     # Estrazione file e trigger name (es. counter:logic.increment)
@@ -868,7 +871,7 @@ class Adapter(presentation.port):
                     
                     #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                     try:
-                        print(f"Emitting {event_name} for {file_path} (SID: {sid})")
+                        #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                         self.executor.interpreter.runner.emit(sid, file_path, event_name)
                     except Exception as e:
                          print(f"Errore durante l'emissione dell'evento: {e}")

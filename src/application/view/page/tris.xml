@@ -16,6 +16,10 @@
                     {{ 'Vincitore: ' + tris_logic.winner|default('') }}
                 </Text>
 
+                <Text >
+                    {{ user.name }}
+                </Text>
+
             </Column>
 
             <!-- Board -->
