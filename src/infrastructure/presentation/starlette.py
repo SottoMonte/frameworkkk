@@ -73,10 +73,8 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         # Esempio: decidiamo se accettare la richiesta in base al path
         if "id" not in request.session:
             request.session["id"] = str(uuid.uuid4())
-        ip = request.client.host
-        request.session["ip"] = ip
-        session_id = request.session["id"]
-        
+        request.session["ip"] = request.client.host
+        request.session["user"] = await self.defender.whoami(session_id=request.session["id"],ip=request.session["ip"])
         
         path = request.url.path
         method = request.method
@@ -85,7 +83,7 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         if not data:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404
             return HTMLResponse(status_code=404)
-        request.state.metadata = data.get('metadata', {})|{'ip':ip}
+        request.state.metadata = data.get('metadata', {})
         request.state.url = request.state.metadata.get('url_details', {})
         request.state.params = data.get('params', {})
         # Logica di decisione (senza scomodare il resolve del router)
@@ -817,7 +815,7 @@ class Adapter(presentation.port):
             #print(f"Controller: {matched_route}")
             if controller:
                 # Assicuriamoci che il file sia caricato
-                ppppname = "src/application/controller/" + controller
+                ppppname = "src/application/controller/" + controller + ".dsl"
                 controller_data = await presentation.loader.resource(ppppname)
                 await self.executor.add_file(ppppname, controller_data)
                 
@@ -825,14 +823,13 @@ class Adapter(presentation.port):
                 resultato = await self.executor.run_session(sid, ppppname, {})
                 
                 # Passiamo l'intero contesto della sessione al template Jinja
-                full_ctx = self.executor.interpreter.runner.context(sid)
+                resultato = self.executor.interpreter.runner.context(sid)
                 
-                if full_ctx:
-                    full_ctx.update(full_ctx)
-                full_ctx['controller_file'] = ppppname
-
+                if resultato:
+                    full_ctx.setdefault(controller,{})
+                    full_ctx[controller].update(resultato)
         # Ora renderizziamo l'HTML *con* il contesto del controller e lo stato salvato!
-        rendered_html = await self.render_template(file=view, data=url,**full_ctx|{'session':session.copy()})
+        rendered_html = await self.render_template(file=view,**full_ctx|{'session':session.copy()})
 
         return rendered_html
 
@@ -882,7 +879,7 @@ class Adapter(presentation.port):
             if sid in self.active_websockets:
                 self.active_websockets[sid].remove(websocket)
 
-    async def rebuild(self, node_id, session_id, context):
+    async def rebuild(self, node_id, session_id, context, dsl_alias):
         node = self.DOM.get(node_id)
         # Invece di usare solo il frammento "context", recuperiamo tutto lo stato aggiornato
         # in modo che i template possano usare `counter_logic.count` in tutti i casi
@@ -894,7 +891,10 @@ class Adapter(presentation.port):
                 print(f"Errore recupero contesto per rebuild: {e}")
                 
         # Uniamo i due per sicurezza, dando priorità al context appena passato
-        final_context = {**full_ctx, **context}
+        
+        #final_context = {**full_ctx, **context}
+        final_context = {}
+        final_context[dsl_alias] = full_ctx
         
         rendered_node = await self.render_template(text=node, **final_context)
 

@@ -456,29 +456,20 @@ class port(ABC):
         except Exception as e:
             print(f"[!] Error: {e}")
 
-    async def render_template(self, **constants):
-        if 'text' in constants:
-            text = constants['text']
-        else:
-            text = await loader.resource("src/" + constants.get('file',''))
+    async def render_template(self, text=None,file=None,**constants):
+        if text is None and file is None: raise Exception("No text or file provided")
+        if text is None:
+            text = await loader.resource("src/" + file)
 
         template = self.env.from_string(text)
-        if 'data' not in constants:
-            constants['data'] = {}
-        if 'view' not in constants:
-            constants['view'] = {}
-
-        session = constants.get('session', {})
-
-        user = await self.defender.whoami(session_id=session.get('id'),ip=session.get('ip'))
         try:
-            content = template.render(constants|{'user':user})
+            content = template.render(constants)
             xml = ET.fromstring(content)
-            view = await self.render_node(text,xml,constants|{'user':user})
+            view = await self.render_node(text,xml,constants)
             return view
         except Exception as e:
-            print(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {constants.get('file','')}")
-            raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {constants.get('file','')}")
+            print(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
+            raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
 
     async def render_node(self, parent,node, context):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
@@ -572,8 +563,9 @@ class port(ABC):
                     if bind_node_name not in runner.nodes[controller_file]:
                         async def auto_bind_task(inputs):
                             sid = inputs.get("sid")
+                            #print("#############################",inputs)
                             if sid:
-                                await self.rebuild(node_id, sid, inputs)
+                                await self.rebuild(node_id, sid, inputs,dsl_alias)
                             return True
                             
                         bind_node = {
