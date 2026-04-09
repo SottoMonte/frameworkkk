@@ -1,5 +1,6 @@
 from secrets import token_urlsafe
 from typing import Dict, Any
+from urllib.parse import urlparse, parse_qs, urljoin
 
 class defender:
     def __init__(self, **constants):
@@ -111,12 +112,6 @@ class defender:
             else:
                 all_resutl.append(False)
         return all(all_resutl) if len(all_resutl) > 0 else False
-            
-            
-        
-        
-        
-        
 
     async def authenticated(self, **constants) -> bool:
         """
@@ -143,7 +138,67 @@ class defender:
         '''for backend in self.providers:
             identity = await backend.whoami(token=constants.get('token', ''))
             return identity'''
-        pass
+        if False:
+            pass
+        else:
+            return {"role":"guest","name":"guest","id":"guest","ip":constants.get('ip')}
+
+    def resolve(self, risorse, request_url, request_method, base_url=None,**kargs):
+        
+        try:
+            # 1. Normalizzazione URL
+            # Se request_url è relativo (es. "/home"), urljoin lo unisce a base_url
+            full_url = urljoin(base_url, request_url) if base_url else request_url
+            parsed = urlparse(full_url)
+            
+            # Pulizia del path: togliamo slash vuoti per la lista, ma manteniamo il path stringa per il match
+            path_list = [p for p in parsed.path.split('/') if p]
+            
+            # Trasformiamo query e fragment in dizionari puliti
+            query_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.query).items()}
+            frag_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.fragment).items()}
+
+            url_payload = {
+                'url': full_url,
+                'protocol': parsed.scheme,
+                'host': parsed.hostname,
+                'port': parsed.port,
+                'path': path_list,
+                'query': query_params,
+                'fragment': frag_params
+            }
+
+            # 2. Ciclo di Matching (Corretto con .values() per evitare TypeError)
+            for route_data in risorse.values():
+                # Il match va fatto sulla stringa parsed.path
+                match = route_data['pattern'].match(parsed.path)
+                
+                if match:
+                    # Recuperiamo i metadati (che contengono 'method', 'view', etc.)
+                    metadata = route_data.get('metadata', route_data)
+                    
+                    # Controllo Metodo HTTP (se presente nei metadati)
+                    if metadata.get('method') and metadata['method'] != request_method:
+                        continue
+                    
+                    # Estrazione parametri dinamici dalla Regex (es. {'id': '123'})
+                    dynamic_params = match.groupdict()
+                    '''authorized = self.defender.authorized('presentation', action=request_method, resource=metadata.get('view'), location=metadata.get('path'))
+                    
+                    if not authorized:
+                        return None'''
+                    return {
+                        'metadata': metadata,
+                        'params': dynamic_params,
+                        'url_details': url_payload
+                    }
+
+            print(f"[-] No route matched for: {parsed.path}")
+            return None
+
+        except Exception as e:
+            print(f"[!] Resolve Error: {e}")
+            return None
 
     async def detection(self, **constants) -> bool:
         """

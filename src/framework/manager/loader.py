@@ -94,13 +94,11 @@ class ModuleLoader:
         return mod
 
     @staticmethod
-    def find_class(mod):
-        return next(
-            (v for v in vars(mod).values()
-             if isinstance(v, type) and v.__module__ == mod.__name__),
-            None,
-        )
-
+    def find_class(mod,name):
+        ok = getattr(mod, name, None)
+        if not ok:
+            return getattr(mod, 'Adapter', None)
+        return ok
 
 # ─────────────────────────────────────────────
 # Builder — istanzia un singolo servizio
@@ -117,9 +115,8 @@ class Builder:
         kwargs     = {**cls_args, **spec.get("config", {})}
 
         mod = self._ml.load(spec["name"], spec["path"], inject=mod_inject)
-
         if spec.get("is_class"):
-            cls = self._ml.find_class(mod)
+            cls = self._ml.find_class(mod,spec["name"])
             if cls is None:
                 raise ImportError(f"Nessuna classe trovata in {spec['path']}")
             return cls(**kwargs)

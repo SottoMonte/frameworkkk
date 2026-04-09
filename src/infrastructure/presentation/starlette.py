@@ -62,6 +62,37 @@ except Exception as e:
     import xml.etree.ElementTree as ET
     from xml.sax.saxutils import escape
 
+class DefenderMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, defender, routes):
+        super().__init__(app)
+        self.defender = defender
+        self.routes = routes
+    
+
+    async def dispatch(self, request, call_next):
+        # Esempio: decidiamo se accettare la richiesta in base al path
+        if "id" not in request.session:
+            request.session["id"] = str(uuid.uuid4())
+        path = request.url.path
+        method = request.method
+        print(path, method,self.routes.keys())
+        data = self.defender.resolve(self.routes, path, method)
+        if not data:
+            # Rifiutiamo la richiesta con un 403 Forbidden o 404
+            return HTMLResponse(status_code=404)
+        request.state.metadata = data.get('metadata', {})
+        request.state.url = request.state.metadata.get('url_details', {})
+        request.state.params = data.get('params', {})
+        # Logica di decisione (senza scomodare il resolve del router)
+        authorized = self.defender.authorized('presentation', action=method, resource=request.state.metadata.get('view'), location=request.state.metadata.get('path'))
+                    
+        if not authorized:
+            # Rifiutiamo la richiesta con un 403 Forbidden o 404
+            return HTMLResponse(status_code=404)
+
+        # Se va bene, procediamo
+        response = await call_next(request)
+        return response
 
 # --- Configurazione Programmatica Attributi ---
 
@@ -553,17 +584,18 @@ class Adapter(presentation.port):
         self.middleware_static = [
             Middleware(SessionMiddleware, session_cookie="session_state",secret_key=self.config.get('project',{}).get('key', 'default_key')),
             Middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'], allow_credentials=True),
+            Middleware(DefenderMiddleware, defender=self.defender,routes=self.routes),
             #Middleware(NoCacheMiddleware),
             #Middleware(CSRFMiddleware, secret=self.config['project']['key']),
-            #Middleware(AuthorizationMiddleware, manager=defender)
         ]
         self.active_websockets = {} # sid -> [websocket]
         self.DOM = {}
 
     async def http_exception_handler(self,request, exc):
         html = await self.mount_view("/"+str(exc.status_code),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
-        return HTMLResponse(content=html, status_code=exc.status_code)
         #return JSONResponse({"errore": exc.detail}, status_code=exc.status_code)
+        return HTMLResponse(content=html, status_code=exc.status_code)
+        
 
     async def start(self):
         loop = asyncio.get_event_loop()
@@ -764,31 +796,25 @@ class Adapter(presentation.port):
 
     async def render_view(self,request):
         request.session["url_precedente"] = str(request.url)
-        html = await self.mount_view(str(request.url),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
-        if html:
-            return HTMLResponse(html)
-        else:
-            html = await self.mount_view("/404",identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
-            return HTMLResponse(content=html, status_code=404)
+        html = await self.mount_view(url=request.state.url, metadata=request.state.metadata, session=request.session)
+        return HTMLResponse(html)
 
-    async def mount_view(self, url,**kargs):
-        resolved = self.resolve(url, 'GET', base_url=self.url)
-        if not resolved:
-            return None
-        route,url = resolved.get('metadata', {}),resolved.get('url_details', {})
-        
+    async def mount_view(self, url, metadata, session):
+        view = metadata.get('view')
+        controller = metadata.get('controller')
+        sid = session.get('id')
 
-        # Salviamo la rotta corrente nella sessione per il rebuild
-        #sid = kargs.get('identifier')
-        sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
+        print(f"SID: {sid}")
+
+        full_ctx = {}
 
         if sid:
-            await self.executor.create_session(sid, {'messenger': self.messenger, 'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': route['view']})
+            await self.executor.create_session(sid, {'messenger': self.messenger, 'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': view})
             # Se la rotta ha un controller, eseguiamolo
             #print(f"Controller: {matched_route}")
-            if route.get('controller'):
+            if controller:
                 # Assicuriamoci che il file sia caricato
-                ppppname = "src/" + route['controller']
+                ppppname = "src/application/controller/" + controller
                 controller_data = await presentation.loader.resource(ppppname)
                 await self.executor.add_file(ppppname, controller_data)
                 
@@ -797,33 +823,24 @@ class Adapter(presentation.port):
                 
                 # Passiamo l'intero contesto della sessione al template Jinja
                 full_ctx = self.executor.interpreter.runner.context(sid)
+                
                 if full_ctx:
-                    kargs.update(full_ctx)
-                kargs['controller_file'] = ppppname
+                    full_ctx.update(full_ctx)
+                full_ctx['controller_file'] = ppppname
 
         # Ora renderizziamo l'HTML *con* il contesto del controller e lo stato salvato!
-        rendered_html = await self.render_template(file=route.get('view'), data=url, **kargs)
+        rendered_html = await self.render_template(file=view, data=url,**full_ctx)
 
         return rendered_html
 
     async def reactive_websocket(self, websocket):
         await websocket.accept()
-        # Recuperiamo il sid dai cookie dell'header
-        cookie_str = websocket.headers.get("cookie", "")
-        sid = None
-        if "session_identifier=" in cookie_str:
-            sid = cookie_str.split("session_identifier=")[1].split(";")[0]
-        
-        if not sid:
-             sid = str(uuid.uuid4())
+        session_data = websocket.session
+        sid = session_data.get('id')
 
-        print(f"SID: {sid}")
-
-        sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
+        print(f"SID WS: {sid}")
 
         self.active_websockets.setdefault(sid, []).append(websocket)
-
-        #print(f"Active websockets: {self.active_websockets}")
         
         try:
             while True:
@@ -831,18 +848,13 @@ class Adapter(presentation.port):
                 #print(f"Data: {data}")
                 if data['type'] == 'event':
                     event_full_name = data['name']
+                    print(f"Event: {event_full_name}")
                     #print(f"Data: {data['name']}")
                     
                     # Estrazione file e trigger name (es. counter:logic.increment)
                     if ":" in event_full_name:
                         dsl_alias, event_name = event_full_name.split(":", 1)
                         file_path = f"src/application/controller/{dsl_alias}.dsl"
-                    else:
-                        event_name = event_full_name
-                        # Fallback: usiamo l'ultimo controller caricato per questa sessione se disponibile
-                        session_info = self.executor.interpreter.runner.sessions.get(sid, {})
-                        running_files = list(session_info.get('running_files', []))
-                        file_path = running_files[0] if running_files else "src/application/controller/counter.dsl"
                     
                     # Il file e la sessione sono già inizializzati da mount_view al page load.
                     # Qui aggiungiamo il file solo se per qualche motivo non fosse ancora caricato
@@ -856,6 +868,7 @@ class Adapter(presentation.port):
                     
                     #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                     try:
+                        print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                         self.executor.interpreter.runner.emit(sid, file_path, event_name)
                     except Exception as e:
                          print(f"Errore durante l'emissione dell'evento: {e}")
@@ -868,7 +881,6 @@ class Adapter(presentation.port):
 
     async def rebuild(self, node_id, session_id, context):
         node = self.DOM.get(node_id)
-        
         # Invece di usare solo il frammento "context", recuperiamo tutto lo stato aggiornato
         # in modo che i template possano usare `counter_logic.count` in tutti i casi
         full_ctx = {}
@@ -883,13 +895,12 @@ class Adapter(presentation.port):
         
         rendered_node = await self.render_template(text=node, **final_context)
 
-        sid = "9051d5ee-cd52-41d6-b64d-39a12872c22b"
         if rendered_node:
              #html = await self.render_node(target_node, context)
              # Inviamo l'aggiornamento a tutti i websocket attivi per questo SID
-             if sid in self.active_websockets:
+             if session_id in self.active_websockets:
                 msg = json.dumps({'type': 'update', 'id': node_id, 'html': rendered_node})
-                for ws in self.active_websockets[sid]:
+                for ws in self.active_websockets[session_id]:
                     await ws.send_text(msg)
 
         return rendered_node

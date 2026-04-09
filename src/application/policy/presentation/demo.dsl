@@ -3,6 +3,7 @@ type:route := {
     "method": { "type": "string"; "default": "GET" };
     "type": { "type": "string" };
     "view": { "type": "string"; "default": "" };
+    "controller": { "type": "string"; "default": "" };
 };
 
 type:policy := {
@@ -57,7 +58,10 @@ routes: {
     route:GET_LOGOUT := { path:"/logout"; method:"GET"; "type":"view"; view:"logout.xml" };
     route:GET_ADMIN := { path:"/admin"; method:"GET"; "type":"view"; view:"admin.xml" };
     route:GET_ERROR_404 := { path:"/404"; method:"GET"; "type":"view"; view:"error/404.xml" };
-    route:GET_USER_PROFILE := { path:"/user/{id}"; method:"GET"; "type":"view"; view:"user/profile.xml" };
+    route:GET_BROWSER := { path:"/browse"; method:"GET"; "type":"view"; view:"twitch_browse.xml" };
+    route:GET_HOME := { path:"/home"; method:"GET"; "type":"view"; view:"twitch_home.xml" };
+    route:GET_USER_PROFILE := { path:"/user/{id}"; method:"GET"; "type":"view"; view:"twitch_channel.xml" };
+    route:GET_TRIS := { path:"/tris"; method:"GET"; "type":"view"; view:"tris.xml"; controller:"tris.dsl" };
 }
 
 policies: {
@@ -82,6 +86,9 @@ rules : {
     "/login": [policies.GET_ALLOW_PATH];
     "/logout": [policies.GET_ALLOW_PATH];
     "/admin": [policies.GET_ALLOW_PATH];
+    "/browse": [policies.GET_ALLOW_ALL];
+    "/home": [policies.GET_ALLOW_ALL];
     "/user/{id}": [policies.GET_ALLOW_ALL];
+    "/tris": [policies.GET_ALLOW_ALL];
     //"/404": [policies.GET_ALLOW_ALL];
 }
