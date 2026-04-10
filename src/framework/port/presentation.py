@@ -484,7 +484,7 @@ class port(ABC):
 
         # Controllo se il tag è un componente (custom tag)
         component_paths = [
-            f"src/application/view/components/{tag}.xml",
+            #f"src/application/view/components/{tag}.xml",
             f"src/application/view/component/{tag}.xml"
         ]
 
