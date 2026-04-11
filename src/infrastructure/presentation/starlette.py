@@ -74,7 +74,7 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         if "id" not in request.session:
             request.session["id"] = str(uuid.uuid4())
         request.session["ip"] = request.client.host
-        request.session["user"] = await self.defender.whoami(session_id=request.session["id"],ip=request.session["ip"])
+        #request.session["user"] = await self.defender.whoami(session_id=request.session["id"],ip=request.session["ip"])
         
         path = request.url.path
         method = request.method
@@ -215,7 +215,7 @@ mapping_attributes = {
         "none":"bg-transparent",
         False:f"bg-gradient-to-r from-[{x.split(',')[0]}] to-[{x.split(',')[-1]}]",
         True:f"bg-[{x}]"
-    }.get(False if ',' in x else True, ""),
+    }.get((False if ',' in x else True) if '#' in x else x, ""),
     presentation.Attribute.MATTER.value: lambda x: {
         "glass":"backdrop-blur-md",
         "glass-min":"backdrop-blur-sm",
@@ -489,8 +489,8 @@ class Adapter(presentation.port):
             "form": lambda x: htpy.form(**attrs("form", x))[[Markup(i) for i in x['inner']]],
             "action": lambda x: htpy.button(**attrs("action", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
             "button": lambda x: htpy.button(**attrs("button", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
-            "submit": lambda x: htpy.button(**attrs("submit", x, "btn btn-primary"))[[Markup(i) for i in x['inner']]], 
-            "reset": lambda x: htpy.button(**attrs("reset", x, "btn btn-secondary"))[[Markup(i) for i in x['inner']]],
+            "submit": lambda x: htpy.button(type="submit",**attrs("submit", x, "btn btn-primary"))[[Markup(i) for i in x['inner']]], 
+            "reset": lambda x: htpy.button(type="reset",**attrs("reset", x, "btn btn-secondary"))[[Markup(i) for i in x['inner']]],
             "link": lambda x: htpy.a(**attrs("link", x, "btn link"))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.MEDIA.value: {
@@ -608,13 +608,12 @@ class Adapter(presentation.port):
         return JSONResponse({"errore": exc.detail}, status_code=exc.status_code)
         #return HTMLResponse(content=html, status_code=exc.status_code)
         
-
     async def start(self):
         loop = asyncio.get_event_loop()
         print("Starlette: Inizializzazione in corso...")
         await self.parse_route()
         self.routes_static += [
-            WebSocketRoute("/reactive", self.reactive_websocket, name="reactive")
+            WebSocketRoute("/reactive", self.render_reactive, name="reactive")
         ]
         await self.mount_route(self.routes_static) # 'routes' deve essere accessibile qui
         # Inizializza l'applicazione Starlette con rotte e middleware
@@ -658,7 +657,7 @@ class Adapter(presentation.port):
             #await messenger.post(domain='error', message=f"Errore critico durante l'avvio del server Uvicorn: {e}")
             pass
         
-    async def logout(self,request,defender) -> None:
+    async def logout(self,request) -> None:
         assert request.scope.get("app") is not None, "Invalid Starlette app"
         request.session.clear()
         response = RedirectResponse('/', status_code=303)
@@ -666,127 +665,30 @@ class Adapter(presentation.port):
         return response
 
     async def login(self, request):
-        """Gestisce il login dell'utente con autenticazione basata su IP e sessione."""
-        
-        client_ip = request.client.host
-        session_identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16))
-        url_precedente = request.session.get("url_precedente",request.url)
-        
         # Determina le credenziali in base al metodo HTTP
-        if request.method == 'GET':
-            credentials = dict(request.query_params)
-        elif request.method == 'POST':
-            credentials = dict(await request.form())
-        else:
-            return RedirectResponse('/', status_code=405)
+        match request.method:
+            case 'GET':
+                credentials = dict(request.query_params)
+            case 'POST':
+                credentials = dict(await request.form())
+            case _:
+                return RedirectResponse('/', status_code=405)
 
+        print(credentials)
         # Autenticazione tramite defender
-        session = await self.defender.authenticate(storekeeper,ip=client_ip, identifier=session_identifier, **credentials)
-        provider = credentials.get('provider', 'undefined')
+        session = await self.defender.authenticate(request.session, **credentials)
+        #provider = credentials.get('provider', 'undefined')
         
         # Aggiorna la sessione se l'autenticazione ha avuto successo
-        #if session:
-        #    request.session.update(session)
+        if session:
+            request.session.update(session)
+
+        print(request.session)
 
         # Crea la risposta di reindirizzamento
-        response = RedirectResponse(url_precedente, status_code=303)
-        # Imposta i cookie della sessione se non già presenti
-        if 'session_identifier' not in request.cookies:
-            response.set_cookie(key='session_identifier', value=session_identifier)
-        
-        #response.set_cookie(key='session', value=token, max_age=3600)
-        response.set_cookie(key='session', value=session)
-        
-        #await messenger.post(domain=f"error.{client_ip}",message=f"🔑 Login completato per IP: {client_ip} | con provider: {provider} | Session: {session_identifier}")
-
-        return response
-
-    async def websocket(self, websocket):
-        ip = websocket.client.host
-        await websocket.accept()
-        #await messenger.post(domain='info', message=f"🔌 Connessione WebSocket da {ip}")
-
-        #ws_queue = asyncio.Queue()  # Coda per i messaggi WebSocket
-        #messenger_queue = asyncio.Queue()  # Coda per i messaggi di Messenger
-        stop_event = asyncio.Event()  # Evento per fermare il loop quando necessario
-
-        async def listen_websocket():
-            try:
-                while not stop_event.is_set():
-                    msg = await websocket.receive_text()
-                    #await messenger.post(domain='debug', message=f"📥 Messaggio dal client: {msg}")
-                    await websocket.send_text(msg)
-            except Exception:
-                stop_event.set()  # Ferma il ciclo se il WebSocket si chiude
-
-        async def listen_for_updates():
-            while not stop_event.is_set():
-                msg = await messenger.read(domain='*',identity=ip)
-                #await messenger.post(domain='debug', message=f"📨 Messaggio dal server: {msg}")
-                #await messenger_queue.put(msg)
-                await websocket.send_text(msg)
+        return RedirectResponse(request.session["url_precedente"], status_code=303)
     
-    async def websocketssh(self, websocket):
-        ip = websocket.client.host
-
-        # Sessione di autenticazione
-        session = await self.defender.whoami(ip=ip)
-        await websocket.accept()
-
-        try:
-            # Riceve parametri iniziali
-            initial_message = await websocket.receive_text()
-            #await messenger.post(domain='debug', message=f"Sessione {session} con messaggio iniziale: {initial_message}")
-            params = json.loads(initial_message)
-            username = params.get("username")
-            password = params.get("password")
-            host = params.get("host")
-
-            # Connessione SSH
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(host, username=username, password=password)
-            channel = ssh.invoke_shell()
-
-            # Invia la risposta iniziale del terminale (banner, prompt, ecc.)
-            if channel.recv_ready():
-                initial_response = channel.recv(1024).decode('utf-8')
-                await websocket.send_text(initial_response)
-
-            # Lettura dati da SSH → WebSocket
-            async def read_from_channel():
-                while True:
-                    if websocket.client_state.name != "CONNECTED":
-                        break
-                    if channel.recv_ready():
-                        data = channel.recv(1024).decode('utf-8')
-                        await websocket.send_text(data)
-                    await asyncio.sleep(0.01)
-
-            # Lettura dati da WebSocket → SSH
-            async def read_from_websocket():
-                while True:
-                    data = await websocket.receive_text()
-                    if data:
-                        channel.send(data)
-
-            await asyncio.gather(read_from_channel(), read_from_websocket())
-
-        except Exception as e:
-            #await self.messenger.post(domain='error', message=f"Errore durante la sessione SSH-WebSocket: {e}")
-            pass
-        finally:
-            try:
-                if channel:
-                    channel.close()
-                if ssh:
-                    ssh.close()
-                #await self.messenger.post(domain='debug', message=f"Sessione SSH chiusa per {session}")
-            except Exception as close_err:
-                #await self.messenger.post(domain='error', message=f"Errore durante la chiusura SSH: {close_err}")
-                pass
-    
-    async def action(self, request, storekeeper, messenger, **constants):
+    async def action(self, request, **constants):
         #print(request.cookies.get('user'))
         match request.method:
             case 'GET':
@@ -848,7 +750,7 @@ class Adapter(presentation.port):
 
         return rendered_html
 
-    async def reactive_websocket(self, websocket):
+    async def render_reactive(self, websocket):
         await websocket.accept()
         session_data = websocket.session
         sid = session_data.get('id')

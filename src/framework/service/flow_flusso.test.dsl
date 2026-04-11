@@ -62,16 +62,16 @@ tests:{
     test_manual_dependence:{'outputs':2;'assert':@loop == 5 & @outputs == 6;'loop':0;'max_loop':5};
     test_no_dependence:{'outputs':2;'assert':@loop == 5 & @outputs == 6;'loop':0;'max_loop':5};
 };*/
-cpu(schedule:2,trigger:"data") -> random(0,100);
+//cpu(schedule:2,trigger:"data") -> random(0,100);
 // on_end:data
-numero:0;
-data(default:0) -> branch(@data == 0,{'data':data}, {
-    true: 0;
-    false: @data + 1;
-});
+//numero:0;
+//data(default:0) -> branch(@data == 0,{'data':data}, {
+//    true: 0;
+//    false: @data + 1;
+//});
 //aaa(schedule:5,meta:true,cache:true) -> print("@@@@@@@@@@@@@@@@@@@@",data);
-fff() -> print("CPU:",cpu);
-aaa(schedule:2,cache:true) -> print("DATA:",data);
+//fff() -> print("CPU:",cpu);
+//aaa(schedule:2,cache:true) -> print("DATA:",data);
 //aaa(schedule:2) -> print("ciao");
 //coda(default:[]) -> [data] + coda;
 

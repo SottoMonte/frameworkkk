@@ -12,13 +12,19 @@ presentation = "demo.dsl"
 #persistence = "redis.toml"
 #message = "log.toml"
 
-[message.backend]
+[authentication.backend]
+adapter = "supabase"
+url = "https://ljeowpqmovaavxghpsne.supabase.co"
+key = "sb_publishable_0lFFRJ5fSJClbYGP46EE2w_ZeobDEn_"
+
+[amessage.backend]
 adapter = "redis"
 host = "xxxx"
 port = "13976"
 database = "database-MJZMYZ6J"
 username = "default"
 password = "3LkESG6clHa2hJj1zF8CabQlqU50O6zL"
+
 
 [presentation.backend]
 adapter = "starlette"

@@ -145,6 +145,42 @@ def action(custom_filename: str = __file__, app_context=None, **constants):
             return wrapper
     return decorator
 
+import inspect, functools, time, asyncio
+
+def action2(schemas: dict = None, **constants):
+    def decorator(func):
+        # Setup pre-esecuzione (eseguito una sola volta)
+        sig = inspect.signature(func)
+        is_async = asyncio.iscoroutinefunction(func)
+        print("###### [sig.parameters]: ", sig.parameters.keys())
+        models = [ loader.get_model(name) for name in sig.parameters.keys() if name != "self"]
+        print("###### [models]: ",models)
+
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            t0 = time.perf_counter()
+            try:
+                # Unifica argomenti e applica default
+                bound = sig.bind(*args, **kwargs)
+                bound.apply_defaults()
+                p = bound.arguments
+
+                # Normalizzazione mirata
+                '''for name in relevant:
+                    res = await normalize({name: p[name]}, {name: schemas[name]})
+                    p[name] = res[name]'''
+
+                # Esecuzione e standardizzazione output
+                out = await func(**p) if is_async else func(**p)
+                result = out if isinstance(out, dict) else {"data": out}
+                
+                return result | {"action": func.__name__, "time": time.perf_counter() - t0}
+
+            except Exception as e:
+                return {"error": str(e), "action": func.__name__, "t0": t0}
+        return wrapper
+    return decorator
+
 async def act(s):
     t0 = time.perf_counter()
     if not isinstance(s, tuple):

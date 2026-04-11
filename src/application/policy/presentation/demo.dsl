@@ -52,12 +52,19 @@ roles:{
 }
 
 routes: {
-    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"auth/login.xml"; controller:"tris" };
+    // Home
+    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"landing/index.xml"; controller:"tris" };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };
-    route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"login.xml" };
-    route:GET_LOGOUT := { path:"/logout"; method:"GET"; "type":"view"; view:"logout.xml" };
+    // Auth
+    route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"auth/login.xml" };
+    route:GET_LOGOUT := { path:"/logout"; method:"GET"; "type":"view"; view:"auth/logout.xml" };
+    route:POST_LOGIN := { path:"/loginx"; method:"POST"; "type":"login"; view:"auth/login.xml" };
+    route:POST_LOGOUT := { path:"/logoutx"; method:"POST"; "type":"logout"; view:"auth/logout.xml" };
+    // Admin
     route:GET_ADMIN := { path:"/admin"; method:"GET"; "type":"view"; view:"admin.xml" };
+    // Error
     route:GET_ERROR_404 := { path:"/404"; method:"GET"; "type":"view"; view:"error/404.xml" };
+    // Twitch
     route:GET_BROWSER := { path:"/browse"; method:"GET"; "type":"view"; view:"twitch_browse.xml" };
     route:GET_HOME := { path:"/home"; method:"GET"; "type":"view"; view:"twitch_home.xml" };
     route:GET_USER_PROFILE := { path:"/user/{id}"; method:"GET"; "type":"view"; view:"twitch_channel.xml" };
@@ -77,13 +84,20 @@ policies: {
         description:"Allow all GET requests";
         condition: @action == "GET";
     };
+    policy:POST_ALLOW_ALL := {
+        effect:"allow";
+        target: { action: "POST"; };
+        description:"Allow all POST requests";
+        condition: @action == "POST";
+    };
 }
     
 
 rules : {
-    "/": [policies.GET_ALLOW_PATH];
+    "/": [policies.GET_ALLOW_ALL];
     "/profile": [policies.GET_ALLOW_PATH];
-    "/login": [policies.GET_ALLOW_PATH];
+    "/login": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
+    "/loginx": [policies.POST_ALLOW_ALL,policies.GET_ALLOW_ALL];
     "/logout": [policies.GET_ALLOW_PATH];
     "/admin": [policies.GET_ALLOW_PATH];
     "/browse": [policies.GET_ALLOW_ALL];

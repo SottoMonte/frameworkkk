@@ -19,6 +19,8 @@ from dependency_injector import containers, providers
 import tomli
 import traceback
 
+import json
+
 
 # ─────────────────────────────────────────────
 # Configurazione globale dei port
@@ -60,7 +62,7 @@ class Container(containers.DynamicContainer):
         return attr() if callable(attr) else attr
 
     def set(self, name: str, obj):
-        setattr(self, name, providers.Singleton(lambda o=obj: o))
+        self.set_provider(name, providers.Singleton(lambda o=obj: o))
 
     def append_to_port(self, port: str, obj):
         """Aggiunge obj alla lista del port (chiave con suffisso 's')."""
@@ -192,6 +194,24 @@ class ProjectLoader:
     def __init__(self, container: Container):
         self._c = container
 
+    def load_schemas(self, directory: str = "src/application/model/") -> dict:
+        """Carica tutti i file .json dalla cartella specificata."""
+        schemas = {}
+        if not os.path.exists(directory):
+            print(f"[!] Warning: Cartella schemi non trovata: {directory}")
+            return schemas
+
+        for filename in os.listdir(directory):
+            if filename.endswith(".json"):
+                name = os.path.splitext(filename)[0]
+                path = os.path.join(directory, filename)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        schemas[name] = json.load(f)
+                except Exception as e:
+                    print(f"[!] Errore nel caricamento dello schema {filename}: {e}")
+        return schemas
+
     def load(self, config_path: str) -> list[dict]:
         data = self._read_toml(config_path)
         self._c.config.from_dict(data)
@@ -208,7 +228,7 @@ class ProjectLoader:
     def _make_spec(self, port: str, cfg: dict) -> dict:
         adapter = cfg.get("adapter")
         return {
-            "name":     "Adapter",
+            "name":     f"{port.lower()}.{adapter.lower()}",
             "path":     f"src/infrastructure/{port}/{adapter}.py",
             "mod_deps": [port],               # es. "persistence"  → modulo framework
             "cls_deps": PORT_REGISTRY[port],  # dipendenze classe adapter
@@ -264,6 +284,7 @@ _SERVICES: list[dict] = [
     {"name": "message",      "path": "src/framework/port/message.py",       "mod_deps": [],                   "is_class": False, "config": {}},
     {"name": "presentation", "path": "src/framework/port/presentation.py",  "mod_deps": ["scheme","loader"],  "is_class": False, "config": {}},
     {"name": "persistence",  "path": "src/framework/port/persistence.py",   "mod_deps": [],                   "is_class": False, "config": {}},
+    {"name": "authentication",  "path": "src/framework/port/authentication.py",   "mod_deps": ['flow'],                   "is_class": False, "config": {}},
 ]
 
 # ─────────────────────────────────────────────
@@ -284,6 +305,10 @@ class Loader:
     def get(self, name: str):
         return self._container.get(name)
 
+    def get_model(self, name: str):
+        print("###### [get_model]: ", dir(self._container))
+        return self._container.get("model").get(name)
+
     async def resource(self, path: str):
         if not os.path.exists(path):
             raise FileNotFoundError(f"Risorsa non trovata: {path}")
@@ -301,11 +326,14 @@ class Loader:
         project_specs = self._project.load("pyproject.toml") if '--test' not in args else []
         config = self._project.get_config()
         
+        application_models = self._project.load_schemas("src/application/model/")
+        print(f"[+] Loaded models: {list(application_models.keys())}")
+
         _MANAGERS: list[dict] = [
             {"name": "loader",      "path": "src/framework/manager/loader.py",      "mod_deps": ["container"],                    "cls_deps": [],                                          "is_class": True, "config": {}},
             {"name": "messenger",   "path": "src/framework/manager/messenger.py",   "mod_deps": ["flow"],                         "cls_deps": ["executor", "messages"],                    "is_class": True, "config": {}},
             {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language"],                    "is_class": True, "config": {}},
-            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader"],                      "is_class": True, "config": {'args':args, 'project':config['project']}},
+            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader","authentications"],                      "is_class": True, "config": {'args':args, 'project':config.get('project', {})}},
             {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger"],         "is_class": True, "config": {'args':args}},
             {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [],                               "cls_deps": ["executor", "persistences"],                "is_class": True, "config": {}},
             {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],               "is_class": True, "config": {}},
@@ -313,7 +341,11 @@ class Loader:
         
         await self._batch.run(
             _SERVICES + _MANAGERS + project_specs,
-            singletons={"loader": self, "container": self._container},
+            singletons={
+                "loader": self,
+                "container": self._container,
+                "models": application_models
+            },
         )
 
         stop_event = asyncio.Event()

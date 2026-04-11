@@ -17,7 +17,7 @@
                 </Text>
 
                 <Text >
-                    {{ session.user.name }}
+                    {{ session.user.email }}
                 </Text>
 
             </Column>

@@ -1,14 +1,23 @@
-#from ldap3 import Server, Connection, ALL
-
 from abc import ABC, abstractmethod
 
 class port(ABC):
-    def __init__(self, ldap_server, user_dn, password):
-        #self.server = Server(ldap_server, get_info=ALL)
-        #self.user_dn = user_dn
-        #self.password = password
+
+    @flow.action2(inputs=('email','password'),outputs=('access_token',))
+    @abstractmethod
+    def sign_in(self,email,password):
         pass
 
+    @flow.action2(inputs=('email','password'),outputs=('access_token',))
     @abstractmethod
-    def authenticate(self):
+    def sign_up(self,email,password):
+        pass
+
+    @flow.action2(inputs=('access_token',),outputs=('access_token',))
+    @abstractmethod
+    def sign_out(self,access_token):
+        pass
+
+    @flow.action2(inputs=('access_token',),outputs=('access_token',))
+    @abstractmethod
+    def get_identity(self,access_token):
         pass

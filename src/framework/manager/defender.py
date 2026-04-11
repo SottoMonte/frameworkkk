@@ -12,6 +12,7 @@ class defender:
         self.language = constants.get('language')
         self.loader = constants.get('loader')
         self.config = constants.get('project', dict())
+        self.authentications = constants.get('authentications', [])
         self.interpreter = self.language.Interpreter()
         self.policies = {}
 
@@ -43,7 +44,7 @@ class defender:
         return self.policies.get(policy)
     
     #@language.asynchronous(managers=('storekeeper',))
-    async def authenticate(self, storekeeper, **constants):
+    async def authenticate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.
 
@@ -52,13 +53,20 @@ class defender:
         """
 
         # Recupera o inizializza la sessione utente
-        session = dict({'ip':constants.get('ip'),'identifier':constants.get('identifier')})
-        for backend in self.providers.get('authentication'):
-            provider_persistence = backend.config.get('persistence')
-            session |= await backend.authenticate(**constants)
-            if provider_persistence:
+        #session = dict({'ip':constants.get('ip'),'identifier':constants.get('identifier')})
+
+        for authentication in self.authentications:
+            #provider_persistence = authentication.config.get('persistence')
+            ok = await authentication.sign_in(**constants)
+            print("ok",ok)
+            '''if ok:
+                session['user'] = ok['user']
+                if authentication.name not in session:
+                    session[authentication.name] = {}
+                session[authentication.name]['tokens'] = ok['tokens']'''
+            '''if provider_persistence:
                 await storekeeper.store(repository='sessions',payload=session)
-                pass
+                pass'''
         return session
 
     async def registration(self, **constants) -> Any:
@@ -111,7 +119,7 @@ class defender:
                     all_resutl.append(not condition)
             else:
                 all_resutl.append(False)
-        return all(all_resutl) if len(all_resutl) > 0 else False
+        return any(all_resutl) if len(all_resutl) > 0 else False
 
     async def authenticated(self, **constants) -> bool:
         """
@@ -200,6 +208,21 @@ class defender:
             print(f"[!] Resolve Error: {e}")
             return None
 
+    async def logout(self, **constants) -> bool:
+        """
+        Termina la sessione di un utente specificato.
+
+        :param constants: Deve includere 'identifier'.
+        :return: True se la sessione è stata terminata, False se l'utente non esiste.
+        """
+        identifier = constants.get('identifier', '')
+
+        for backend in self.providers:
+            await backend.logout()
+
+        if identifier in self.sessions:
+            del self.sessions[identifier]
+
     async def detection(self, **constants) -> bool:
         """
         Placeholder per il rilevamento di minacce.
@@ -217,21 +240,6 @@ class defender:
         :return: True come comportamento predefinito.
         """
         return True
-
-    async def logout(self, **constants) -> bool:
-        """
-        Termina la sessione di un utente specificato.
-
-        :param constants: Deve includere 'identifier'.
-        :return: True se la sessione è stata terminata, False se l'utente non esiste.
-        """
-        identifier = constants.get('identifier', '')
-
-        for backend in self.providers:
-            await backend.logout()
-
-        if identifier in self.sessions:
-            del self.sessions[identifier]
 
     def revoke_session(self, **constants) -> None:
         """

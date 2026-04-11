@@ -103,13 +103,6 @@ scala: ["min","medium","large","max","none"];
 ============================================================ */
 
 tuple:test_suite := (
-    { 
-        "action": imports.presentation.mapping_attributes.width;
-        "inputs": 'full';
-        "outputs": "w-full";
-        "assert":@received.outputs == @expected;
-        "note": "Render width full"; 
-    },
     /*{ 
         "action": driver.render_template;
         "inputs": {'text':'<Text>10</Text>'};

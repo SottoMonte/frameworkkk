@@ -30,7 +30,7 @@ class tester:
 
     async def dsl(self, interp, path):
         # ── esecuzione ────────────────────────────────────────────────────────
-        ctx    = await interp.run_session("tester", path,env=language.DSL_FUNCTIONS|{'messenger':self.messenger,'defender':self.defender,'resource':self.loader.resource})
+        ctx    = await interp.run_session("tester", path,env={'messenger':self.messenger,'defender':self.defender,'resource':self.loader.resource})
         
         '''errors = [
             err
@@ -60,8 +60,10 @@ class tester:
             try:
                 if isinstance(args, dict):
                     received = await interp.invoke(target, [], args)
-                else:
+                elif isinstance(args, (list, tuple)):
                     received = await interp.invoke(target, args)
+                else:
+                    received = await interp.invoke(target, [args])
 
                 if assert_(received=received, expected=expected):
                     results["passed"] += 1
