@@ -14,8 +14,11 @@ presentation = "demo.dsl"
 
 [authentication.backend]
 adapter = "supabase"
-url = "https://ljeowpqmovaavxghpsne.supabase.co"
-key = "sb_publishable_0lFFRJ5fSJClbYGP46EE2w_ZeobDEn_"
+url = "https://jarmungkgwudddmzuuxu.supabase.co"
+key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
+db_url = "postgresql://postgres.jarmungkgwudddmzuuxu:ELAldleEwVLOUJOo@aws-1-eu-north-1.pooler.supabase.com:6543/postgres"
+
+#ELAldleEwVLOUJOo
 
 [amessage.backend]
 adapter = "redis"

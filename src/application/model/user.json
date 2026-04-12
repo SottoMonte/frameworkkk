@@ -21,5 +21,10 @@
         "type": "string",
         "required": true,
         "default": "guest"
+    },
+    "avatar_url": {
+        "type": "string",
+        "required": false,
+        "default": ""
     }
 }

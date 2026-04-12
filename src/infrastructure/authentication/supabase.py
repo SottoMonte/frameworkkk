@@ -2,6 +2,26 @@ from typing import Optional
 import json
 import supabase
 
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+TYPE_MAP = {
+    "string": "text", "integer": "integer", "float": "numeric",
+    "boolean": "boolean", "date": "date", "datetime": "timestamp",
+}
+AUTH_FIELDS = {"id", "email", "password"}
+
+def _pg_type(meta):
+    return TYPE_MAP.get(meta.get("type", "string"), "text")
+
+def _migration_ddl(desired, existing):
+    stmts  = [f"alter table public.profiles add column {c} {t};"
+              for c, t in desired.items() if c not in existing]
+    stmts += [f"alter table public.profiles alter column {c} type {t} using {c}::{t};"
+              for c, t in desired.items() if c in existing and existing[c] != t]
+    stmts += [f"alter table public.profiles drop column {c};"
+              for c in existing if c not in desired]
+    return stmts
+
 def map_supabase_error(error):
     if error == 'Invalid login credentials':
         return [{"field": "email", "message": "Invalid login credentials"},{"field": "password", "message": "Invalid login credentials"}]
@@ -65,15 +85,116 @@ class Adapter(authentication.port):
     def __init__(self, **kwargs):
         url = kwargs.get("url")
         key = kwargs.get("key")
+        db_url = kwargs.get("db_url")
+        self._schema = kwargs.get("models").get("user")
         if not url or not key:
             raise ValueError("Supabase URL e key sono obbligatori.")
         self._url = url
         self._key = key
+        self._db_url = db_url
         self.name = "supabase"
+        self._seeds = [
+            self._seed_profiles_table,
+            self._seed_profiles_function,
+            self._seed_profiles_trigger,
+        ]
+
+        if db_url:
+            self.seed()
+
+    # ── schema helpers ────────────────────────────────────────────────────────
+
+    def _user_fields(self) -> dict:
+        return {k: v for k, v in self._schema.items() if k not in AUTH_FIELDS}
+
+    def _desired_cols(self) -> dict[str, str]:
+        return {f: _pg_type(m) for f, m in self._user_fields().items()}
+
+    # ── seed factories ────────────────────────────────────────────────────────
+
+    def _seed_profiles_table(self):
+        cols = (
+            ["id uuid references auth.users(id) on delete cascade primary key"]
+            + [f"{f} {t}" for f, t in self._desired_cols().items()]
+            + ["created_at timestamp default now()"]
+        )
+
+        def on_exists(cur):
+            cur.execute("""
+                select column_name, data_type
+                from information_schema.columns
+                where table_schema='public' and table_name='profiles'
+                  and column_name not in ('id','created_at')
+            """)
+            stmts = _migration_ddl(self._desired_cols(), dict(cur.fetchall()))
+            return "\n".join(stmts) if stmts else None
+
+        return (
+            "profiles table",
+            "select exists(select 1 from information_schema.tables where table_schema='public' and table_name='profiles')",
+            f"create table public.profiles (\n  {', '.join(cols)}\n);",
+            on_exists,
+        )
+
+    def _seed_profiles_function(self):
+        fields     = list(self._user_fields())
+        ins_fields = ", ".join(["id"] + fields)
+        ins_values = ", ".join(
+            ["new.id"] + [f"new.raw_user_meta_data->>'{f}'" for f in fields]
+        )
+
+        def fn():
+            return f"""
+                create or replace function handle_new_user() returns trigger as $$
+                begin
+                    insert into public.profiles ({ins_fields}) values ({ins_values});
+                    return new;
+                end;
+                $$ language plpgsql security definer;
+            """
+
+        def on_exists(cur):
+            import re
+            cur.execute("select prosrc from pg_proc where proname='handle_new_user'")
+            row = cur.fetchone()
+            if not row:
+                return fn()
+            match = re.search(r"insert into public\.profiles \((.+?)\)", row[0])
+            current_fields = match.group(1).replace(" ", "") if match else ""
+            return fn() if current_fields != ins_fields.replace(" ", "") else None
+
+        return (
+            "function handle_new_user",
+            "select exists(select 1 from pg_proc where proname='handle_new_user')",
+            fn(),
+            on_exists,
+        )
+
+    def _seed_profiles_trigger(self):
+        return (
+            "trigger on_auth_user_created",
+            "select exists(select 1 from pg_trigger where tgname='on_auth_user_created')",
+            """
+                create trigger on_auth_user_created
+                after insert on auth.users
+                for each row execute procedure handle_new_user();
+            """,
+        )
+    # ── Supabase client ───────────────────────────────────────────────────────
 
     def _client(self):
-        """Client fresco e isolato per ogni richiesta."""
         return supabase.create_client(self._url, self._key)
+
+    def _authed_client(self, session):
+        tokens = session["providers"][self.name]["tokens"]
+        client = self._client()
+        client.auth.set_session(
+            tokens["access_token"],
+            tokens.get("refresh_token", ""),
+        )
+        return client
+
+    # ── port implementation ───────────────────────────────────────────────────
 
     async def sign_up(self, user):
         try:
