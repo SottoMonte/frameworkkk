@@ -767,7 +767,10 @@ class Interpreter:
 
     async def _check(self, value, expected, meta, name, path=""):
         if expected in CUSTOM_TYPES:
-            return await scheme.normalize(value, CUSTOM_TYPES[expected])
+            ddd = await scheme.normalize(value, CUSTOM_TYPES[expected])
+            if ddd.get("errors"):
+                raise DSLRuntimeError(f"Tipo errato '{path}': atteso {expected}, ottenuto {type(value).__name__}", meta)
+            return ddd.get("data")
         py = TYPE_MAP.get(expected)
         if py and not (isinstance(value, py) and not (py is int and isinstance(value, bool))):
             display_name = path if path else name

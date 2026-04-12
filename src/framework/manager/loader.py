@@ -50,9 +50,9 @@ class Container(containers.DynamicContainer):
     module_cache  = providers.Singleton(dict)
     loading_stack = providers.Singleton(set)
 
-    # Le port-list vengono registrate come "persistences", "presentations" ecc.
+    # FIX: lambda isolata per ogni port, evita lista condivisa tra istanze
     for _port in PORT_REGISTRY:
-        locals()[port_list_key(_port)] = providers.Singleton(list, [])
+        locals()[port_list_key(_port)] = providers.Singleton(lambda: [])
     del _port
 
     def get(self, name: str):
@@ -62,6 +62,8 @@ class Container(containers.DynamicContainer):
         return attr() if callable(attr) else attr
 
     def set(self, name: str, obj):
+        # FIX: set_provider registra il provider in modo che dependency_injector
+        # lo tracci correttamente, a differenza di setattr che lo rendeva invisibile
         self.set_provider(name, providers.Singleton(lambda o=obj: o))
 
     def append_to_port(self, port: str, obj):
@@ -96,11 +98,12 @@ class ModuleLoader:
         return mod
 
     @staticmethod
-    def find_class(mod,name):
+    def find_class(mod, name):
         ok = getattr(mod, name, None)
         if not ok:
             return getattr(mod, 'Adapter', None)
         return ok
+
 
 # ─────────────────────────────────────────────
 # Builder — istanzia un singolo servizio
@@ -118,7 +121,7 @@ class Builder:
 
         mod = self._ml.load(spec["name"], spec["path"], inject=mod_inject)
         if spec.get("is_class"):
-            cls = self._ml.find_class(mod,spec["name"])
+            cls = self._ml.find_class(mod, spec["name"])
             if cls is None:
                 raise ImportError(f"Nessuna classe trovata in {spec['path']}")
             return cls(**kwargs)
@@ -147,16 +150,18 @@ class BatchSetup:
 
     async def run(self, specs: list[dict], singletons: dict | None = None):
         singletons = singletons or {}
+        for name, obj in singletons.items():
+            self._c.set(name, obj)
         registry   = {s["name"]: s for s in specs}
         dep_graph  = {
             s["name"]: list(set(s.get("mod_deps", [])) | set(s.get("cls_deps", [])))
             for s in specs
         }
 
-        adapters,managers,services = [],[],[]
+        adapters, managers, services = [], [], []
 
         for name in TopologicalSorter(dep_graph).static_order():
-            
+
             if name in singletons:
                 self._c.set(name, singletons[name])
                 continue
@@ -164,13 +169,10 @@ class BatchSetup:
                 continue
 
             if 'src/infrastructure' in registry[name].get("path"):
-                #print(f"[*] Port: {name}", registry[name])
                 adapters.append(name)
             elif 'src/framework/manager' in registry[name].get("path"):
-                #print(f"[*] Manager: {name}", registry[name])
                 managers.append(name)
             else:
-                #print(f"[*] Service: {name}", registry[name])
                 services.append(name)
 
             spec = registry[name]
@@ -230,9 +232,9 @@ class ProjectLoader:
         return {
             "name":     f"{port.lower()}.{adapter.lower()}",
             "path":     f"src/infrastructure/{port}/{adapter}.py",
-            "mod_deps": [port],               # es. "persistence"  → modulo framework
-            "cls_deps": PORT_REGISTRY[port],  # dipendenze classe adapter
-            "port":     port,                 # usato da append_to_port
+            "mod_deps": [port],
+            "cls_deps": PORT_REGISTRY[port],
+            "port":     port,
             "is_class": True,
             "is_list":  True,
             "config":   cfg,
@@ -268,7 +270,6 @@ class Lifecycle:
 
 
 # ─────────────────────────────────────────────
-# ─────────────────────────────────────────────
 # Spec statiche di bootstrap
 #
 # cls_deps usa "persistences" / "presentations" ecc. — il suffisso
@@ -276,16 +277,17 @@ class Lifecycle:
 # ─────────────────────────────────────────────
 
 _SERVICES: list[dict] = [
-    {"name": "container",    "path": "src/framework/service/container.py",  "mod_deps": [],                   "is_class": False, "config": {}},
-    {"name": "scheme",       "path": "src/framework/service/scheme.py",     "mod_deps": [],                   "is_class": False, "config": {}},
-    {"name": "flow",         "path": "src/framework/service/flow.py",       "mod_deps": ["scheme", "loader"], "is_class": False, "config": {}},
-    {"name": "language",     "path": "src/framework/service/language.py",   "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
-    {"name": "diagnostic",   "path": "src/framework/service/diagnostic.py", "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
-    {"name": "message",      "path": "src/framework/port/message.py",       "mod_deps": [],                   "is_class": False, "config": {}},
-    {"name": "presentation", "path": "src/framework/port/presentation.py",  "mod_deps": ["scheme","loader"],  "is_class": False, "config": {}},
-    {"name": "persistence",  "path": "src/framework/port/persistence.py",   "mod_deps": [],                   "is_class": False, "config": {}},
-    {"name": "authentication",  "path": "src/framework/port/authentication.py",   "mod_deps": ['flow'],                   "is_class": False, "config": {}},
+    {"name": "container",       "path": "src/framework/service/container.py",      "mod_deps": [],                   "is_class": False, "config": {}},
+    {"name": "scheme",          "path": "src/framework/service/scheme.py",         "mod_deps": [],                   "is_class": False, "config": {}},
+    {"name": "flow",            "path": "src/framework/service/flow.py",           "mod_deps": ["scheme", "loader"], "is_class": False, "config": {}},
+    {"name": "language",        "path": "src/framework/service/language.py",       "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
+    {"name": "diagnostic",      "path": "src/framework/service/diagnostic.py",     "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
+    {"name": "message",         "path": "src/framework/port/message.py",           "mod_deps": [],                   "is_class": False, "config": {}},
+    {"name": "presentation",    "path": "src/framework/port/presentation.py",      "mod_deps": ["scheme","loader"],  "is_class": False, "config": {}},
+    {"name": "persistence",     "path": "src/framework/port/persistence.py",       "mod_deps": [],                   "is_class": False, "config": {}},
+    {"name": "authentication",  "path": "src/framework/port/authentication.py",    "mod_deps": ["flow"],             "is_class": False, "config": {}},
 ]
+
 
 # ─────────────────────────────────────────────
 # Loader — orchestratore pubblico
@@ -306,8 +308,9 @@ class Loader:
         return self._container.get(name)
 
     def get_model(self, name: str):
-        print("###### [get_model]: ", dir(self._container))
-        return self._container.get("model").get(name)
+        # FIX: chiave corretta "models" (plurale), rimossa print di debug
+        
+        return self._container.get("models").get(name)
 
     async def resource(self, path: str):
         if not os.path.exists(path):
@@ -325,26 +328,26 @@ class Loader:
         print("[*] Framework bootstrapped. Running...")
         project_specs = self._project.load("pyproject.toml") if '--test' not in args else []
         config = self._project.get_config()
-        
+
         application_models = self._project.load_schemas("src/application/model/")
-        print(f"[+] Loaded models: {list(application_models.keys())}")
+        print(f"[+] Models: {list(application_models.keys())}")
 
         _MANAGERS: list[dict] = [
-            {"name": "loader",      "path": "src/framework/manager/loader.py",      "mod_deps": ["container"],                    "cls_deps": [],                                          "is_class": True, "config": {}},
-            {"name": "messenger",   "path": "src/framework/manager/messenger.py",   "mod_deps": ["flow"],                         "cls_deps": ["executor", "messages"],                    "is_class": True, "config": {}},
-            {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language"],                    "is_class": True, "config": {}},
-            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader","authentications"],                      "is_class": True, "config": {'args':args, 'project':config.get('project', {})}},
-            {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger"],         "is_class": True, "config": {'args':args}},
-            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [],                               "cls_deps": ["executor", "persistences"],                "is_class": True, "config": {}},
-            {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],               "is_class": True, "config": {}},
+            {"name": "loader",      "path": "src/framework/manager/loader.py",      "mod_deps": ["container"],                    "cls_deps": [],                                                        "is_class": True, "config": {}},
+            {"name": "messenger",   "path": "src/framework/manager/messenger.py",   "mod_deps": ["flow"],                         "cls_deps": ["executor", "messages"],                                  "is_class": True, "config": {}},
+            {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language"],                                  "is_class": True, "config": {}},
+            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader", "authentications"],                 "is_class": True, "config": {'args': args, 'project': config.get('project', {})}},
+            {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger"],                       "is_class": True, "config": {'args': args}},
+            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [],                               "cls_deps": ["executor", "persistences"],                              "is_class": True, "config": {}},
+            {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],                             "is_class": True, "config": {}},
         ]
-        
+
         await self._batch.run(
             _SERVICES + _MANAGERS + project_specs,
             singletons={
-                "loader": self,
+                "loader":    self,
                 "container": self._container,
-                "models": application_models
+                "models":    application_models,   # FIX: chiave "models" coerente con get_model()
             },
         )
 

@@ -48,27 +48,92 @@ async def format(target ,**constants):
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
 
+def _get_missing_requirements(pattern: str, value: str) -> str:
+    # 1. Normalizzazione (Fondamentale per i backslash dello schema)
+    norm_p = pattern.replace("\\\\", "\\")
+    
+    # 2. Registry di regole atomiche
+    # Nota: L'ordine conta! Più è specifica la regola, più deve stare in alto.
+    rules = [
+        # Caratteri speciali e classi
+        (r"\[a-z\]", "lowercase letter", r"[a-z]"),
+        (r"\[A-Z\]", "uppercase letter", r"[A-Z]"),
+        (r"\\d|\[0-9\]", "number", r"\d"),
+        (r"\[@\$!%\*\?&\]", "special char", r"[@$!%*?&]"),
+        (r"\\s", "space", r"\s"),
+        
+        # Quantificatori (Lunghezza)
+        (r"\{(\d+),(\d+)\}", "between {0} and {1} chars", None),
+        (r"\{(\d+),\}", "at least {0} chars", None),
+        (r"\{(\d+)\}", "exactly {0} chars", None),
+        
+        # Casi di "solo" o "composto da"
+        (r"\^\[a-zA-Z\]\+\$", "only letters", r"^[a-zA-Z]+$"),
+        (r"\^\\d\+\$", "only digits", r"^\d+$"),
+    ]
+    
+    missing = []
+    
+    for meta_p, label, test_p in rules:
+        match = re.search(meta_p, norm_p)
+        if match:
+            args = match.groups()
+            msg = label.format(*args) if args else label
+            
+            # Logica di validazione
+            if test_p:
+                if not re.search(test_p, value):
+                    missing.append(msg)
+            elif args:
+                # Gestione lunghezze dinamiche
+                val_len = len(value)
+                if len(args) == 1: # {n} o {n,}
+                    min_val = int(args[0])
+                    if val_len < min_val:
+                        missing.append(msg)
+                elif len(args) == 2: # {n,m}
+                    min_v, max_v = int(args[0]), int(args[1])
+                    if not (min_v <= val_len <= max_v):
+                        missing.append(msg)
+
+    # 3. Pulizia duplicati (se una regex ha più riferimenti allo stesso set)
+    unique_missing = list(dict.fromkeys(missing))
+    
+    if not unique_missing:
+        # Se la regex ha fallito ma non abbiamo trovato regole specifiche mappate
+        return "invalid format"
+        
+    return f"missing {', '.join(unique_missing)}"
+
+def _format_validation_errors(errors: dict, schema: dict, data: dict) -> list:
+    result = []
+    for field, field_errors in errors.items():
+        for error in field_errors:
+            # Se l'errore riguarda una regex, usiamo la nostra logica locale
+            if "value does not match regex" in error:
+                pattern = schema.get(field, {}).get("regex", "")
+                value = data.get(field, "")
+                
+                # Sostituiamo la chiamata API con la logica locale
+                message = _get_missing_requirements(pattern, str(value))
+                
+                result.append({"field": field, "message": message})
+            else:
+                # Altri tipi di errori (es: required, type, ecc.)
+                result.append({"field": field, "message": error})
+    return result
+
 async def normalize(value, schema, mode='full'):
-    """
-    Convalida, popola, trasforma e struttura i dati utilizzando uno schema Cerberus.
-    """
     value = value or {}
-
     if not isinstance(schema, Mapping):
-        raise TypeError("Lo schema deve essere un dizionario valido per Cerberus.",schema)
+        raise TypeError("Lo schema deve essere un dizionario valido per Cerberus.", schema)
     if not isinstance(value, Mapping):
-        raise TypeError("I dati devono essere un dizionario valido per Cerberus.",value)
+        raise TypeError("I dati devono essere un dizionario valido per Cerberus.", value)
 
-    # 1. Popolamento e Trasformazione Iniziale
     processed_value = value
-    '''for key in schema.copy():
-        item = schema[key]
-        for field_name, field_rules in item.copy().items():
-            if field_name.startswith('_'):
-                schema.get(key).pop(field_name)'''
 
     for field_name, field_rules in schema.copy().items():
-        value = processed_value.get(field_name)
+        val = processed_value.get(field_name)
         if isinstance(field_rules, dict) and 'function' in field_rules:
             func_name = field_rules['function']
             if func_name == 'generate_identifier':
@@ -79,21 +144,15 @@ async def normalize(value, schema, mode='full'):
                     pass
         if isinstance(field_rules, dict) and "convert" in field_rules:
             convert_name = field_rules["convert"]
-
             if field_name in processed_value:
-                processed_value[field_name] = await convert(value, convert_name)
-
+                processed_value[field_name] = await convert(val, convert_name)
             schema[field_name].pop("convert")
 
-    # Cerberus Validation
-    v = Validator(schema,allow_unknown=True)
-
+    v = Validator(schema, allow_unknown=True)
     if not v.validate(processed_value):
-        #framework_log("WARNING", f"Errore di validazione: {v.errors}", emoji="⚠️", data=processed_value)
-        raise ValueError(f"⚠️ Errore di validazione: {v.errors} | data:{processed_value}")
+        return {"data": None, "errors": _format_validation_errors(v.errors, schema, processed_value)}
 
-    final_output = v.document
-    return final_output
+    return {"data": v.document, "errors": None}
 
 def transform(data_dict, mapper, values, input, output):
     """ Trasforma un set di costanti in un output mappato. """

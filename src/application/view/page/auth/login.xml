@@ -1,5 +1,13 @@
 {% extends "free.xml" %}
 {% block main %}
+<Column>
+{% if session.errors %}
+    {% for error in session.errors %}
+        <Text>{{ error.field }}: {{ error.message }}</Text>
+    {% endfor %}
+{% endif %}
+</Column>
+
 <Action type="form" route="/loginx" act="POST">
     <Input type="text" name="email" placeholder="email" />
     <Input type="password" name="password" placeholder="password" />

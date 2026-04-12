@@ -1,0 +1,37 @@
+{
+    "id": {
+        "type": "string",
+        "regex": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
+        "required": true
+    },
+    "errors": {
+        "type": "list",
+        "required": false
+    },
+    "providers": {
+        "type": "dict",
+        "required": true,
+        "default": {}
+    },
+    "ip": {
+        "type": "string",
+        "required": false
+    },
+    "user": {
+        "type": "dict",
+        "schema": "{{ user|{} }}",
+        "required": false
+    },
+    "user_agent": {
+        "type": "string",
+        "required": false
+    },
+    "created_at": {
+        "type": "datetime",
+        "required": false
+    },
+    "updated_at": {
+        "type": "datetime",
+        "required": false
+    }
+}

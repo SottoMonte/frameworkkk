@@ -1,0 +1,12 @@
+{
+    "id": {
+        "type": "string",
+        "regex": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
+        "required": true
+    },
+    "email": {
+        "type": "string",
+        "required": true,
+        "regex": "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
+    }
+}

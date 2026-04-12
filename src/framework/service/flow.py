@@ -147,15 +147,15 @@ def action(custom_filename: str = __file__, app_context=None, **constants):
 
 import inspect, functools, time, asyncio
 
-def action2(schemas: dict = None, **constants):
+def result2(inputs=tuple(),outputs=tuple()):
     def decorator(func):
         # Setup pre-esecuzione (eseguito una sola volta)
         sig = inspect.signature(func)
         is_async = asyncio.iscoroutinefunction(func)
-        print("###### [sig.parameters]: ", sig.parameters.keys())
-        models = [ loader.get_model(name) for name in sig.parameters.keys() if name != "self"]
-        print("###### [models]: ",models)
-
+        models = {name: loader.get_model(name) for name in sig.parameters.keys() if name != "self" and loader.get_model(name) is not None }
+        resulto = {name: loader.get_model(name) for name in outputs if name != "self" and loader.get_model(name) is not None }
+        if len(inputs) == 0:
+            models = {}
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             t0 = time.perf_counter()
@@ -166,21 +166,103 @@ def action2(schemas: dict = None, **constants):
                 p = bound.arguments
 
                 # Normalizzazione mirata
-                '''for name in relevant:
-                    res = await normalize({name: p[name]}, {name: schemas[name]})
-                    p[name] = res[name]'''
-
+                for name,model in models.items():
+                    valore =  p[name] if isinstance(p[name], dict) else {name:p[name]}
+                    res = await scheme.normalize(valore, model)
+                    if res['errors']:
+                        return error(res['errors'], t0) | {"action": func.__name__}
+                    p[name] = res['data'] if len(res['data']) > 1 else list(res['data'].values())[0]
+                print("p>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", p)
                 # Esecuzione e standardizzazione output
                 out = await func(**p) if is_async else func(**p)
-                result = out if isinstance(out, dict) else {"data": out}
+
+                for name,model in resulto.items():
+                    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>name", name)
+                    valore =  out if len(resulto) == 1 else {name:out}
+                    print("valore", len(resulto),valore)
+                    res = await scheme.normalize(valore, model)
+                    print("res output>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", res)
+                    if res['errors']:
+                        return error(res['errors'], t0) | {"action": func.__name__}
+                    if isinstance(res['data'], dict) and len(res['data']) == 1:
+                        out[name] = list(res['data'].values())[0]
+                    else:
+                        out[name] = res['data']
                 
-                return result | {"action": func.__name__, "time": time.perf_counter() - t0}
+                return success(out, t0) | {"action": func.__name__}
 
             except Exception as e:
-                return {"error": str(e), "action": func.__name__, "t0": t0}
+                return error(e, t0) | {"action": func.__name__}
         return wrapper
     return decorator
 
+def result(inputs=(), outputs=()):
+    def decorator(func):
+        sig = inspect.signature(func)
+        is_async = asyncio.iscoroutinefunction(func)
+
+        def _get_models(names):
+            return {n: m for n in names if (m := loader.get_model(n))}
+
+        output_models = _get_models(o for o in outputs if o != "self")
+
+        has_self   = "self" in sig.parameters
+        params     = [n for n, p in sig.parameters.items() if n != "self" and p.kind not in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)]
+        defaults   = {n: p.default for n, p in sig.parameters.items() if n != "self" and p.default is not inspect.Parameter.empty}
+        args_start = 1 if has_self else 0
+        var_kw     = next((n for n, p in sig.parameters.items() if p.kind == inspect.Parameter.VAR_KEYWORD), None)
+        fixed_keys = set(params) | set(defaults)
+
+        # input_models calcolato a runtime su p se ci sono VAR_KEYWORD
+        static_input_models = _get_models(k for k in sig.parameters if k != "self" and k in inputs) if inputs and not var_kw else {}
+
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            t0     = time.perf_counter()
+            action = {"action": func.__name__}
+            try:
+                p = defaults | dict(zip(params, args[args_start:])) | kwargs
+
+                # Se c'è **kwargs risolvi input_models dalle chiavi di p
+                input_models = static_input_models if not var_kw else _get_models(k for k in p if k in inputs)
+
+                for name, model in input_models.items():
+                    val = p[name] if isinstance(p[name], dict) else {name: p[name]}
+                    res = await scheme.normalize(val, model)
+                    if res["errors"]:
+                        return error(res["errors"], t0) | action
+                    data = res["data"]
+                    p[name] = list(data.values())[0] if len(data) == 1 else data
+
+                if var_kw:
+                    call_kw = p
+                else:
+                    call_kw = {k: v for k, v in p.items() if k in fixed_keys}
+
+                out = await func(*args[:args_start], **call_kw) if is_async else func(*args[:args_start], **call_kw)
+                if out['success']:
+                    out = out['outputs']
+                else:
+                    return error(out['errors'], t0) | action
+
+
+                for name, model in output_models.items():
+                    val = out if len(output_models) == 1 else {name: out}
+                    #print("val>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", val.keys())
+                    res = await scheme.normalize(val, model)
+                    if res["errors"]:
+                        return error(res["errors"], t0) | action
+                    data = res["data"]
+                    #print("data>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", data.keys())
+                    out[name] = list(data.values())[0] if isinstance(data, dict) and len(data) == 1 else data
+
+                return success(out, t0) | action
+            except Exception as e:
+                return error(e, t0) | action
+
+        return wrapper
+    return decorator
+    
 async def act(s):
     t0 = time.perf_counter()
     if not isinstance(s, tuple):

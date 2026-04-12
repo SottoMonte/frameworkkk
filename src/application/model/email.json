@@ -4,7 +4,6 @@
         "required": true,
         "regex": "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$",
         "minlength": 5,
-        "maxlength": 255,
-        "coerce": "to_lower"
+        "maxlength": 255
     }
 }

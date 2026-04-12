@@ -674,16 +674,13 @@ class Adapter(presentation.port):
             case _:
                 return RedirectResponse('/', status_code=405)
 
-        print(credentials)
         # Autenticazione tramite defender
         session = await self.defender.authenticate(request.session, **credentials)
-        #provider = credentials.get('provider', 'undefined')
         
-        # Aggiorna la sessione se l'autenticazione ha avuto successo
-        if session:
-            request.session.update(session)
-
-        print(request.session)
+        if session['success']:
+            request.session.update(session['outputs'])
+        else:
+            request.session["errors"] = session['errors']
 
         # Crea la risposta di reindirizzamento
         return RedirectResponse(request.session["url_precedente"], status_code=303)
@@ -711,6 +708,7 @@ class Adapter(presentation.port):
     async def render_view(self,request):
         request.session["url_precedente"] = str(request.url)
         html = await self.mount_view(url=request.state.url, metadata=request.state.metadata, session=request.session)
+        request.session["errors"] = []
         return HTMLResponse(html)
 
     async def mount_view(self, url, metadata, session):
@@ -852,7 +850,8 @@ class Adapter(presentation.port):
             elif typee == 'logout':
                 endpoint = self.logout
             else:
-                endpoint = self.default_handler  # fallback o gestione errori
+                #endpoint = self.http_exception_handler  # fallback o gestione errori
+                continue
 
             # Crea la rotta e aggiungila
             r = Route(path, endpoint=endpoint, methods=[method])

@@ -43,7 +43,7 @@ class defender:
     def get_policy(self, policy):
         return self.policies.get(policy)
     
-    #@language.asynchronous(managers=('storekeeper',))
+    @flow.result(outputs=('session',))
     async def authenticate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.
@@ -52,22 +52,20 @@ class defender:
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
 
-        # Recupera o inizializza la sessione utente
-        #session = dict({'ip':constants.get('ip'),'identifier':constants.get('identifier')})
-
         for authentication in self.authentications:
             #provider_persistence = authentication.config.get('persistence')
-            ok = await authentication.sign_in(**constants)
-            print("ok",ok)
-            '''if ok:
-                session['user'] = ok['user']
-                if authentication.name not in session:
-                    session[authentication.name] = {}
-                session[authentication.name]['tokens'] = ok['tokens']'''
+            session_result = await authentication.sign_in(**constants)
+            if session_result.get('success'):
+                session.setdefault('providers', {})
+                session.setdefault('user', {})
+                session['providers'][authentication.name] = session_result['outputs']['providers'][authentication.name]
+                session['user'] |= session_result['outputs']['user']
+            else:
+                return flow.error(session_result['errors'])
             '''if provider_persistence:
                 await storekeeper.store(repository='sessions',payload=session)
                 pass'''
-        return session
+        return flow.success(session)
 
     async def registration(self, **constants) -> Any:
         """
@@ -99,11 +97,11 @@ class defender:
         else:
             pass
 
-        print("--------------->2",constants)  
+        #print("--------------->2",constants)  
         for rule in filted_rules:
-            print("--------------->3",rule)
+            #print("--------------->3",rule)
             for_target = rule.get('target', {}) | target
-            print("--------------->4",for_target)
+            #print("--------------->4",for_target)
             condition = rule.get('condition')
             if callable(condition):
                 tes = condition(**for_target)
