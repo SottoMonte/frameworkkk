@@ -72,8 +72,13 @@ class DefenderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         # Esempio: decidiamo se accettare la richiesta in base al path
         if "id" not in request.session:
-            request.session["id"] = str(uuid.uuid4())
+            session = await self.defender.new_session(request.session.copy())
+            if session.get('success'):
+                request.session.update(session.get('outputs', {}))
+            else:
+                request.session["errors"] = session.get('errors', [])
         request.session["ip"] = request.client.host
+        #print(request.session)
         #request.session["user"] = await self.defender.whoami(session_id=request.session["id"],ip=request.session["ip"])
         
         path = request.url.path
@@ -610,7 +615,6 @@ class Adapter(presentation.port):
         
     async def start(self):
         loop = asyncio.get_event_loop()
-        print("Starlette: Inizializzazione in corso...")
         await self.parse_route()
         self.routes_static += [
             WebSocketRoute("/reactive", self.render_reactive, name="reactive")
@@ -657,14 +661,28 @@ class Adapter(presentation.port):
             #await messenger.post(domain='error', message=f"Errore critico durante l'avvio del server Uvicorn: {e}")
             pass
         
-    async def logout(self,request) -> None:
-        assert request.scope.get("app") is not None, "Invalid Starlette app"
-        request.session.clear()
-        response = RedirectResponse('/', status_code=303)
-        response.delete_cookie("session_token")
-        return response
+    async def signout(self,request) -> None:
+        # Determina le credenziali in base al metodo HTTP
+        match request.method:
+            case 'GET':
+                credentials = dict(request.query_params)
+            case 'POST':
+                credentials = dict(await request.form())
+            case _:
+                return RedirectResponse('/', status_code=405)
 
-    async def login(self, request):
+        # Autenticazione tramite defender
+        session = await self.defender.logout(request.session, **credentials)
+        
+        if session['success']:
+            request.session.update(session['outputs'])
+        else:
+            request.session["errors"] = session['errors']
+
+        # Crea la risposta di reindirizzamento
+        return RedirectResponse(request.session["url_precedente"], status_code=303)
+
+    async def signin(self, request):
         # Determina le credenziali in base al metodo HTTP
         match request.method:
             case 'GET':
@@ -685,6 +703,27 @@ class Adapter(presentation.port):
         # Crea la risposta di reindirizzamento
         return RedirectResponse(request.session["url_precedente"], status_code=303)
     
+    async def signup(self, request):
+        # Determina le credenziali in base al metodo HTTP
+        match request.method:
+            case 'GET':
+                credentials = dict(request.query_params)
+            case 'POST':
+                credentials = dict(await request.form())
+            case _:
+                return RedirectResponse('/', status_code=405)
+
+        # Autenticazione tramite defender
+        session = await self.defender.registration(request.session, **credentials)
+        
+        if session['success']:
+            request.session.update(session['outputs'])
+        else:
+            request.session["errors"] = session['errors']
+
+        # Crea la risposta di reindirizzamento
+        return RedirectResponse(request.session["url_precedente"], status_code=303)
+
     async def action(self, request, **constants):
         #print(request.cookies.get('user'))
         match request.method:
@@ -752,8 +791,6 @@ class Adapter(presentation.port):
         await websocket.accept()
         session_data = websocket.session
         sid = session_data.get('id')
-
-        print(f"SID WS: {sid}")
 
         self.active_websockets.setdefault(sid, []).append(websocket)
         
@@ -845,10 +882,12 @@ class Adapter(presentation.port):
                 endpoint = self.render_view
             elif typee == 'action':
                 endpoint = self.action
-            elif typee == 'login':
-                endpoint = self.login
-            elif typee == 'logout':
-                endpoint = self.logout
+            elif typee == 'signin':
+                endpoint = self.signin
+            elif typee == 'signout':
+                endpoint = self.signout
+            elif typee == 'signup':
+                endpoint = self.signup
             else:
                 #endpoint = self.http_exception_handler  # fallback o gestione errori
                 continue

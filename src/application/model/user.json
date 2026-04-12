@@ -2,11 +2,24 @@
     "id": {
         "type": "string",
         "regex": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
-        "required": true
+        "required": true,
+        "default": "{{ uuid4() }}"
     },
     "email": {
         "type": "string",
         "required": true,
-        "regex": "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
+        "regex": "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$",
+        "default": "guest@colosso.cloud"
+    },
+    "username": {
+        "type": "string",
+        "required": true,
+        "regex": "^[a-zA-Z0-9_]+$",
+        "default": "guest"
+    },
+    "role": {
+        "type": "string",
+        "required": true,
+        "default": "guest"
     }
 }

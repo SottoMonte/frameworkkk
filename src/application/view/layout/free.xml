@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-{% if not user %}
+{% if session.user.role == 'guest' %}
 <Window type="page" title="Colosso - App" background="#999" pointer="crosshair" >
     <Canvas id="grid-canvas" width="100%" height="100%" position="fixed" style="z-index: -1;" />
     {% block main %}
     {% endblock %}
 </Window>
 {% else %}
-<Window type="root">
+<Window type="page">
+    <Canvas id="grid-canvas" width="100%" height="100%" position="fixed" style="z-index: -1;" />
     <Text>{{model}}</Text>
     <Text>{{user}}</Text>
     <Text>sadsadas</Text>
-    <View route="/dashboard" />
+    <!-- <View route="/dashboard" /> -->
 </Window>
 {% endif %}

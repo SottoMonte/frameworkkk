@@ -58,8 +58,10 @@ routes: {
     // Auth
     route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"auth/login.xml" };
     route:GET_LOGOUT := { path:"/logout"; method:"GET"; "type":"view"; view:"auth/logout.xml" };
-    route:POST_LOGIN := { path:"/loginx"; method:"POST"; "type":"login"; view:"auth/login.xml" };
-    route:POST_LOGOUT := { path:"/logoutx"; method:"POST"; "type":"logout"; view:"auth/logout.xml" };
+    route:POST_LOGIN := { path:"/loginx"; method:"POST"; "type":"signin"; view:"auth/login.xml" };
+    route:POST_LOGOUT := { path:"/logoutx"; method:"POST"; "type":"signout"; view:"auth/logout.xml" };
+    route:GET_SIGNUP := { path:"/signup"; method:"GET"; "type":"view"; view:"auth/signup.xml" };
+    route:POST_SIGNUP := { path:"/signupx"; method:"POST"; "type":"signup"; };
     // Admin
     route:GET_ADMIN := { path:"/admin"; method:"GET"; "type":"view"; view:"admin.xml" };
     // Error
@@ -99,6 +101,8 @@ rules : {
     "/login": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
     "/loginx": [policies.POST_ALLOW_ALL,policies.GET_ALLOW_ALL];
     "/logout": [policies.GET_ALLOW_PATH];
+    "/signup": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
+    "/signupx": [policies.POST_ALLOW_ALL,policies.GET_ALLOW_ALL];
     "/admin": [policies.GET_ALLOW_PATH];
     "/browse": [policies.GET_ALLOW_ALL];
     "/home": [policies.GET_ALLOW_ALL];

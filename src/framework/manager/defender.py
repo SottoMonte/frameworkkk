@@ -42,7 +42,29 @@ class defender:
 
     def get_policy(self, policy):
         return self.policies.get(policy)
+
+    @flow.result(inputs=('session',))
+    async def new_session(self, session):
+        return flow.success(session)
     
+    @flow.result(outputs=('session',))
+    async def logout(self, session, **constants) -> bool:
+        """
+        Termina la sessione di un utente specificato.
+
+        :param constants: Deve includere 'identifier'.
+        :return: True se la sessione è stata terminata, False se l'utente non esiste.
+        """
+
+        for authentication in self.authentications:
+            session_result = await authentication.sign_out(session)
+            if session_result.get('success'):
+                session.update(session_result['outputs'])
+            else:
+                return flow.error(session_result['errors'])
+
+        return flow.success(session)
+
     @flow.result(outputs=('session',))
     async def authenticate(self, session, **constants):
         """
@@ -67,21 +89,25 @@ class defender:
                 pass'''
         return flow.success(session)
 
-    async def registration(self, **constants) -> Any:
+    @flow.result(outputs=('session',))
+    async def registration(self, session, **constants) -> Any:
         """
-        Autentica un utente utilizzando i provider configurati.
+        Registra un utente utilizzando i provider configurati.
 
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
-        :return: Token di sessione se l'autenticazione ha successo, altrimenti None.
+        :return: Dizionario di sessione aggiornato se la registrazione ha successo, altrimenti None.
         """
-        identifier = constants.get('identifier', '')
-        ip = constants.get('ip', '')
-        for backend in self.providers:
-            token = await backend.registration(**constants)
-            if token:
-                self.sessions[identifier] = {'token': token, 'ip': ip}
-                return {'success': True,'results':[token]}
-        return {'success': False}
+        for authentication in self.authentications:
+            session_result = await authentication.sign_up(user=constants)
+            print("----------------->1",session_result)
+            if session_result.get('success'):
+                session.setdefault('providers', {})
+                session.setdefault('user', {})
+                session['providers'][authentication.name] = session_result['outputs']['providers'][authentication.name]
+                session['user'] |= session_result['outputs']['user']
+            else:
+                return flow.error(session_result['errors'])
+        return flow.success(session)
 
     def  authorized(self, policy, **constants) -> bool:
         policy = self.get_policy(policy)
@@ -205,21 +231,6 @@ class defender:
         except Exception as e:
             print(f"[!] Resolve Error: {e}")
             return None
-
-    async def logout(self, **constants) -> bool:
-        """
-        Termina la sessione di un utente specificato.
-
-        :param constants: Deve includere 'identifier'.
-        :return: True se la sessione è stata terminata, False se l'utente non esiste.
-        """
-        identifier = constants.get('identifier', '')
-
-        for backend in self.providers:
-            await backend.logout()
-
-        if identifier in self.sessions:
-            del self.sessions[identifier]
 
     async def detection(self, **constants) -> bool:
         """

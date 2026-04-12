@@ -2,11 +2,13 @@
     "id": {
         "type": "string",
         "regex": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
-        "required": true
+        "required": true,
+        "default": "{{ uuid4() }}"
     },
     "errors": {
         "type": "list",
-        "required": false
+        "required": false,
+        "default": []
     },
     "providers": {
         "type": "dict",
@@ -19,8 +21,9 @@
     },
     "user": {
         "type": "dict",
-        "schema": "{{ user|{} }}",
-        "required": false
+        "schema": "{{ user }}",
+        "required": true,
+        "default": {}
     },
     "user_agent": {
         "type": "string",

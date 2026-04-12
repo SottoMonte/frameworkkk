@@ -2,6 +2,21 @@ from abc import ABC, abstractmethod
 
 class port(ABC):
 
+    # Mappa: nome_metodo -> decoratore da applicare automaticamente
+    _method_decorators = {
+        "sign_in":      flow.result(inputs=("email", "password"), outputs=("session",)),
+        "sign_up":      flow.result(inputs=("user",), outputs=("session",)),
+        "sign_out":     flow.result(inputs=("session",),          outputs=("session",)),
+        "get_user": flow.result(inputs=("session",),          outputs=("user",)),
+    }
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for method_name, decorator in port._method_decorators.items():
+            if method_name in cls.__dict__:  # solo se definito direttamente
+                original = cls.__dict__[method_name]
+                setattr(cls, method_name, decorator(original))
+
     @abstractmethod
     def sign_in(self,email,password):
         pass
@@ -15,5 +30,5 @@ class port(ABC):
         pass
 
     @abstractmethod
-    def get_identity(self,access_token):
+    def get_user(self,access_token):
         pass

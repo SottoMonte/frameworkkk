@@ -20,6 +20,8 @@ import tomli
 import traceback
 
 import json
+from jinja2 import Environment, BaseLoader
+import uuid
 
 
 # ─────────────────────────────────────────────
@@ -197,22 +199,77 @@ class ProjectLoader:
         self._c = container
 
     def load_schemas(self, directory: str = "src/application/model/") -> dict:
-        """Carica tutti i file .json dalla cartella specificata."""
-        schemas = {}
+        raw_data = {}
         if not os.path.exists(directory):
-            print(f"[!] Warning: Cartella schemi non trovata: {directory}")
-            return schemas
+            return {}
 
         for filename in os.listdir(directory):
             if filename.endswith(".json"):
                 name = os.path.splitext(filename)[0]
-                path = os.path.join(directory, filename)
+                with open(os.path.join(directory, filename), "r") as f:
+                    try:
+                        raw_data[name] = json.load(f)
+                    except json.JSONDecodeError as e:
+                        print(f"[!] Errore sintassi JSON in {filename}: {e}")
+                        continue
+
+        env = Environment(loader=BaseLoader())
+        if 'tojson' not in env.filters:
+            env.filters['tojson'] = lambda obj: json.dumps(obj)
+        env.globals['uuid4'] = lambda: str(uuid.uuid4())
+        
+        cache = {}
+        def resolve_schema(name):
+            if name in cache and cache[name]: return cache[name]
+            
+            raw_obj = raw_data.get(name)
+            if not raw_obj: return None
+            
+            # Evitiamo loop infiniti mettendo un segnaposto
+            cache[name] = {} 
+
+            def _resolve(val):
+                if isinstance(val, dict):
+                    return {k: _resolve(v) for k, v in val.items()}
+                if isinstance(val, list):
+                    return [_resolve(i) for i in val]
+                if isinstance(val, str) and "{{" in val:
+                    stripped = val.strip()
+                    # Riferimento diretto: "{{ user }}"
+                    if stripped.startswith("{{") and stripped.endswith("}}") and "|" not in stripped:
+                        ref_name = stripped[2:-2].strip()
+                        if ref_name in raw_data:
+                            return resolve_schema(ref_name)
+                        if ref_name in env.globals:
+                            g = env.globals[ref_name]
+                            return g() if callable(g) else g
+                    
+                    # Rendering Jinja standard
+                    # Usiamo i raw_data come contesto, ma se uno schema è già in cache usiamo quello
+                    ctx = {**env.globals, **raw_data, **{k: v for k, v in cache.items() if v}}
+                    return env.from_string(val).render(**ctx)
+                return val
+
+            resolved = _resolve(raw_obj)
+            cache[name] = resolved
+            return resolved
+
+        final_schemas = {}
+        for name in raw_data:
+            final_schemas[name] = resolve_schema(name)
+
+        # Registrazione globale in Cerberus per riferimenti diretti via stringa
+        try:
+            from cerberus import schema_registry
+            for name, schema in final_schemas.items():
                 try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        schemas[name] = json.load(f)
-                except Exception as e:
-                    print(f"[!] Errore nel caricamento dello schema {filename}: {e}")
-        return schemas
+                    schema_registry.add(name, schema)
+                except:
+                    pass
+        except ImportError:
+            pass
+
+        return final_schemas
 
     def load(self, config_path: str) -> list[dict]:
         data = self._read_toml(config_path)

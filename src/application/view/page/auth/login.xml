@@ -4,6 +4,7 @@
 {% if session.errors %}
     {% for error in session.errors %}
         <Text>{{ error.field }}: {{ error.message }}</Text>
+        <Text>{{ error }}</Text>
     {% endfor %}
 {% endif %}
 </Column>

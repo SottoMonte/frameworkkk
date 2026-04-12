@@ -75,15 +75,25 @@ class Adapter(authentication.port):
         """Client fresco e isolato per ogni richiesta."""
         return supabase.create_client(self._url, self._key)
 
-    @authentication.flow.result(inputs=('email','password'),outputs=('session',))
-    async def sign_up(self, **kwargs):
+    async def sign_up(self, user):
         try:
-            response = self._client().auth.sign_up(kwargs)
-            return authentication.flow.success(map_auth_response(self.name,response))
+            # Creiamo una copia per non sporcare l'oggetto originale
+            user_data = user.copy()
+            email = user_data.pop("email")
+            password = user_data.pop("password")
+            
+            # Passiamo i parametri correttamente
+            response = self._client().auth.sign_up({
+                "email": email,
+                "password": password,
+                "options": {
+                    "data": user_data # Tutto ciò che resta sono parametri aggiuntivi
+                }
+            })
+            return authentication.flow.success(map_auth_response(self.name, response))
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
 
-    @authentication.flow.result(inputs=('email','password'),outputs=('session',))
     async def sign_in(self, email, password):
         try:
             response  = self._client().auth.sign_in_with_password({"email": email, "password": password})
@@ -91,25 +101,36 @@ class Adapter(authentication.port):
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
 
-    @authentication.flow.result(inputs=('session',),outputs=('session',))
     async def sign_out(self, session):
         try:
+            tokens = session['providers'][self.name]['tokens']
             client = self._client()
-            client.auth.set_session(session['providers'][self.name]['tokens']['access_token'], "")
-            client.auth.sign_out()
+            # IMPORTANTE: Passa sia access che refresh token se disponibili
+            client.auth.set_session(tokens['access_token'], tokens.get('refresh_token', ""))
+            
+            # Opzionale: puoi forzare lo scope globale
+            client.auth.sign_out({"scope": "global"})
             return authentication.flow.success()
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
 
-    @authentication.flow.result(inputs=('session',),outputs=('user',))
-    async def get_identity(self, session):
+    async def get_user(self, session):
         try:
+            tokens = session['providers'][self.name]['tokens']
             client = self._client()
-            client.auth.set_session(session['providers'][self.name]['tokens']['access_token'], "")
+            client.auth.set_session(tokens['access_token'], tokens.get('refresh_token', ""))
+            
             response = client.auth.get_user()
+            
             if not response.user:
                 return authentication.flow.error("Utente non autenticato.")
-            user = response.user.dict() if hasattr(response.user, "dict") else {}
-            return authentication.flow.success(user)
+            
+            # Restituiamo un formato coerente con il resto dell'app
+            user = response.user
+            return authentication.flow.success({
+                "id": user.id,
+                "email": user.email,
+                **user.user_metadata
+            })
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
