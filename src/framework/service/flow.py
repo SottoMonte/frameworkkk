@@ -224,8 +224,8 @@ def result(inputs=(), outputs=()):
             try:
                 p = defaults | dict(zip(params, args[args_start:])) | kwargs
 
-                # Se c'è **kwargs risolvi input_models dalle chiavi di p
-                input_models = static_input_models if not var_kw else _get_models(k for k in p if k in inputs)
+                # Normalizza tutto ciò che ha un modello associato (sia in 'inputs' che nei parametri 'p')
+                input_models = _get_models(set(p.keys()) | set(inputs))
 
                 for name, model in input_models.items():
                     val = p[name] if isinstance(p[name], dict) else {name: p[name]}
