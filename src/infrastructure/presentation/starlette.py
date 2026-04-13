@@ -694,11 +694,8 @@ class Adapter(presentation.port):
 
         # Autenticazione tramite defender
         session = await self.defender.authenticate(request.session, **credentials)
-        print(session['outputs']['user'],'PRIMA ################################################################')
         if session['success']:
             request.session.update(session['outputs'])
-            request.session['user'] = session['outputs']['user']
-            print(request.session['user'],'DOPO ################################################################')
         else:
             request.session["errors"] = session['errors']
 
@@ -769,7 +766,6 @@ class Adapter(presentation.port):
 
     async def render_view(self,request):
         request.session["url_precedente"] = str(request.url)
-        print(request.session['user'],'PRIMA RENDER ################################################################')
         html = await self.mount_view(url=request.state.url, metadata=request.state.metadata, session=request.session)
         request.session["errors"] = []
         return HTMLResponse(html)

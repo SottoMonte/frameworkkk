@@ -104,7 +104,7 @@ class defender:
                 session.setdefault('providers', {})
                 session.setdefault('user', {})
                 session['providers'][authentication.name] = session_result['outputs']['providers'][authentication.name]
-                session['user'] = session_result['outputs']['user']
+                session['user'] |= session_result['outputs']['user']
             else:
                 return flow.error(session_result['errors'])
             '''if provider_persistence:
