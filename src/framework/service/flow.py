@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 import networkx as nx
 import functools
 import uuid
+import traceback
 
 # ─────────────────────────────────────────────
 # RESULT
@@ -147,127 +148,105 @@ def action(custom_filename: str = __file__, app_context=None, **constants):
 
 import inspect, functools, time, asyncio
 
-def result2(inputs=tuple(),outputs=tuple()):
+def result(inputs=(), outputs=(), safe_kwargs=False):
     def decorator(func):
-        # Setup pre-esecuzione (eseguito una sola volta)
         sig = inspect.signature(func)
         is_async = asyncio.iscoroutinefunction(func)
-        models = {name: loader.get_model(name) for name in sig.parameters.keys() if name != "self" and loader.get_model(name) is not None }
-        resulto = {name: loader.get_model(name) for name in outputs if name != "self" and loader.get_model(name) is not None }
-        if len(inputs) == 0:
-            models = {}
+
+        def load(names):
+            return {
+                name: model
+                for name in names
+                if name != "self" and (model := loader.get_model(name))
+            }
+
+        def collapse(d):
+            return next(iter(d.values())) if isinstance(d, dict) and len(d) == 1 else d
+
+        async def normalize(data, model, t0, action):
+            res = await scheme.normalize(data, model)
+            if res["errors"]:
+                return None, error(res["errors"], t0) | action
+            return collapse(res["data"]), None
+
+        
+        keys_models = loader.get('models').keys()
+        args_names = [
+            name for name, param in sig.parameters.items() 
+            if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+        ]
+        #print("args_names", args_names)
+        in_models = load(inputs)
+        out_models = load(outputs)
+        action = {"action": func.__name__}
+        #print(f"\n\nfunc: {action} | in_models: {list(in_models.keys())} | out_models: {list(out_models.keys())} | sig: {sig}")
+
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             t0 = time.perf_counter()
+            
+
             try:
-                # Unifica argomenti e applica default
-                bound = sig.bind(*args, **kwargs)
-                bound.apply_defaults()
-                p = bound.arguments
-
-                # Normalizzazione mirata
-                for name,model in models.items():
-                    valore =  p[name] if isinstance(p[name], dict) else {name:p[name]}
-                    res = await scheme.normalize(valore, model)
-                    if res['errors']:
-                        return error(res['errors'], t0) | {"action": func.__name__}
-                    p[name] = res['data'] if len(res['data']) > 1 else list(res['data'].values())[0]
-                print("p>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", p)
-                # Esecuzione e standardizzazione output
-                out = await func(**p) if is_async else func(**p)
-
-                for name,model in resulto.items():
-                    valore =  out if len(resulto) == 1 else {name:out}
-                    res = await scheme.normalize(valore, model)
-                    if res['errors']:
-                        return error(res['errors'], t0) | {"action": func.__name__}
-                    
-                    data = res['data']
-                    normalized_val = list(data.values())[0] if isinstance(data, dict) and len(data) == 1 else data
-                    
-                    if len(resulto) == 1:
-                        out = normalized_val
-                    else:
-                        out[name] = normalized_val
+                new_args = []
+                if safe_kwargs:
+                    new_kwargs= kwargs
+                else:
+                    new_kwargs = {}
                 
-                return success(out, t0) | {"action": func.__name__}
-
-            except Exception as e:
-                return error(e, t0) | {"action": func.__name__}
-        return wrapper
-    return decorator
-
-def result(inputs=(), outputs=()):
-    def decorator(func):
-        sig = inspect.signature(func)
-        is_async = asyncio.iscoroutinefunction(func)
-
-        def _get_models(names):
-            return {n: m for n in names if (m := loader.get_model(n))}
-
-        output_models = _get_models(o for o in outputs if o != "self")
-
-        has_self   = "self" in sig.parameters
-        params     = [n for n, p in sig.parameters.items() if n != "self" and p.kind not in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)]
-        defaults   = {n: p.default for n, p in sig.parameters.items() if n != "self" and p.default is not inspect.Parameter.empty}
-        args_start = 1 if has_self else 0
-        var_kw     = next((n for n, p in sig.parameters.items() if p.kind == inspect.Parameter.VAR_KEYWORD), None)
-        fixed_keys = set(params) | set(defaults)
-
-        # input_models calcolato a runtime su p se ci sono VAR_KEYWORD
-        static_input_models = _get_models(k for k in sig.parameters if k != "self" and k in inputs) if inputs and not var_kw else {}
-
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            t0     = time.perf_counter()
-            action = {"action": func.__name__}
-            try:
-                p = defaults | dict(zip(params, args[args_start:])) | kwargs
-
-                # Normalizza tutto ciò che ha un modello associato (sia in 'inputs' che nei parametri 'p')
-                input_models = _get_models(set(p.keys()) | set(inputs))
-
-                for name, model in input_models.items():
-                    val = p[name] if isinstance(p[name], dict) else {name: p[name]}
-                    res = await scheme.normalize(val, model)
-                    if res["errors"]:
-                        return error(res["errors"], t0) | action
-                    data = res["data"]
-                    p[name] = list(data.values())[0] if len(data) == 1 else data
-
-                if var_kw:
-                    call_kw = p
-                else:
-                    call_kw = {k: v for k, v in p.items() if k in fixed_keys}
-
-                out = await func(*args[:args_start], **call_kw) if is_async else func(*args[:args_start], **call_kw)
-                if out['success']:
-                    out = out['outputs']
-                else:
-                    return error(out['errors'], t0) | action
-
-
-                for name, model in output_models.items():
-                    val = out if len(output_models) == 1 else {name: out}
-                    res = await scheme.normalize(val, model)
-                    if res["errors"]:
-                        return error(res["errors"], t0) | action
-                    
-                    data = res["data"]
-                    normalized_val = list(data.values())[0] if isinstance(data, dict) and len(data) == 1 else data
-                    
-                    if len(output_models) == 1:
-                        out = normalized_val
+                for i, key_arg in enumerate(args_names):
+                    #print(action,"################",i, key_arg, len(args),args[i])
+                    if i >= len(args):
+                        new_args.extend(args[i:])
+                        break
+                    if key_arg == "self":
+                        new_args.append(args[i])
+                        continue
+                    if key_arg in keys_models:
+                        
+                        model = loader.get_model(key_arg)
+                        payload = args[i] if isinstance(args[i], dict) else {args[i]: args[i]}
+                        val, err = await normalize(payload, model, t0, action)
+                        if err:
+                            return err
+                        new_args.append(val)
                     else:
-                        out[name] = normalized_val
+                        new_args.append(args[i])
+                
+                for name, value in kwargs.items():
+                    
+                    if name in keys_models:
+                        model = loader.get_model(name)
+                        payload = value if isinstance(value, dict) else {name: value}
+                        new_kwargs[name], err = await normalize(payload, model, t0, action)
+                        if err:
+                            return err
+
+                #print("new_args", new_args)
+                #print(kwargs,"new_kwargs", new_kwargs)
+
+                res = await func(*new_args, **new_kwargs) if is_async else func(*new_args, **new_kwargs)
+
+                if not isinstance(res, dict) or not res.get("success"):
+                    return error(res.get("errors", "Invalid response"), t0) | action
+
+                out = res["outputs"]
+
+                # normalize output
+                for name, model in out_models.items():
+                    payload = out if len(out_models) == 1 else {name: out}
+                    val, err = await normalize(payload, model, t0, action)
+                    if err:
+                        return err
+                    out = val if len(out_models) == 1 else {**out, name: val}
 
                 return success(out, t0) | action
-            except Exception as e:
-                return error(e, t0) | action
+
+            except Exception:
+                return error(traceback.format_exc(), t0) | action
 
         return wrapper
     return decorator
-    
+
 async def act(s):
     t0 = time.perf_counter()
     if not isinstance(s, tuple):

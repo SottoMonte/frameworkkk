@@ -97,8 +97,8 @@ def map_supabase_error(error):
 
 def map_auth_response(provider,auth_res):
     # auth_res è l'oggetto restituito dal client python di supabase
-    session = auth_res.session
-    user = auth_res.user
+    session = auth_res.session if not isinstance(auth_res, dict) else auth_res['session']
+    user = auth_res.user if not isinstance(auth_res, dict) else auth_res['user']
 
     return {
         "id": user.id,
@@ -172,19 +172,17 @@ class Adapter(authentication.port):
 
     # ── port implementation ───────────────────────────────────────────────────
 
-    async def sign_up(self, user):
+    async def sign_up(self, password=None,email=None, **kwargs):
+        
         try:
             # Creiamo una copia per non sporcare l'oggetto originale
-            user_data = user.copy()
-            email = user_data.pop("email")
-            password = user_data.pop("password")
             
             # Passiamo i parametri correttamente
             response = self._client().auth.sign_up({
                 "email": email,
                 "password": password,
                 "options": {
-                    "data": user_data # Tutto ciò che resta sono parametri aggiuntivi
+                    "data": kwargs
                 }
             })
             return authentication.flow.success(map_auth_response(self.name, response))
@@ -212,7 +210,27 @@ class Adapter(authentication.port):
             return authentication.flow.error(map_supabase_error(str(e)))
 
     async def sign_aid(self, **kwargs):
+        print("kwargs>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", kwargs)
         try:
+            match kwargs['type']:
+                case 'signup':
+                    response = self._client().auth.verify_otp(**kwargs)
+                    return authentication.flow.success(map_auth_response(self.name, response))
+                case 'signin':
+                    response = self._client().auth.verify_otp(**kwargs)
+                    return authentication.flow.success(map_auth_response(self.name, response))
+                case 'recovery':
+                    response = self._client().auth.verify_otp(**kwargs)
+                    return authentication.flow.success(map_auth_response(self.name, response))
+                case 'magiclink':
+                    client = self._client()
+                    client.auth.set_session(kwargs['access_token'], kwargs.get('refresh_token', ""))
+                    user = client.auth.get_user()
+                    session = client.auth.get_session()
+                    response = {'session':session, 'user':user.user}
+                    return authentication.flow.success(map_auth_response(self.name, response))
+                case _:
+                    return authentication.flow.error("Invalid type")
             client = self._client()
             response = client.auth.verify_otp(**kwargs)
             return authentication.flow.success(map_auth_response(self.name, response))

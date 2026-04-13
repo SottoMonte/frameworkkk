@@ -65,7 +65,7 @@ class defender:
 
         return flow.success(session)
 
-    @flow.result(outputs=('session',))
+    @flow.result(outputs=('session',), safe_kwargs=True)
     async def reinstate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.
@@ -73,7 +73,6 @@ class defender:
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
-
         for authentication in self.authentications:
             #provider_persistence = authentication.config.get('persistence')
             session_result = await authentication.sign_aid(**constants)
@@ -121,8 +120,7 @@ class defender:
         :return: Dizionario di sessione aggiornato se la registrazione ha successo, altrimenti None.
         """
         for authentication in self.authentications:
-            session_result = await authentication.sign_up(user=constants)
-            print("----------------->1",session_result)
+            session_result = await authentication.sign_up(**constants)
             if session_result.get('success'):
                 session.setdefault('providers', {})
                 session.setdefault('user', {})

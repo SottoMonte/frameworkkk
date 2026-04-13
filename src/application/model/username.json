@@ -1,0 +1,8 @@
+{
+    "username": {
+        "type": "string",
+        "required": true,
+        "minlength": 3,
+        "maxlength": 32
+    }
+}
