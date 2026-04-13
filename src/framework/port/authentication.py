@@ -7,6 +7,7 @@ class port(ABC):
         "sign_in":      flow.result(inputs=("email", "password"), outputs=("session",)),
         "sign_up":      flow.result(inputs=("user",), outputs=("session",)),
         "sign_out":     flow.result(inputs=("session",),          outputs=("session",)),
+        "sign_aid":     flow.result(outputs=("session",)),
         "get_user": flow.result(inputs=("session",),          outputs=("user",)),
     }
 
@@ -35,34 +36,23 @@ class port(ABC):
     def get_user(self,access_token):
         pass
 
-    def seed(self):
+    @abstractmethod
+    def sign_aid(self,email):
+        pass
+
+    def migrate(self):
         import psycopg2
-        try:
-            conn = psycopg2.connect(self._db_url)
-            conn.autocommit = True
-            with conn.cursor() as cur:
-                for seed in self._seeds:
-                    result     = seed()
-                    name       = result[0]
-                    check_q    = result[1]
-                    exec_q     = result[2]
-                    on_exists  = result[3] if len(result) > 3 else None
-
-                    cur.execute(check_q)
-                    exists = cur.fetchone()[0]
-
-                    if not exists:
-                        cur.execute(exec_q)
-                        print(f"[SEED] ✓ {name}: creato")
-                    elif on_exists:
-                        migration_q = on_exists(cur)
-                        if migration_q:
-                            cur.execute(migration_q)
-                            print(f"[SEED] ↑ {name}: aggiornato")
-                        else:
-                            print(f"[SEED] ~ {name}: skip")
-                    else:
-                        print(f"[SEED] ~ {name}: skip")
-            conn.close()
-        except Exception as e:
-            print(f"[SEED] Errore: {e}")
+        conn = psycopg2.connect(self._db_url)
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            for s in self._migrations:
+                try:
+                    cur.execute(s["check_sql"])
+                    if not cur.fetchone()[0]:
+                        cur.execute(s["create_sql"]); print(f"[✓] Driver:{self.name} {s['name']}")
+                    elif s["migrate_fn"] and (stmts := s["migrate_fn"](cur)):
+                        for stmt in stmts: cur.execute(stmt)
+                        print(f"[*] Driver:{self.name} {s['name']}")
+                    else: print(f"[~] Driver:{self.name} {s['name']}")
+                except Exception as e: print(f"[✗] Driver:{self.name} {s['name']}: {e}"); raise
+        conn.close()

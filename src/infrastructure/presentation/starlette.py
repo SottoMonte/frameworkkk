@@ -672,7 +672,7 @@ class Adapter(presentation.port):
                 return RedirectResponse('/', status_code=405)
 
         # Autenticazione tramite defender
-        session = await self.defender.logout(request.session, **credentials)
+        session = await self.defender.terminate(request.session, **credentials)
         
         if session['success']:
             request.session.update(session['outputs'])
@@ -680,7 +680,7 @@ class Adapter(presentation.port):
             request.session["errors"] = session['errors']
 
         # Crea la risposta di reindirizzamento
-        return RedirectResponse(request.session["url_precedente"], status_code=303)
+        return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
 
     async def signin(self, request):
         # Determina le credenziali in base al metodo HTTP
@@ -694,14 +694,16 @@ class Adapter(presentation.port):
 
         # Autenticazione tramite defender
         session = await self.defender.authenticate(request.session, **credentials)
-        
+        print(session['outputs']['user'],'PRIMA ################################################################')
         if session['success']:
             request.session.update(session['outputs'])
+            request.session['user'] = session['outputs']['user']
+            print(request.session['user'],'DOPO ################################################################')
         else:
             request.session["errors"] = session['errors']
 
         # Crea la risposta di reindirizzamento
-        return RedirectResponse(request.session["url_precedente"], status_code=303)
+        return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
     
     async def signup(self, request):
         # Determina le credenziali in base al metodo HTTP
@@ -714,7 +716,7 @@ class Adapter(presentation.port):
                 return RedirectResponse('/', status_code=405)
 
         # Autenticazione tramite defender
-        session = await self.defender.registration(request.session, **credentials)
+        session = await self.defender.activate(request.session, **credentials)
         
         if session['success']:
             request.session.update(session['outputs'])
@@ -722,7 +724,28 @@ class Adapter(presentation.port):
             request.session["errors"] = session['errors']
 
         # Crea la risposta di reindirizzamento
-        return RedirectResponse(request.session["url_precedente"], status_code=303)
+        return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
+
+    async def signaid(self, request):
+        # Determina le credenziali in base al metodo HTTP
+        match request.method:
+            case 'GET':
+                credentials = dict(request.query_params)
+            case 'POST':
+                credentials = dict(await request.form())
+            case _:
+                return RedirectResponse('/', status_code=405)
+
+        # Autenticazione tramite defender
+        session = await self.defender.reinstate(request.session, **credentials)
+        
+        if session['success']:
+            request.session.update(session['outputs'])
+        else:
+            request.session["errors"] = session['errors']
+
+        # Crea la risposta di reindirizzamento
+        return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
 
     async def action(self, request, **constants):
         #print(request.cookies.get('user'))
@@ -746,6 +769,7 @@ class Adapter(presentation.port):
 
     async def render_view(self,request):
         request.session["url_precedente"] = str(request.url)
+        print(request.session['user'],'PRIMA RENDER ################################################################')
         html = await self.mount_view(url=request.state.url, metadata=request.state.metadata, session=request.session)
         request.session["errors"] = []
         return HTMLResponse(html)
@@ -882,12 +906,14 @@ class Adapter(presentation.port):
                 endpoint = self.render_view
             elif typee == 'action':
                 endpoint = self.action
-            elif typee == 'signin':
+            elif typee == 'authenticate':
                 endpoint = self.signin
-            elif typee == 'signout':
+            elif typee == 'terminate':
                 endpoint = self.signout
-            elif typee == 'signup':
+            elif typee == 'activate':
                 endpoint = self.signup
+            elif typee == 'reinstate':
+                endpoint = self.signaid
             else:
                 #endpoint = self.http_exception_handler  # fallback o gestione errori
                 continue

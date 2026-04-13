@@ -177,17 +177,18 @@ def result2(inputs=tuple(),outputs=tuple()):
                 out = await func(**p) if is_async else func(**p)
 
                 for name,model in resulto.items():
-                    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>name", name)
                     valore =  out if len(resulto) == 1 else {name:out}
-                    print("valore", len(resulto),valore)
                     res = await scheme.normalize(valore, model)
-                    print("res output>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", res)
                     if res['errors']:
                         return error(res['errors'], t0) | {"action": func.__name__}
-                    if isinstance(res['data'], dict) and len(res['data']) == 1:
-                        out[name] = list(res['data'].values())[0]
+                    
+                    data = res['data']
+                    normalized_val = list(data.values())[0] if isinstance(data, dict) and len(data) == 1 else data
+                    
+                    if len(resulto) == 1:
+                        out = normalized_val
                     else:
-                        out[name] = res['data']
+                        out[name] = normalized_val
                 
                 return success(out, t0) | {"action": func.__name__}
 
@@ -248,13 +249,17 @@ def result(inputs=(), outputs=()):
 
                 for name, model in output_models.items():
                     val = out if len(output_models) == 1 else {name: out}
-                    #print("val>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", val.keys())
                     res = await scheme.normalize(val, model)
                     if res["errors"]:
                         return error(res["errors"], t0) | action
+                    
                     data = res["data"]
-                    #print("data>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", data.keys())
-                    out[name] = list(data.values())[0] if isinstance(data, dict) and len(data) == 1 else data
+                    normalized_val = list(data.values())[0] if isinstance(data, dict) and len(data) == 1 else data
+                    
+                    if len(output_models) == 1:
+                        out = normalized_val
+                    else:
+                        out[name] = normalized_val
 
                 return success(out, t0) | action
             except Exception as e:

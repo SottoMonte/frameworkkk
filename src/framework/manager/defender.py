@@ -48,7 +48,7 @@ class defender:
         return flow.success(session)
     
     @flow.result(outputs=('session',))
-    async def logout(self, session, **constants) -> bool:
+    async def terminate(self, session, **constants) -> bool:
         """
         Termina la sessione di un utente specificato.
 
@@ -66,7 +66,7 @@ class defender:
         return flow.success(session)
 
     @flow.result(outputs=('session',))
-    async def authenticate(self, session, **constants):
+    async def reinstate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.
 
@@ -76,7 +76,7 @@ class defender:
 
         for authentication in self.authentications:
             #provider_persistence = authentication.config.get('persistence')
-            session_result = await authentication.sign_in(**constants)
+            session_result = await authentication.sign_aid(**constants)
             if session_result.get('success'):
                 session.setdefault('providers', {})
                 session.setdefault('user', {})
@@ -90,7 +90,30 @@ class defender:
         return flow.success(session)
 
     @flow.result(outputs=('session',))
-    async def registration(self, session, **constants) -> Any:
+    async def authenticate(self, session, **constants):
+        """
+        Autentica un utente utilizzando i provider configurati.
+
+        :param constants: Deve includere 'identifier', 'ip' e credenziali.
+        :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
+        """
+        for authentication in self.authentications:
+            #provider_persistence = authentication.config.get('persistence')
+            session_result = await authentication.sign_in(**constants)
+            if session_result.get('success'):
+                session.setdefault('providers', {})
+                session.setdefault('user', {})
+                session['providers'][authentication.name] = session_result['outputs']['providers'][authentication.name]
+                session['user'] = session_result['outputs']['user']
+            else:
+                return flow.error(session_result['errors'])
+            '''if provider_persistence:
+                await storekeeper.store(repository='sessions',payload=session)
+                pass'''
+        return flow.success(session)
+
+    @flow.result(outputs=('session',))
+    async def activate(self, session, **constants) -> Any:
         """
         Registra un utente utilizzando i provider configurati.
 

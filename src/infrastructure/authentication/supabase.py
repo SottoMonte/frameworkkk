@@ -1,26 +1,80 @@
 from typing import Optional
 import json
 import supabase
+from types import MappingProxyType
+import re
+
+_TYPE_MAP    = {"string":"text","integer":"integer","float":"numeric",
+                "boolean":"boolean","date":"date","datetime":"timestamp"}
+_AUTH_FIELDS = {"id","email","password"}
+
+
+def _pg(field, meta):
+
+    pg_type = _TYPE_MAP.get(meta.get("type", "string"), "text")
+    parts = [pg_type]
+            
+    return " ".join(parts)
+
+def _cols(schema): 
+    return {f: _pg(f, m) for f, m in schema.items() if f not in _AUTH_FIELDS}
+
+def _existing(cur):
+    cur.execute("""select column_name,data_type from information_schema.columns
+                   where table_schema='public' and table_name='profiles'
+                   and column_name not in ('id','created_at')""")
+    return dict(cur.fetchall())
+
+def profiles_table(schema):
+    desired = _cols(schema)
+    cols    = (["id uuid references auth.users(id) on delete cascade primary key"]
+               + [f"{f} {t}" for f,t in desired.items()]
+               + ["created_at timestamp default now()"])
+    def migrate_fn(cur):
+        ex = _existing(cur)
+        return ([f"alter table public.profiles add column {c} {t};"                      for c,t in desired.items() if c not in ex]
+              + [f"alter table public.profiles alter column {c} type {t} using {c}::{t};" for c,t in desired.items() if c in ex and ex[c]!=t]
+              # + [f"alter table public.profiles drop column {c};"                           for c in ex if c not in desired]
+              )
+    return MappingProxyType({
+        "name": "profiles table",
+        "check_sql": "select exists(select 1 from information_schema.tables where table_schema='public' and table_name='profiles')",
+        "create_sql": f"create table public.profiles (\n  {', '.join(cols)}\n);",
+        "migrate_fn": migrate_fn,
+    })
+
+def handle_new_user(schema):
+    fields = [f for f in schema if f not in _AUTH_FIELDS]
+    ins_f  = ", ".join(["id"] + fields)
+    ins_v  = ", ".join(["new.id"] + [f"new.raw_user_meta_data->>'{f}'" for f in fields])
+    fn_sql = f"""create or replace function handle_new_user() returns trigger as $$
+begin insert into public.profiles ({ins_f}) values ({ins_v}); return new; end;
+$$ language plpgsql security definer;"""
+    def migrate_fn(cur):
+        cur.execute("select prosrc from pg_proc where proname='handle_new_user'")
+        row = cur.fetchone()
+        if not row: return [fn_sql]
+        m = re.search(r"insert into public\.profiles \((.+?)\)", row[0])
+        return [fn_sql] if (m.group(1).replace(" ","") if m else "") != ins_f.replace(" ","") else []
+    
+    return MappingProxyType({
+        "name": "function handle_new_user",
+        "check_sql": "select exists(select 1 from pg_proc where proname='handle_new_user')",
+        "create_sql": fn_sql,
+        "migrate_fn": migrate_fn,
+    })
+    
+
+def on_auth_user_created():
+    return MappingProxyType({
+        "name": "trigger on_auth_user_created",
+        "check_sql": "select exists(select 1 from pg_trigger where tgname='on_auth_user_created')",
+        "create_sql": """create trigger on_auth_user_created after insert on auth.users
+           for each row execute procedure handle_new_user();""",
+        "migrate_fn": lambda cur: [],
+    })
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-TYPE_MAP = {
-    "string": "text", "integer": "integer", "float": "numeric",
-    "boolean": "boolean", "date": "date", "datetime": "timestamp",
-}
-AUTH_FIELDS = {"id", "email", "password"}
-
-def _pg_type(meta):
-    return TYPE_MAP.get(meta.get("type", "string"), "text")
-
-def _migration_ddl(desired, existing):
-    stmts  = [f"alter table public.profiles add column {c} {t};"
-              for c, t in desired.items() if c not in existing]
-    stmts += [f"alter table public.profiles alter column {c} type {t} using {c}::{t};"
-              for c, t in desired.items() if c in existing and existing[c] != t]
-    stmts += [f"alter table public.profiles drop column {c};"
-              for c in existing if c not in desired]
-    return stmts
 
 def map_supabase_error(error):
     if error == 'Invalid login credentials':
@@ -93,93 +147,15 @@ class Adapter(authentication.port):
         self._key = key
         self._db_url = db_url
         self.name = "supabase"
-        self._seeds = [
-            self._seed_profiles_table,
-            self._seed_profiles_function,
-            self._seed_profiles_trigger,
+        self._migrations = [
+            profiles_table(self._schema),
+            handle_new_user(self._schema),
+            on_auth_user_created()
         ]
-
+        self._seeds  = []
         if db_url:
-            self.seed()
+            self.migrate()
 
-    # ── schema helpers ────────────────────────────────────────────────────────
-
-    def _user_fields(self) -> dict:
-        return {k: v for k, v in self._schema.items() if k not in AUTH_FIELDS}
-
-    def _desired_cols(self) -> dict[str, str]:
-        return {f: _pg_type(m) for f, m in self._user_fields().items()}
-
-    # ── seed factories ────────────────────────────────────────────────────────
-
-    def _seed_profiles_table(self):
-        cols = (
-            ["id uuid references auth.users(id) on delete cascade primary key"]
-            + [f"{f} {t}" for f, t in self._desired_cols().items()]
-            + ["created_at timestamp default now()"]
-        )
-
-        def on_exists(cur):
-            cur.execute("""
-                select column_name, data_type
-                from information_schema.columns
-                where table_schema='public' and table_name='profiles'
-                  and column_name not in ('id','created_at')
-            """)
-            stmts = _migration_ddl(self._desired_cols(), dict(cur.fetchall()))
-            return "\n".join(stmts) if stmts else None
-
-        return (
-            "profiles table",
-            "select exists(select 1 from information_schema.tables where table_schema='public' and table_name='profiles')",
-            f"create table public.profiles (\n  {', '.join(cols)}\n);",
-            on_exists,
-        )
-
-    def _seed_profiles_function(self):
-        fields     = list(self._user_fields())
-        ins_fields = ", ".join(["id"] + fields)
-        ins_values = ", ".join(
-            ["new.id"] + [f"new.raw_user_meta_data->>'{f}'" for f in fields]
-        )
-
-        def fn():
-            return f"""
-                create or replace function handle_new_user() returns trigger as $$
-                begin
-                    insert into public.profiles ({ins_fields}) values ({ins_values});
-                    return new;
-                end;
-                $$ language plpgsql security definer;
-            """
-
-        def on_exists(cur):
-            import re
-            cur.execute("select prosrc from pg_proc where proname='handle_new_user'")
-            row = cur.fetchone()
-            if not row:
-                return fn()
-            match = re.search(r"insert into public\.profiles \((.+?)\)", row[0])
-            current_fields = match.group(1).replace(" ", "") if match else ""
-            return fn() if current_fields != ins_fields.replace(" ", "") else None
-
-        return (
-            "function handle_new_user",
-            "select exists(select 1 from pg_proc where proname='handle_new_user')",
-            fn(),
-            on_exists,
-        )
-
-    def _seed_profiles_trigger(self):
-        return (
-            "trigger on_auth_user_created",
-            "select exists(select 1 from pg_trigger where tgname='on_auth_user_created')",
-            """
-                create trigger on_auth_user_created
-                after insert on auth.users
-                for each row execute procedure handle_new_user();
-            """,
-        )
     # ── Supabase client ───────────────────────────────────────────────────────
 
     def _client(self):
@@ -232,6 +208,14 @@ class Adapter(authentication.port):
             # Opzionale: puoi forzare lo scope globale
             client.auth.sign_out({"scope": "global"})
             return authentication.flow.success()
+        except Exception as e:
+            return authentication.flow.error(map_supabase_error(str(e)))
+
+    async def sign_aid(self, **kwargs):
+        try:
+            client = self._client()
+            response = client.auth.verify_otp(**kwargs)
+            return authentication.flow.success(map_auth_response(self.name, response))
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
 

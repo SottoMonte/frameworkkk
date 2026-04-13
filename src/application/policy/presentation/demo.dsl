@@ -1,7 +1,7 @@
 type:route := {
     "path": { "type": "string" };
     "method": { "type": "string"; "default": "GET" };
-    "type": { "type": "string" };
+    "type": { "type": "string" "allowed": ["view","authenticate","terminate","activate","reinstate"] };
     "view": { "type": "string"; "default": "" };
     "controller": { "type": "string"; "default": "" };
 };
@@ -58,10 +58,12 @@ routes: {
     // Auth
     route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"auth/login.xml" };
     route:GET_LOGOUT := { path:"/logout"; method:"GET"; "type":"view"; view:"auth/logout.xml" };
-    route:POST_LOGIN := { path:"/loginx"; method:"POST"; "type":"signin"; view:"auth/login.xml" };
-    route:POST_LOGOUT := { path:"/logoutx"; method:"POST"; "type":"signout"; view:"auth/logout.xml" };
+    route:POST_LOGIN := { path:"/loginx"; method:"POST"; "type":"authenticate"; view:"auth/login.xml" };
+    route:POST_LOGOUT := { path:"/logoutx"; method:"POST"; "type":"terminate"; view:"auth/logout.xml" };
     route:GET_SIGNUP := { path:"/signup"; method:"GET"; "type":"view"; view:"auth/signup.xml" };
-    route:POST_SIGNUP := { path:"/signupx"; method:"POST"; "type":"signup"; };
+    route:POST_SIGNUP := { path:"/signupx"; method:"POST"; "type":"activate"; };
+    route:GET_RECOVERY := { path:"/recovery"; method:"GET"; "type":"reinstate"; view:"auth/signup.xml" };
+    route:POST_RECOVERY := { path:"/recoveryx"; method:"POST"; "type":"reinstate"; };
     // Admin
     route:GET_ADMIN := { path:"/admin"; method:"GET"; "type":"view"; view:"admin.xml" };
     // Error
@@ -103,6 +105,8 @@ rules : {
     "/logout": [policies.GET_ALLOW_PATH];
     "/signup": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
     "/signupx": [policies.POST_ALLOW_ALL,policies.GET_ALLOW_ALL];
+    "/recovery": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
+    "/recoveryx": [policies.POST_ALLOW_ALL,policies.GET_ALLOW_ALL];
     "/admin": [policies.GET_ALLOW_PATH];
     "/browse": [policies.GET_ALLOW_ALL];
     "/home": [policies.GET_ALLOW_ALL];
