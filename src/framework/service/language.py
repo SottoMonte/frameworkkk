@@ -110,9 +110,6 @@ TYPE_MAP = {
     'tuple': tuple, 'function': tuple,
 }
 
-# CUSTOM_TYPES is now managed per Interpreter instance
-
-
 DSL_FUNCTIONS = {
     'random': random.randint,
     #'resource': load.resource,

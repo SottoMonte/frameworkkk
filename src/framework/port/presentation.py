@@ -459,7 +459,7 @@ class port(ABC):
                         **{k: s.get(k) for k in ['method', 'type', 'layout', 'controller', 'path']},
                         'view': view,
                         'pattern': regex_compiled # Fondamentale per il dispatcher
-                    }      
+                    }
 
             print(f"[+] Routes: {list(self.routes.keys())}")
         except Exception as e:

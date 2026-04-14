@@ -86,7 +86,6 @@ class DefenderMiddleware(BaseHTTPMiddleware):
 
         if path.startswith("/static/"):
             return await call_next(request)
-            re
         
         data = self.defender.resolve(self.routes, path, method)
 
