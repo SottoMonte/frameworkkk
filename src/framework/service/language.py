@@ -110,7 +110,8 @@ TYPE_MAP = {
     'tuple': tuple, 'function': tuple,
 }
 
-CUSTOM_TYPES = {}
+# CUSTOM_TYPES is now managed per Interpreter instance
+
 
 DSL_FUNCTIONS = {
     'random': random.randint,
@@ -466,7 +467,7 @@ class FlowNodeBuilder:
 
 class Interpreter:
 
-    def __init__(self): 
+    def __init__(self, custom_types=None): 
         self._stack = []
         self._tasks = []
         self._dag = []
@@ -474,6 +475,7 @@ class Interpreter:
         self.parser = create_parser()
         self.cache_ast = {}
         self.builder = FlowNodeBuilder(self)
+        self.custom_types = custom_types or {}
 
 
     # ── visita generica ───────────────────────────────────────────────────────
@@ -635,13 +637,13 @@ class Interpreter:
         items  = key if isinstance(key[0], tuple) else [key]
         if node["target"]["type"] == "pair":
             tipo, name = node["target"]["key"]["name"], node["target"]["value"]["name"]
-            if tipo == "type": CUSTOM_TYPES[name] = val; return (name, val), env
+            if tipo == "type": self.custom_types[name] = val; return (name, val), env
             return (name, await self._check(val, tipo, meta, name, path=val_path)), env
         keys, values = [], []
         for i, _ in enumerate(items):
             tipo = node["target"]["items"][i]["key"]["name"]
             name = node["target"]["items"][i]["value"]["name"]
-            if tipo == "type": CUSTOM_TYPES[name] = val
+            if tipo == "type": self.custom_types[name] = val
             keys.append(name)
             item_val_path = f"{val_path}[{i}]" if val_path else f"[{i}]"
             values.append(await self._check(val[i] if isinstance(val, tuple) else val, tipo, meta, name, path=item_val_path))
@@ -766,8 +768,8 @@ class Interpreter:
         return await flow.act(s)
 
     async def _check(self, value, expected, meta, name, path=""):
-        if expected in CUSTOM_TYPES:
-            ddd = await scheme.normalize(value, CUSTOM_TYPES[expected])
+        if expected in self.custom_types:
+            ddd = await scheme.normalize(value, self.custom_types[expected])
             if ddd.get("errors"):
                 raise DSLRuntimeError(f"Tipo errato '{path}': atteso {expected}, ottenuto {type(value).__name__}", meta)
             return ddd.get("data")

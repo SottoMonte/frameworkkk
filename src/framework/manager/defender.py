@@ -13,7 +13,8 @@ class defender:
         self.loader = constants.get('loader')
         self.config = constants.get('project', dict())
         self.authentications = constants.get('authentications', [])
-        self.interpreter = self.language.Interpreter()
+        self.models = constants.get('models')
+        self.interpreter = self.language.Interpreter(custom_types=self.models)
         self.policies = {}
 
     async def stop(self):

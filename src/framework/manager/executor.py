@@ -7,7 +7,8 @@ class executor:
     def __init__(self, **constants):
         self.defender = constants.get('defender')
         self.language = constants.get('language')
-        self.interpreter = self.language.Interpreter()
+        self.models = constants.get('models')
+        self.interpreter = self.language.Interpreter(custom_types=self.models)
 
     async def stop(self):
         await self.interpreter.stop()

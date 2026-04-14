@@ -392,9 +392,9 @@ class Loader:
         _MANAGERS: list[dict] = [
             {"name": "loader",      "path": "src/framework/manager/loader.py",      "mod_deps": ["container"],                    "cls_deps": [],                                                        "is_class": True, "config": {}},
             {"name": "messenger",   "path": "src/framework/manager/messenger.py",   "mod_deps": ["flow"],                         "cls_deps": ["executor", "messages"],                                  "is_class": True, "config": {}},
-            {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language"],                                  "is_class": True, "config": {}},
-            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader", "authentications"],                 "is_class": True, "config": {'args': args, 'project': config.get('project', {})}},
-            {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger"],                       "is_class": True, "config": {'args': args}},
+            {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language", "models"],                        "is_class": True, "config": {}},
+            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader", "authentications", "models"],       "is_class": True, "config": {'args': args, 'project': config.get('project', {})}},
+            {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger", "models"],             "is_class": True, "config": {'args': args}},
             {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [],                               "cls_deps": ["executor", "persistences"],                              "is_class": True, "config": {}},
             {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],                             "is_class": True, "config": {}},
         ]
