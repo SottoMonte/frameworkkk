@@ -1,31 +1,88 @@
 import os
 import asyncio
 
+# Alias abbreviati → percorso src relativo
+_FILTER_ALIASES: dict[str, str] = {
+    "managers":        "src/framework/manager",
+    "ports":           "src/framework/port",
+    "services":        "src/framework/service",
+    "infrastructure":  "src/infrastructure",
+}
+
 class tester:
     def __init__(self, **config):
-        self.args = config.get('args')
-        self.loader = config.get('loader')
-        self.defender = config.get('defender')
+        self.args      = config.get('args', [])
+        self.loader    = config.get('loader')
+        self.defender  = config.get('defender')
         self.messenger = config.get('messenger')
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+
+    def _resolve_filter(self) -> str | None:
+        """Ritorna il prefisso di percorso su cui filtrare, o None (tutto).
+
+        Esempi di input → output:
+            managers                   → src/framework/manager
+            managers/defender          → src/framework/manager/defender
+            ports                      → src/framework/port
+            infrastructure             → src/infrastructure
+            infrastructure/authentication → src/infrastructure/authentication
+            src/qualunque/percorso     → src/qualunque/percorso  (raw)
+        """
+        args = list(self.args)
+        if '--test' not in args:
+            return None
+        idx = args.index('--test')
+        if idx + 1 < len(args) and not args[idx + 1].startswith('--'):
+            raw = args[idx + 1]
+            # 1) Alias esatto  →  managers
+            if raw in _FILTER_ALIASES:
+                return _FILTER_ALIASES[raw]
+            # 2) Alias + sub   →  managers/defender  oppure  infrastructure/authentication
+            for alias, base in _FILTER_ALIASES.items():
+                if raw.startswith(alias + '/'):
+                    sub = raw[len(alias) + 1:]
+                    return f"{base}/{sub}"
+            # 3) Percorso src diretto (fallback)
+            return raw
+        return None  # Nessun filtro → tutti i test
+
+    def _matches_filter(self, path: str, prefix: str | None) -> bool:
+        """True se il file deve essere eseguito dato il filtro attivo."""
+        if prefix is None:
+            return True
+        # Normalizza separatori
+        norm_path   = path.replace('\\', '/')
+        norm_prefix = prefix.replace('\\', '/')
+        return norm_path.startswith(norm_prefix)
+
+    # ── lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self):
         if '--test' in self.args:
             await self.run()
 
     async def run(self, **constants):
-        diagnostic.log("INFO", "Avvio esecuzione suite di test...", emoji="🧪")
+        prefix = self._resolve_filter()
+        label  = prefix or 'tutti'
+        diagnostic.log("INFO", f"Avvio esecuzione suite di test… filtro: {label}", emoji="🧪")
+
         interp = language.Interpreter()
         await interp.start()
         await interp.create_session("tester", env=language.DSL_FUNCTIONS|{'resource':self.loader.resource})
+
         for root, _, files in os.walk('./src'):
             for file in files:
-                if file.endswith('.test.dsl'):
-                    path = os.path.join(root, file).replace('./', '')
-                    print(path)
-                    res    = await self.loader.resource(path)
-                    source = flow.value_of(res) if flow.is_result(res) else res
-                    await interp.add_file(path, source)
-                    await self.dsl(interp, path)
+                if not file.endswith('.test.dsl'):
+                    continue
+                path = os.path.join(root, file).replace('./', '')
+                if not self._matches_filter(path, prefix):
+                    continue
+                print(path)
+                res    = await self.loader.resource(path)
+                source = flow.value_of(res) if flow.is_result(res) else res
+                await interp.add_file(path, source)
+                await self.dsl(interp, path)
         
 
     async def dsl(self, interp, path):

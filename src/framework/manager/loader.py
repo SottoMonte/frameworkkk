@@ -339,9 +339,9 @@ _SERVICES: list[dict] = [
     {"name": "flow",            "path": "src/framework/service/flow.py",           "mod_deps": ["scheme", "loader"], "is_class": False, "config": {}},
     {"name": "language",        "path": "src/framework/service/language.py",       "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
     {"name": "diagnostic",      "path": "src/framework/service/diagnostic.py",     "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
-    {"name": "message",         "path": "src/framework/port/message.py",           "mod_deps": [],                   "is_class": False, "config": {}},
+    {"name": "message",         "path": "src/framework/port/message.py",           "mod_deps": ["flow"],             "is_class": False, "config": {}},
     {"name": "presentation",    "path": "src/framework/port/presentation.py",      "mod_deps": ["scheme","loader"],  "is_class": False, "config": {}},
-    {"name": "persistence",     "path": "src/framework/port/persistence.py",       "mod_deps": [],                   "is_class": False, "config": {}},
+    {"name": "persistence",     "path": "src/framework/port/persistence.py",       "mod_deps": ["flow"],             "is_class": False, "config": {}},
     {"name": "authentication",  "path": "src/framework/port/authentication.py",    "mod_deps": ["flow"],             "is_class": False, "config": {}},
 ]
 
@@ -384,6 +384,8 @@ class Loader:
     async def bootstrap(self, args):
         print("[*] Framework bootstrapped. Running...")
         project_specs = self._project.load("pyproject.toml") if '--test' not in args else []
+        # nota: '--test' con filtro (es. '--test managers') non avvia il server,
+        # l'argomento successivo è consumato dal tester e non interferisce qui.
         config = self._project.get_config()
 
         application_models = self._project.load_schemas("src/application/model/")
@@ -395,7 +397,7 @@ class Loader:
             {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language", "models"],                        "is_class": True, "config": {}},
             {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader", "authentications", "models"],       "is_class": True, "config": {'args': args, 'project': config.get('project', {})}},
             {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger", "models"],             "is_class": True, "config": {'args': args}},
-            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": [],                               "cls_deps": ["executor", "persistences"],                              "is_class": True, "config": {}},
+            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": ["flow"],                               "cls_deps": ["executor", "persistences"],                              "is_class": True, "config": {}},
             {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],                             "is_class": True, "config": {}},
         ]
 
