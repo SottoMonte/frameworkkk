@@ -182,7 +182,8 @@ class Adapter(authentication.port):
                 "email": email,
                 "password": password,
                 "options": {
-                    "data": kwargs
+                    "data": kwargs,
+                    #"email_redirect_to": "http://localhost:5000/recovery"
                 }
             })
             return authentication.flow.success(map_auth_response(self.name, response))
@@ -210,7 +211,6 @@ class Adapter(authentication.port):
             return authentication.flow.error(map_supabase_error(str(e)))
 
     async def sign_aid(self, **kwargs):
-        print("kwargs>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", kwargs)
         try:
             match kwargs['type']:
                 case 'signup':

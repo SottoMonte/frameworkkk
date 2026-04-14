@@ -221,32 +221,34 @@ class defender:
                 'fragment': frag_params
             }
 
-            # 2. Ciclo di Matching (Corretto con .values() per evitare TypeError)
-            for route_data in risorse.values():
-                # Il match va fatto sulla stringa parsed.path
-                match = route_data['pattern'].match(parsed.path)
+            # 2. Ciclo di Matching (Aggiornato per supportare la struttura nidificata {path: {metodo: config}})
+            for methods_dict in risorse.values():
+                # Tutte le configurazioni per lo stesso path condividono lo stesso pattern
+                # ne prendiamo una qualsiasi per eseguire il match del path
+                first_config = next(iter(methods_dict.values()))
+                match = first_config['pattern'].match(parsed.path)
                 
                 if match:
-                    # Recuperiamo i metadati (che contengono 'method', 'view', etc.)
-                    metadata = route_data.get('metadata', route_data)
+                    # Trovato il path, cerchiamo se il metodo richiesto è supportato
+                    route_data = methods_dict.get(request_method.upper())
                     
-                    # Controllo Metodo HTTP (se presente nei metadati)
-                    if metadata.get('method') and metadata['method'] != request_method:
+                    if not route_data:
+                        # Metodo non trovato per questo path specifico
                         continue
+                        
+                    # Recuperiamo i metadati
+                    metadata = route_data.get('metadata', route_data)
                     
                     # Estrazione parametri dinamici dalla Regex (es. {'id': '123'})
                     dynamic_params = match.groupdict()
-                    '''authorized = self.defender.authorized('presentation', action=request_method, resource=metadata.get('view'), location=metadata.get('path'))
                     
-                    if not authorized:
-                        return None'''
                     return {
                         'metadata': metadata,
                         'params': dynamic_params,
                         'url_details': url_payload
                     }
 
-            print(f"[-] No route matched for: {parsed.path}")
+            print(f"[-] No route matched for: {request_method} {parsed.path}")
             return None
 
         except Exception as e:

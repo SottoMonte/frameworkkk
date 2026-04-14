@@ -452,12 +452,14 @@ class port(ABC):
                     regex_compiled = re.compile(f"^{pattern}$")
                     # --------------------------------------
 
-                    # Salvataggio rotta arricchito
-                    self.routes[new_path] = {
+                    # Salvataggio rotta arricchito (Raggruppato per Path e poi per Metodo)
+                    method = s.get('method', 'GET').upper()
+                    self.routes.setdefault(new_path, {})
+                    self.routes[new_path][method] = {
                         **{k: s.get(k) for k in ['method', 'type', 'layout', 'controller', 'path']},
                         'view': view,
                         'pattern': regex_compiled # Fondamentale per il dispatcher
-                    }
+                    }      
 
             print(f"[+] Routes: {list(self.routes.keys())}")
         except Exception as e:

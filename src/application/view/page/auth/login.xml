@@ -9,7 +9,7 @@
 {% endif %}
 </Column>
 
-<Action type="form" route="/loginx" act="POST">
+<Action type="form" route="/login" act="POST">
     <Input type="text" name="email" placeholder="email" />
     <Input type="password" name="password" placeholder="password" />
     <Action type="submit">Login</Action>

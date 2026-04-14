@@ -881,42 +881,43 @@ class Adapter(presentation.port):
         return rendered_node
 
     async def mount_route(self, routes):
-        for path, data in self.routes.items():
-            typee = data.get('type')
-            method = data.get('method')
-            view = data.get('view')
+        for path, methods_dict in self.routes.items():
+            for method, data in methods_dict.items():
+                typee = data.get('type')
+                # method = data.get('method')
+                view = data.get('view')
 
-            # Associa il path alla view (utile per debug o reverse lookup)
-            self.views[path] = view
+                # Associa il path alla view (utile per debug o reverse lookup)
+                self.views[path] = view
 
-            # Se è una mount statica
-            if typee == 'mount' and path == '/static':
-                r = Mount(path, app=StaticFiles(directory='/public'), name="static")
+                # Se è una mount statica
+                if typee == 'mount' and path == '/static':
+                    r = Mount(path, app=StaticFiles(directory='/public'), name="static")
+                    routes.append(r)
+                    continue
+
+                # Determina l'endpoint
+                if typee == 'model':
+                    endpoint = self.model
+                elif typee == 'view':
+                    endpoint = self.render_view
+                elif typee == 'action':
+                    endpoint = self.action
+                elif typee == 'authenticate':
+                    endpoint = self.signin
+                elif typee == 'terminate':
+                    endpoint = self.signout
+                elif typee == 'activate':
+                    endpoint = self.signup
+                elif typee == 'reinstate':
+                    endpoint = self.signaid
+                else:
+                    #endpoint = self.http_exception_handler  # fallback o gestione errori
+                    continue
+
+                # Crea la rotta e aggiungila
+                r = Route(path, endpoint=endpoint, methods=[method])
                 routes.append(r)
-                continue
-
-            # Determina l'endpoint
-            if typee == 'model':
-                endpoint = self.model
-            elif typee == 'view':
-                endpoint = self.render_view
-            elif typee == 'action':
-                endpoint = self.action
-            elif typee == 'authenticate':
-                endpoint = self.signin
-            elif typee == 'terminate':
-                endpoint = self.signout
-            elif typee == 'activate':
-                endpoint = self.signup
-            elif typee == 'reinstate':
-                endpoint = self.signaid
-            else:
-                #endpoint = self.http_exception_handler  # fallback o gestione errori
-                continue
-
-            # Crea la rotta e aggiungila
-            r = Route(path, endpoint=endpoint, methods=[method])
-            routes.append(r)
 
     def mount_css(self, node, context):
         pass
