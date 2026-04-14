@@ -7,9 +7,12 @@ class storekeeper():
         self.executor = constants['executor']
         self.persistences = constants['persistences']
 
-    @flow.result(inputs=("session", "storekeeper"))
-    async def preparation(self, **constants):
-        operations = []
+    @flow.result(inputs=("session",))
+    async def preparation(self, session, storekeeper):
+        print("storekeeper preparation")
+        print(storekeeper)
+        return flow.success(storekeeper)
+        '''operations = []
         operation = constants.get('operation', 'read')
         repository_name = constants.get('repository', '')
 
@@ -82,29 +85,30 @@ class storekeeper():
             except Exception as e:
                 #language.framework_log("ERROR", f"Errore imprevisto durante la preparazione per il provider {provider}: {e}", emoji="🤯")
                 print(e)
-        return repository, operations
+        return repository, operations'''
     
     # overview/view/get
-    async def overview(self, **constants):
-        repository,operations = await self.preparation(**constants|{'operation':'view'})
-        return await self.executor.first_completed(operations=operations,success=repository.results)
+    async def overview(self, session, storekeeper, **constants):
+        print("#####OVERVIEW#####",session,storekeeper)
+        return await self.preparation(session,storekeeper=storekeeper)
+        #return await self.executor.first_completed(operations=operations,success=repository.results)
 
     # gather/read/get
-    async def gather(self, **constants):
+    async def gather(self, session, storekeeper,**constants):
         repository,operations = await self.preparation(**constants|{'operation':'read'})
         return await self.executor.first_completed(operations=operations,success=repository.results)
     
     # store/create/put
-    async def store(self, **constants):
+    async def store(self, session, **constants):
         repository,operations = await self.preparation(**constants|{'operation':'create'})
         return await self.executor.first_completed(operations=operations,success=repository.results)
     
     # remove/delete/delete
-    async def remove(self, **constants):
+    async def remove(self, session, **constants):
         repository,operations = await self.preparation(**constants|{'operation':'delete'})
         return await self.executor.first_completed(operations=operations,success=repository.results)
     
     # change/update/patch
-    async def change(self, **constants):
+    async def change(self, session, **constants):
         repository,operations = await self.preparation(**constants|{'operation':'update'})
         return await self.executor.first_completed(operations=operations,success=repository.results)

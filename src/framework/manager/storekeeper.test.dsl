@@ -39,11 +39,20 @@ type:scheme := {
     };
 };
 
-aaaa:print(imports.module);
+storekeeper:imports.module.storekeeper(executor:None,persistences:[]);
+
+"sad":print(storekeeper);
 
 function:success_function := (str:y){x:y;}(str:x);
 
 tuple:test_suite := (
+    {
+        "action": storekeeper.overview;
+        "inputs":{session:[];storekeeper:{'operation':'view';'repository':'users'}};
+        "outputs": [];
+        "assert": @received.outputs == @expected & @received.success == true;
+        "note": "overview";
+    },
     /*{
         "action": exports.serial;
         "inputs":((pass,[1],{}),(pass,[2],{}));

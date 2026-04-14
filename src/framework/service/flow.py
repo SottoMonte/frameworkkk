@@ -204,7 +204,16 @@ def result(inputs=(), outputs=(), safe_kwargs=False):
                     if key_arg in keys_models:
                         
                         model = loader.get_model(key_arg)
-                        payload = args[i] if isinstance(args[i], dict) else {args[i]: args[i]}
+                        
+                        # Fix: Se l'argomento è un dict che contiene già la chiave del modello (nesting), lo spacchettiamo
+                        raw_val = args[i]
+                        if isinstance(raw_val, dict) and len(raw_val) == 1 and key_arg in raw_val:
+                            payload = raw_val[key_arg]
+                        elif isinstance(raw_val, dict):
+                            payload = raw_val
+                        else:
+                            payload = {key_arg: raw_val}
+                            
                         val, err = await normalize(payload, model, t0, action)
                         if err:
                             return err
@@ -216,7 +225,15 @@ def result(inputs=(), outputs=(), safe_kwargs=False):
                     
                     if name in keys_models:
                         model = loader.get_model(name)
-                        payload = value if isinstance(value, dict) else {name: value}
+                        
+                        # Fix: Gestione nesting anche per i kwargs
+                        if isinstance(value, dict) and len(value) == 1 and name in value:
+                            payload = value[name]
+                        elif isinstance(value, dict):
+                            payload = value
+                        else:
+                            payload = {name: value}
+                            
                         new_kwargs[name], err = await normalize(payload, model, t0, action)
                         if err:
                             return err
@@ -227,7 +244,8 @@ def result(inputs=(), outputs=(), safe_kwargs=False):
                 res = await func(*new_args, **new_kwargs) if is_async else func(*new_args, **new_kwargs)
 
                 if not isinstance(res, dict) or not res.get("success"):
-                    return error(res.get("errors", "Invalid response"), t0) | action
+                    err_msg = res.get("errors", "Invalid response") if isinstance(res, dict) else "Function returned None or non-dict"
+                    return error(err_msg, t0) | action
 
                 out = res["outputs"]
 

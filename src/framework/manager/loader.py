@@ -198,20 +198,22 @@ class ProjectLoader:
     def __init__(self, container: Container):
         self._c = container
 
-    def load_schemas(self, directory: str = "src/application/model/") -> dict:
+    def load_schemas(self, directories: list[str]) -> dict:
         raw_data = {}
-        if not os.path.exists(directory):
-            return {}
+        
+        for directory in directories:
+            if not os.path.exists(directory):
+                continue
 
-        for filename in os.listdir(directory):
-            if filename.endswith(".json"):
-                name = os.path.splitext(filename)[0]
-                with open(os.path.join(directory, filename), "r") as f:
-                    try:
-                        raw_data[name] = json.load(f)
-                    except json.JSONDecodeError as e:
-                        print(f"[!] Errore sintassi JSON in {filename}: {e}")
-                        continue
+            for filename in os.listdir(directory):
+                if filename.endswith(".json"):
+                    name = os.path.splitext(filename)[0]
+                    with open(os.path.join(directory, filename), "r") as f:
+                        try:
+                            raw_data[name] = json.load(f)
+                        except json.JSONDecodeError as e:
+                            print(f"[!] Errore sintassi JSON in {filename}: {e}")
+                            continue
 
         env = Environment(loader=BaseLoader())
         if 'tojson' not in env.filters:
@@ -388,7 +390,7 @@ class Loader:
         # l'argomento successivo è consumato dal tester e non interferisce qui.
         config = self._project.get_config()
 
-        application_models = self._project.load_schemas("src/application/model/")
+        application_models = self._project.load_schemas(["src/framework/scheme/", "src/application/model/"])
         print(f"[+] Models: {list(application_models.keys())}")
 
         _MANAGERS: list[dict] = [
