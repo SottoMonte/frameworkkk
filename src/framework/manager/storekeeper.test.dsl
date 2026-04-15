@@ -39,7 +39,7 @@ type:scheme := {
     };
 };
 
-storekeeper:imports.module.storekeeper(executor:None,persistences:[]);
+storekeeper:imports.module.storekeeper(executor:executor,persistences:[],repositories:loader.get('repositories'));
 
 "sad":print(storekeeper);
 
@@ -48,7 +48,7 @@ function:success_function := (str:y){x:y;}(str:x);
 tuple:test_suite := (
     {
         "action": storekeeper.overview;
-        "inputs":{session:[];storekeeper:{'operation':'view';'repository':'users'}};
+        "inputs":{session:[];storekeeper:{'operation':'view';'repository':'repository'}};
         "outputs": [];
         "assert": @received.outputs == @expected & @received.success == true;
         "note": "overview";

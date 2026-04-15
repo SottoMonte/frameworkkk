@@ -6,11 +6,54 @@ class storekeeper():
     def __init__(self,**constants):
         self.executor = constants['executor']
         self.persistences = constants['persistences']
+        self.repositories = constants['repositories']
+        self.maked = {}
 
     @flow.result(inputs=("session",))
     async def preparation(self, session, storekeeper):
-        print("storekeeper preparation")
-        print(storekeeper)
+        repository_name = storekeeper.get('repository')
+        
+        repo_data = self.repositories.get(repository_name)
+        operations = []
+        if repo_data:
+            repository = factory.repository(**repo_data)
+            #print(repository.location)
+            for provider in self.persistences:
+                try:
+                    profile = provider.config.get('profile', '').upper()
+                    if not profile:
+                        #language.framework_log("WARNING", f"Provider {provider} non ha un profilo configurato.", emoji="⚠️")
+                        print(f"Provider {provider} non ha un profilo configurato.")
+                        continue
+
+                    if profile in repository.location:
+                        try:
+                            task_args = await repository.parameters(operation, profile, **constants)
+                        except Exception as e:
+                            #language.framework_log("ERROR", f"Errore durante l'ottenimento dei parametri per {profile}: {e}", emoji="❌")
+                            print(f"Errore durante l'ottenimento dei parametri per {profile}: {e}")
+                            continue
+
+                        # Controllo che il metodo esista nel provider
+                        method = getattr(provider, operation, None)
+                        if not callable(method):
+                            #language.framework_log("WARNING", f"Il metodo '{operation}' non è disponibile per il provider {profile}.", emoji="🚫")
+                            print(f"Il metodo '{operation}' non è disponibile per il provider {profile}.")
+                            continue
+
+                        task = asyncio.create_task(method(**task_args), name=profile)
+                        task.parameters = task_args
+                        operations.append(task)
+                    else:
+                        #language.framework_log("DEBUG", f"Provider {provider} non ha un profilo trovato.", emoji="🔍")
+                        print(f"Provider {provider} non ha un profilo trovato.")
+                except Exception as e:
+                    #language.framework_log("ERROR", f"Errore imprevisto durante la preparazione per il provider {provider}: {e}", emoji="🤯")
+                    print(e)
+            return flow.success((repository, operations))
+        else:
+            print(f"[!] Repository '{repository}' non trovato o dati non disponibili.")
+
         return flow.success(storekeeper)
         '''operations = []
         operation = constants.get('operation', 'read')
@@ -88,9 +131,9 @@ class storekeeper():
         return repository, operations'''
     
     # overview/view/get
-    async def overview(self, session, storekeeper, **constants):
-        print("#####OVERVIEW#####",session,storekeeper)
-        return await self.preparation(session,storekeeper=storekeeper)
+    async def overview(self, session, **constants):
+        #print("#####OVERVIEW#####",session,constants)
+        return await self.preparation(session,storekeeper=constants)
         #return await self.executor.first_completed(operations=operations,success=repository.results)
 
     # gather/read/get

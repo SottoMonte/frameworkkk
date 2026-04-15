@@ -1,18 +1,11 @@
-/* Importazione moduli esterni e framework 
-*/
-imports:{
-    "repository":resource("application/model/repository.dsl") |> get("outputs");
-};
-
-
-flow:view := (dict:constants){
+/*flow:view := (dict:constants){
     branch_data:storekeeper.gather(**constants|{'payload':payload});
     payload: constants|{ 'sha':branch_data.sha; 'branch':'main' };
 }(dict:payload);
 
 flow:update_payload := (dict:constants){
     payload: constants|{ 'method':'PATCH' };
-}(dict:payload);
+}(dict:payload);*/
 
 /* Definizione del Modello Repository (Dichiarativo) */
 factory:repository := {
@@ -31,10 +24,10 @@ factory:repository := {
         ]
     };
     
-    model: imports.repository.model;
+    model: {};
     
     values: {
-        "tree": { "MODEL": build_tree_dict };
+        //"tree": { "MODEL": build_tree_dict };
     };
     
     mapper: {
@@ -55,10 +48,10 @@ factory:repository := {
     };
     
     payloads: {
-        "view": view;
+        //"view": view;
     };
     
     functions: {
-        "update": update_payload;
+        //"update": update_payload;
     };
 };

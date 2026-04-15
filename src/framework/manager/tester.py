@@ -15,6 +15,7 @@ class tester:
         self.loader    = config.get('loader')
         self.defender  = config.get('defender')
         self.messenger = config.get('messenger')
+        self.executor  = config.get('executor')
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ class tester:
 
     async def dsl(self, interp, path):
         # ── esecuzione ────────────────────────────────────────────────────────
-        ctx    = await interp.run_session("tester", path,env={'messenger':self.messenger,'defender':self.defender,'resource':self.loader.resource})
+        ctx    = await interp.run_session("tester", path,env={'loader':self.loader,'executor':self.executor,'messenger':self.messenger,'defender':self.defender,'resource':self.loader.resource})
         
         '''errors = [
             err

@@ -103,6 +103,8 @@ class ModuleLoader:
     def find_class(mod, name):
         ok = getattr(mod, name, None)
         if not ok:
+            ok = getattr(mod, name.capitalize(), None)
+        if not ok:
             return getattr(mod, 'Adapter', None)
         return ok
 
@@ -273,6 +275,41 @@ class ProjectLoader:
 
         return final_schemas
 
+
+    async def load_repositories(self, directories):
+        raw_data = {}
+        
+        interpreter = self._c.get("interpreter") if self._c.has("interpreter") else None
+        language = self._c.get("language") if self._c.has("language") else None
+
+        if interpreter and language:
+            await interpreter.create_session("loader_repositories", language.DSL_FUNCTIONS)
+
+        for directory in directories:
+            if not os.path.exists(directory):
+                continue
+
+            for filename in os.listdir(directory):
+                if filename.endswith(".dsl"):
+                    name = os.path.splitext(filename)[0]
+                    with open(os.path.join(directory, filename), "r") as f:
+                        try:
+                            content = f.read()
+                            if interpreter:
+                                file_path = f"application/repository/{name}.py"
+                                await interpreter.add_file(file_path, content)
+                                result = await interpreter.run_session("loader_repositories", file_path)
+                                if isinstance(result, dict) and 'repository' in result:
+                                    raw_data[name] = result.get('repository')
+                                else:
+                                    raw_data[name] = result
+                            else:
+                                raw_data[name] = content
+                        except Exception as e:
+                            print(f"[!] Errore sintassi DSL in {filename}: {e}")
+                            continue
+        return raw_data
+
     def load(self, config_path: str) -> list[dict]:
         data = self._read_toml(config_path)
         self._c.config.from_dict(data)
@@ -340,11 +377,13 @@ _SERVICES: list[dict] = [
     {"name": "scheme",          "path": "src/framework/service/scheme.py",         "mod_deps": [],                   "is_class": False, "config": {}},
     {"name": "flow",            "path": "src/framework/service/flow.py",           "mod_deps": ["scheme", "loader"], "is_class": False, "config": {}},
     {"name": "language",        "path": "src/framework/service/language.py",       "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
+    {"name": "interpreter",     "path": "src/framework/service/language.py",       "mod_deps": ["scheme", "flow"],   "is_class": True,  "config": {}},
     {"name": "diagnostic",      "path": "src/framework/service/diagnostic.py",     "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
     {"name": "message",         "path": "src/framework/port/message.py",           "mod_deps": ["flow"],             "is_class": False, "config": {}},
     {"name": "presentation",    "path": "src/framework/port/presentation.py",      "mod_deps": ["scheme","loader"],  "is_class": False, "config": {}},
     {"name": "persistence",     "path": "src/framework/port/persistence.py",       "mod_deps": ["flow"],             "is_class": False, "config": {}},
     {"name": "authentication",  "path": "src/framework/port/authentication.py",    "mod_deps": ["flow"],             "is_class": False, "config": {}},
+    {"name": "factory",         "path": "src/framework/service/factory.py",        "mod_deps": ["flow"],             "is_class": False, "config": {}},
 ]
 
 
@@ -393,13 +432,15 @@ class Loader:
         application_models = self._project.load_schemas(["src/framework/scheme/", "src/application/model/"])
         print(f"[+] Models: {list(application_models.keys())}")
 
+        application_repositories = {}
+
         _MANAGERS: list[dict] = [
             {"name": "loader",      "path": "src/framework/manager/loader.py",      "mod_deps": ["container"],                    "cls_deps": [],                                                        "is_class": True, "config": {}},
             {"name": "messenger",   "path": "src/framework/manager/messenger.py",   "mod_deps": ["flow"],                         "cls_deps": ["executor", "messages"],                                  "is_class": True, "config": {}},
-            {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language", "models"],                        "is_class": True, "config": {}},
-            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader", "authentications", "models"],       "is_class": True, "config": {'args': args, 'project': config.get('project', {})}},
-            {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", "messenger", "models"],             "is_class": True, "config": {'args': args}},
-            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": ["flow"],                               "cls_deps": ["executor", "persistences"],                              "is_class": True, "config": {}},
+            {"name": "executor",    "path": "src/framework/manager/executor.py",    "mod_deps": ["flow"],                         "cls_deps": ["defender", "language", "models", "interpreter"],                        "is_class": True, "config": {}},
+            {"name": "defender",    "path": "src/framework/manager/defender.py",    "mod_deps": ["flow"],                         "cls_deps": ["language", "loader", "authentications", "models", "interpreter"],       "is_class": True, "config": {'args': args, 'project': config.get('project', {})}},
+            {"name": "tester",      "path": "src/framework/manager/tester.py",      "mod_deps": ["language","flow","diagnostic"], "cls_deps": ["loader", "defender", 'executor', "messenger", "models"],             "is_class": True, "config": {'args': args}},
+            {"name": "storekeeper", "path": "src/framework/manager/storekeeper.py", "mod_deps": ["flow","factory"],                               "cls_deps": ["executor", "persistences","repositories"],                              "is_class": True, "config": {}},
             {"name": "presenter",   "path": "src/framework/manager/presenter.py",   "mod_deps": [],                               "cls_deps": ["executor", "presentations"],                             "is_class": True, "config": {}},
         ]
 
@@ -408,9 +449,14 @@ class Loader:
             singletons={
                 "loader":    self,
                 "container": self._container,
-                "models":    application_models,   # FIX: chiave "models" coerente con get_model()
+                "models":    application_models,
+                "repositories": application_repositories,
             },
         )
+
+        loaded_repos = await self._project.load_repositories(["src/application/repository/"])
+        application_repositories.update(loaded_repos)
+        print(f"[+] Repositories: {list(application_repositories.keys())}")
 
         stop_event = asyncio.Event()
         loop       = asyncio.get_running_loop()
