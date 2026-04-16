@@ -13,6 +13,7 @@ import os
 import importlib.util
 import asyncio
 import signal
+import inspect
 from graphlib import TopologicalSorter
 
 from dependency_injector import containers, providers
@@ -361,10 +362,20 @@ class Lifecycle:
         self._c = container
 
     async def start_all(self, names: list[str]):
+        loops_map = {}
         for name in names:
             obj = self._c.get(name)
             if hasattr(obj, "start"):
-                await obj.start()
+                res = await obj.start()
+                if res:
+                    m_loops = []
+                    if isinstance(res, list):
+                        m_loops.extend(res)
+                    elif asyncio.iscoroutine(res) or inspect.isawaitable(res):
+                        m_loops.append(res)
+                    if m_loops:
+                        loops_map[name] = m_loops
+        return loops_map
 
     async def stop_all(self, names: list[str]):
         for name in names:
@@ -409,6 +420,7 @@ class Loader:
         self._batch      = BatchSetup(self._container, self._builder)
         self._project    = ProjectLoader(self._container)
         self._lifecycle  = Lifecycle(self._container)
+        self.ready        = asyncio.Event()
 
     def get(self, name: str):
         return self._container.get(name)
@@ -478,7 +490,20 @@ class Loader:
 
         manager_names = [s["name"] for s in _MANAGERS]
         try:
-            await self._lifecycle.start_all(manager_names)
+            loops_map = await self._lifecycle.start_all(manager_names)
+            self.ready.set()
+            
+            # 1. Avviamo tutti i processi di background tranne il tester
+            for name, loops in loops_map.items():
+                if name != "tester":
+                    for loop_coro in loops:
+                        asyncio.create_task(loop_coro)
+            await asyncio.sleep(1)
+            # 2. Avviamo il tester per ultimo
+            if "tester" in loops_map:
+                for loop_coro in loops_map["tester"]:
+                    asyncio.create_task(loop_coro)
+                
             await stop_event.wait()
         except Exception as e:
             print(f"[!] Errore: {e}")

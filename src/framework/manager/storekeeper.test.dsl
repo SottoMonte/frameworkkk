@@ -40,6 +40,7 @@ type:scheme := {
 };
 
 storekeeper:imports.module.Storekeeper(executor:executor,persistences:loader.get('persistences'),repositories:loader.get('repositories'));
+start:storekeeper.start();
 
 "sad":print(storekeeper);
 

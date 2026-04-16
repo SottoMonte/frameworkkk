@@ -9,15 +9,20 @@ class Storekeeper():
         self.repositories = constants['repositories']
         self.maked = {}
 
+    async def start(self):
+        print("###############################")
+        for repository in self.repositories:
+            self.maked[repository] = factory.repository(**self.repositories[repository])
+
+        print("###############################",self.maked)
+
     @flow.result(inputs=("session",))
     async def preparation(self, session, storekeeper):
         repository_name = storekeeper.get('repository')
-        
-        repo_data = self.repositories.get(repository_name)
+        repository = self.maked.get(repository_name)
         operations = []
-        print(repo_data)
-        if repo_data:
-            repository = factory.repository(**repo_data)
+        #print(repo_data)
+        if repository:
             #print(repository.location)
             #print("##############",self.persistences)
             for provider in self.persistences:
@@ -33,7 +38,7 @@ class Storekeeper():
                     if profile in repository.location:
                         try:
                             operation = storekeeper.get('operation')
-                            task_args = await repository.parameters(operation=operation, provider=profile, **storekeeper)
+                            task_args = await repository.parameters(**storekeeper|{'provider':profile})
                         except Exception as e:
                             #language.framework_log("ERROR", f"Errore durante l'ottenimento dei parametri per {profile}: {e}", emoji="❌")
                             print(f"Errore durante l'ottenimento dei parametri per {profile}: {e}")
@@ -64,8 +69,9 @@ class Storekeeper():
     # overview/view/get
     async def overview(self, session, **constants):
         #print("#####OVERVIEW#####",session,constants)
-        return await self.preparation(session,storekeeper=constants)
-        #return await self.executor.first_completed(operations=operations,success=repository.results)
+        resultato = await self.preparation(session,storekeeper=constants)
+        repository,operations = resultato.get('outputs')
+        return await self.executor.first_completed(operations=operations,success=repository.results)
 
     # gather/read/get
     async def gather(self, session, storekeeper,**constants):

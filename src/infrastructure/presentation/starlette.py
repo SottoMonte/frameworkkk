@@ -652,8 +652,9 @@ class Adapter(presentation.port):
         try:
             # Crea e avvia il server Uvicorn come task asyncio
             config = Config(**uvicorn_config_params)
-            server = Server(config)
-            await server.serve()
+            self.server = Server(config)
+            # Restituiamo il loop di Starlette al Loader per l'avvio centralizzato
+            return self.server.serve()
             #await messenger.post(domain='debug', message=f"Server avviato su {uvicorn_config_params['host']}:{uvicorn_config_params['port']}")
         except Exception as e:
             # Logga errori critici all'avvio del server

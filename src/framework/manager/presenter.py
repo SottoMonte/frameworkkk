@@ -5,9 +5,13 @@ class presenter():
         self.executor = constants.get('executor')
 
     async def start(self):
+        loops = []
         for presentation in self.presentations:
             if hasattr(presentation, 'start'):
-                await presentation.start()
+                res = await presentation.start()
+                if res:
+                    loops.append(res)
+        return loops
 
     async def stop(self):
         for presentation in self.presentations:

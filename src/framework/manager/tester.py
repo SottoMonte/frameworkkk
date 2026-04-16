@@ -61,7 +61,9 @@ class tester:
 
     async def start(self):
         if '--test' in self.args:
-            await self.run()
+            # Restituiamo la coroutine al Loader, che la avvierà come task
+            # dopo che il setup di tutti i manager è completato.
+            return self.run()
 
     async def run(self, **constants):
         prefix = self._resolve_filter()
