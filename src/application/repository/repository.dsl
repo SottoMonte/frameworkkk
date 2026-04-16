@@ -11,15 +11,16 @@ flow:update_payload := (dict:constants){
 factory:repository := {
     location: {
         "GITHUB": [
-            "repos/{owner}/{name}/git/trees/{sha}?recursive=1",
-            "repos/{owner}/{name}/branches/{branch}",
-            "repos/{owner}/{name}",
-            "repos/{filter.eq.owner}/{filter.eq.name}",
-            "orgs/{filter.eq.owner}/repos",
-            "orgs/{owner}/repos",
-            "users/{filter.eq.owner}/repos",
-            "users/{owner}/repos",
+            "repos/{{owner}}/{{name}}/git/trees/{{sha}}?recursive=1",
+            "repos/{{owner}}/{{name}}/branches/{{branch}}",
+            "repos/{{owner}}/{{name}}",
+            "repos/{{filter.eq.owner}}/{{filter.eq.name}}",
+            "orgs/{{filter.eq.owner}}/repos",
+            "orgs/{{owner}}/repos",
+            "users/{{filter.eq.owner}}/repos",
+            "users/{{owner}}/repos",
             //"user/repos?per_page={perPage}&page={currentPage}",
+            "static/js/grid.js",
             "user/repos",
         ]
     };

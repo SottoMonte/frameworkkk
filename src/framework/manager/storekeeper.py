@@ -10,11 +10,8 @@ class Storekeeper():
         self.maked = {}
 
     async def start(self):
-        print("###############################")
         for repository in self.repositories:
             self.maked[repository] = factory.repository(**self.repositories[repository])
-
-        print("###############################",self.maked)
 
     @flow.result(inputs=("session",))
     async def preparation(self, session, storekeeper):

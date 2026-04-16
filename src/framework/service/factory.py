@@ -26,23 +26,25 @@ class repository:
             return template
 
     def find_best_template(self, templates, data):
-        # Trova il template con il maggior numero di placeholder risolvibili
-        valid = [
-            (t, count) for t, count in 
-            [(t, self.can_format(t, data)[1]) for t in templates] 
-            if self.can_format(t, data)[0]
-        ]
+        valid = []
+        for t in templates:
+            ok, count = self.can_format(t, data)
+            if ok:
+                valid.append((t, count))
         return max(valid, key=lambda x: x[1])[0] if valid else None
+
 
     async def results(self, **data):
         # Normalizza la struttura della transazione filtrando solo i dizionari
+        print("###############################",data)
         transaction = data.get('transaction', {})
         results = transaction.get('result', [])
-        
-        if not isinstance(results, list):
-            raise ValueError("Il campo 'result' deve essere una lista.")
+        #print("###############################",transaction)
+        #print("###############################",results)
+        #if not isinstance(results, list):
+        #    raise ValueError("Il campo 'result' deve essere una lista.")
             
-        transaction['result'] = [item for item in results if isinstance(item, dict)]
+        #transaction['result'] = [item for item in results if isinstance(item, dict)]
         return transaction
 
     #@flow.action()

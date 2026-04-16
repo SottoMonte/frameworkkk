@@ -3,12 +3,12 @@ from abc import ABC, abstractmethod
 class port(ABC):
 
     _method_decorators = {
-        "create":      flow.result(inputs=("session","storekeeper"), outputs=("session",)),
-        "read":      flow.result(inputs=("session","storekeeper"), outputs=("session",)),
-        "update":     flow.result(inputs=("session","storekeeper"), outputs=("session",)),
-        "delete":     flow.result(inputs=("session","storekeeper"), outputs=("session",)),
-        "query": flow.result(inputs=("session","storekeeper"), outputs=("session",)),
-        "view": flow.result(inputs=("session","storekeeper"), outputs=("session",)),
+        "create":      flow.result(inputs=("session","storekeeper"), ),
+        "read":      flow.result(inputs=("session","storekeeper"), ),
+        "update":     flow.result(inputs=("session","storekeeper"), ),
+        "delete":     flow.result(inputs=("session","storekeeper"),),
+        "query": flow.result(inputs=("session","storekeeper"), ),
+        #"view": flow.result(inputs=("session","storekeeper"),),
     }
 
     _seeds = []

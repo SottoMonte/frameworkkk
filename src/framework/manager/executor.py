@@ -65,7 +65,7 @@ class executor:
 
     # ── API ────────────────────────────────────────────────────────────────
 
-
+    @flow.result(safe_kwargs=True)
     async def first_completed(self, **constants):
         """Attende il primo task completato e restituisce il suo risultato."""
         operations = constants.get('operations', [])
@@ -76,9 +76,9 @@ class executor:
 
             for operation in finished:
                 transaction = operation.result()
-                if transaction:
+                if transaction.get('success'):
                     # framework_log("DEBUG", f"Transazione completata: {type(transaction)}", emoji="💼")
-                    if 'success' in constants:
+                    '''if 'success' in constants:
                         transaction = await constants['success'](transaction=transaction,profile=operation.get_name())
                     
                     # Ensure transaction is a dict to attach parameters
@@ -90,17 +90,17 @@ class executor:
                         for task in unfinished:
                             task.cancel()
                         transaction.setdefault('parameters', getattr(operation, 'parameters', {}))
-                        return transaction
+                        return transaction'''
                     
                     for task in unfinished:
                         task.cancel()
-                    return {"success": True, "data": transaction, "errors": []}
+                    return flow.success(flow.output(transaction))
 
                 operations = unfinished
 
             error_msg = "⚠️ Nessuna transazione valida completata"
             #await messenger.post(domain='debug',message=error_msg)
-            return None
+            return flow.error(error_msg)
 
     async def all_completed(self, **constants) -> Dict[str, Any]:
         tasks: List[asyncio.Future] = constants.get('tasks', [])

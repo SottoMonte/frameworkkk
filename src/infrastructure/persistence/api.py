@@ -70,18 +70,23 @@ else:
     import aiohttp
     import json
 
-    #@flow.asynchronous
-    async def backend(method,url,headers,payload):
+    @flow.result()
+    async def backend(method, url, headers, payload):
         async with aiohttp.ClientSession() as session:
             async with session.request(method=method, url=url, headers=headers, json=payload) as response:
                 if response.status in [200, 201]:
-                    data = await response.json()
-                    
-                    return {"state": True, "result": data}
+                    # Controlliamo se il server dichiara di inviare JSON
+                    if "application/json" in response.content_type:
+                        data = await response.json()
+                        return flow.success(data)
+                    else:
+                        # Se non è JSON, leggiamo come testo per capire cos'è
+                        content = await response.text()
+                        return flow.success(content)
                 else:
-                    return {"state": False, "remark": f"Request failed with status {response.status}"}
+                    return flow.error(f"Request failed with status {response.status}")
 
-class adapter():
+class adapter(persistence.port):
     
     def __init__(self, **constants):
         #print(constants,"########################")
@@ -91,6 +96,7 @@ class adapter():
         self.authorization = constants.get('authorization', 'Bearer ')
         self.accept = constants.get('accept', 'application/vnd.github+json')
 
+    @flow.result(safe_kwargs=True)
     async def request(self, **constants):
         print('request:',constants)
         headers = {
@@ -100,32 +106,29 @@ class adapter():
         location = constants.get('location','').replace('//','/')
         method = constants.get('method','')
         payload = constants.get('payload',{})
-        url = f"{self.api_url}/{location}"
-
+        url = f"{self.api_url}{location}" if location else self.api_url
+        print('url:',self.api_url)
+        print('location:',location)
         #if payload and method == 'GET':
         #    url += '?' + urlencode(payload)
         
-        ok = await backend(method,url,headers,payload)
-        print('request:',constants,'output:',ok)
-        return ok
+        return await backend(method,url,headers,payload)
         
-    @flow.result(outputs='transaction')
     async def create(self, **constants):
         return await self.request(**{'method':'POST'}|constants)
 
-    @flow.result(outputs='transaction')
     async def delete(self, **constants):
         return await self.request(**{'method':'DELETE'}|constants)
 
-    @flow.result(outputs='transaction')
     async def read(self, **constants):
         return await self.request(**{'method':'GET'}|constants)
 
-    @flow.result(outputs='transaction')
     async def update(self, **constants):
         print('update:',constants)
         return await self.request(**{'method':'PUT'}|constants)
 
-    @flow.result(outputs='transaction')
     async def view(self,**constants):
+        return await self.request(**{'method':'GET'}|constants)
+    
+    async def query(self,**constants):
         return await self.request(**{'method':'GET'}|constants)
