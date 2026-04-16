@@ -209,8 +209,23 @@ class DSLTransformer(Transformer):
     def entry(self, meta, a):
         return self._m({"type":"pair","key":a[0],"value":a[1]}, meta)
 
+    def _extract_targets(self, node):
+        if node["type"] == "pair":
+            t = node["key"].get("name")
+            v = node["value"]
+            n = v.get("name") or v.get("value")
+            return [(t, n)]
+        if node["type"] == "sequence":
+            res = []
+            for item in node["items"]: res.extend(self._extract_targets(item))
+            return res
+        if node["type"] == "var":
+            return [(None, node["name"])]
+        return []
+
     def declaration(self, meta, tree):
-        return self._m({"type":"declaration","target":tree[0],"value":tree[1]}, meta)
+        target = tree[0]
+        return self._m({"type":"declaration","target":target,"targets":self._extract_targets(target),"value":tree[1]}, meta)
 
     def function_call(self, meta, tree):
         fn = tree[0]
@@ -618,29 +633,13 @@ class Interpreter:
         value, _ = await self.visit(node["value"], env, path=val_path)
         return (key, value), env
 
-    async def _get_target(self, node):
-        if node["type"] == "pair":
-            t = node["key"].get("name")
-            v = node["value"]
-            n = v.get("name") or v.get("value")
-            return [(t, n)]
-        if node["type"] == "sequence":
-            res = []
-            for item in node["items"]:
-                res.extend(await self._get_target(item))
-            return res
-        if node["type"] == "var":
-            return [(None, node["name"])]
-        return []
-
     async def visit_declaration(self, node, env, path=""):
-        target = node["target"]
-        items = await self._get_target(target)
+        items = node.get("targets", [])
         
-        # We need a primary name for the path if possible
+        # Usiamo il primo nome per il path se presente
         target_name = items[0][1] if items else None
-        
         val_path = f"{path}.{target_name}" if path and target_name else (target_name or path)
+        
         val, _ = await self.visit(node["value"], env, path=val_path)
         meta   = node.get("meta")
         
