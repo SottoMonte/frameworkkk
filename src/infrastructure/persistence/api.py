@@ -84,11 +84,12 @@ else:
 class adapter():
     
     def __init__(self, **constants):
-        self.config = constants['config']
-        self.api_url = self.config['url']
-        self.token = self.config['token']
-        self.authorization = self.config['authorization'] if 'authorization' in self.config else 'token '
-        self.accept = self.config['accept'] if 'accept' in self.config else 'application/vnd.github+json'
+        #print(constants,"########################")
+        self.name = constants.get('provider')
+        self.api_url = constants.get('url')
+        self.token = constants.get('token') or constants.get('key')
+        self.authorization = constants.get('authorization', 'Bearer ')
+        self.accept = constants.get('accept', 'application/vnd.github+json')
 
     async def request(self, **constants):
         print('request:',constants)
@@ -108,23 +109,23 @@ class adapter():
         print('request:',constants,'output:',ok)
         return ok
         
-    @flow.asynchronous(outputs='transaction')
+    @flow.result(outputs='transaction')
     async def create(self, **constants):
         return await self.request(**{'method':'POST'}|constants)
 
-    @flow.asynchronous(outputs='transaction')
+    @flow.result(outputs='transaction')
     async def delete(self, **constants):
         return await self.request(**{'method':'DELETE'}|constants)
 
-    @flow.asynchronous(outputs='transaction')
+    @flow.result(outputs='transaction')
     async def read(self, **constants):
         return await self.request(**{'method':'GET'}|constants)
 
-    @flow.asynchronous(outputs='transaction')
+    @flow.result(outputs='transaction')
     async def update(self, **constants):
         print('update:',constants)
         return await self.request(**{'method':'PUT'}|constants)
 
-    @flow.asynchronous(outputs='transaction')
+    @flow.result(outputs='transaction')
     async def view(self,**constants):
         return await self.request(**{'method':'GET'}|constants)

@@ -18,7 +18,11 @@ url = "https://jarmungkgwudddmzuuxu.supabase.co"
 key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
 db_url = "postgresql://postgres.jarmungkgwudddmzuuxu:ELAldleEwVLOUJOo@aws-1-eu-north-1.pooler.supabase.com:6543/postgres"
 
-#ELAldleEwVLOUJOo
+[persistence.GITHUB]
+adapter = "api"
+url = "http://localhost:5000/"
+key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
+
 
 [amessage.backend]
 adapter = "redis"

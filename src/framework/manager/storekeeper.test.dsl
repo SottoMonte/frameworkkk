@@ -39,7 +39,7 @@ type:scheme := {
     };
 };
 
-storekeeper:imports.module.storekeeper(executor:executor,persistences:[],repositories:loader.get('repositories'));
+storekeeper:imports.module.Storekeeper(executor:executor,persistences:loader.get('persistences'),repositories:loader.get('repositories'));
 
 "sad":print(storekeeper);
 

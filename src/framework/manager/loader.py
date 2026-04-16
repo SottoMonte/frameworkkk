@@ -105,7 +105,9 @@ class ModuleLoader:
         if not ok:
             ok = getattr(mod, name.capitalize(), None)
         if not ok:
-            return getattr(mod, 'Adapter', None)
+            ok = getattr(mod, 'Adapter', None)
+        if not ok:
+            ok = getattr(mod, 'adapter', None)
         return ok
 
 
@@ -180,12 +182,17 @@ class BatchSetup:
                 services.append(name)
 
             spec = registry[name]
-            obj  = await self._b.build(spec)
+            try:
+                obj  = await self._b.build(spec)
 
-            if spec.get("is_list"):
-                self._c.append_to_port(spec["port"], obj)
-            else:
-                self._c.set(name, obj)
+                if spec.get("is_list"):
+                    self._c.append_to_port(spec["port"], obj)
+                else:
+                    self._c.set(name, obj)
+            except Exception as e:
+                print(f"[!] Errore durante il caricamento di '{name}': {e}")
+                # traceback.print_exc()
+                continue
 
         print(f"[+] Adapters: {adapters}")
         print(f"[+] Managers: {managers}")
@@ -314,21 +321,22 @@ class ProjectLoader:
         data = self._read_toml(config_path)
         self._c.config.from_dict(data)
         return [
-            self._make_spec(port_name, cfg)
+            self._make_spec(port_name, provider_name, cfg)
             for port_name, services in data.items()
             if port_name in PORT_REGISTRY
-            for cfg in services.values()
+            for provider_name, cfg in services.items()
         ]
 
     def get_config(self):
         return self._c.config()
 
-    def _make_spec(self, port: str, cfg: dict) -> dict:
+    def _make_spec(self, port: str, provider: str, cfg: dict) -> dict:
         adapter = cfg.get("adapter")
+        cfg["provider"] = provider
         return {
-            "name":     f"{port.lower()}.{adapter.lower()}",
+            "name":     f"{port.lower()}.{provider.lower()}",
             "path":     f"src/infrastructure/{port}/{adapter}.py",
-            "mod_deps": [port],
+            "mod_deps": [port, "flow"],
             "cls_deps": PORT_REGISTRY[port],
             "port":     port,
             "is_class": True,
@@ -424,7 +432,7 @@ class Loader:
 
     async def bootstrap(self, args):
         print("[*] Framework bootstrapped. Running...")
-        project_specs = self._project.load("pyproject.toml") if '--test' not in args else []
+        project_specs = self._project.load("pyproject.toml") 
         # nota: '--test' con filtro (es. '--test managers') non avvia il server,
         # l'argomento successivo è consumato dal tester e non interferisce qui.
         config = self._project.get_config()
