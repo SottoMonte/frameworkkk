@@ -56,18 +56,16 @@ class Storekeeper():
                         print(f"Provider {provider} non ha un profilo trovato.")
                 except Exception as e:
                     #language.framework_log("ERROR", f"Errore imprevisto durante la preparazione per il provider {provider}: {e}", emoji="🤯")
-                    print(e)
+                    return flow.error(f"Errore imprevisto durante la preparazione per il provider {provider}: {e}")
             return flow.success((repository, operations))
         else:
-            print(f"[!] Repository '{repository}' non trovato o dati non disponibili.")
-
-        return flow.success(storekeeper)
+            return flow.error(f"Repository '{repository}' non trovato o dati non disponibili.")
     
     # overview/view/get
     async def overview(self, session, **constants):
         #print("#####OVERVIEW#####",session,constants)
         resultato = await self.preparation(session,storekeeper=constants)
-        repository,operations = resultato.get('outputs')
+        repository,operations = flow.output(resultato)
         return await self.executor.first_completed(operations=operations,success=repository.results)
 
     # gather/read/get

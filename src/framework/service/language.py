@@ -19,9 +19,10 @@ start: dictionary | [item (item)*] -> dictionary_node
 
 dictionary: "{" [item (item)*] "}" -> dictionary_node
 
-item: (pair|type_sequence) ASSIGN_OP sequence ";"? 
-    | (atom|sequence) COLON_OP sequence ";"?
-    | function_call _ARROW sequence ";"? -> task
+?item: declaration | entry | task
+declaration: (entry|type_sequence) ":=" sequence ";"?
+entry: (atom|sequence) ":" sequence ";"?
+task: function_call "->" sequence ";"? -> task
 
 ?type_sequence: pair ("," pair)* ","? -> sequence
 ?sequence: expr ("," expr)* ","?
@@ -205,11 +206,11 @@ class DSLTransformer(Transformer):
     def pair(self, meta, a):
         return self._m({"type":"pair","key":a[0],"value":a[1]}, meta)
 
-    def item(self, meta, tree):
-        left, sep, right = tree[0], str(tree[1]), tree[2]
-        if sep == ":=":
-            return self._m({"type":"declaration","target":left,"value":right}, meta)
-        return self._m({"type":"pair","key":left,"value":right}, meta)
+    def entry(self, meta, a):
+        return self._m({"type":"pair","key":a[0],"value":a[1]}, meta)
+
+    def declaration(self, meta, tree):
+        return self._m({"type":"declaration","target":tree[0],"value":tree[1]}, meta)
 
     def function_call(self, meta, tree):
         fn = tree[0]
@@ -617,33 +618,43 @@ class Interpreter:
         value, _ = await self.visit(node["value"], env, path=val_path)
         return (key, value), env
 
+    async def _get_target(self, node):
+        if node["type"] == "pair":
+            t = node["key"].get("name")
+            v = node["value"]
+            n = v.get("name") or v.get("value")
+            return [(t, n)]
+        if node["type"] == "sequence":
+            res = []
+            for item in node["items"]:
+                res.extend(await self._get_target(item))
+            return res
+        if node["type"] == "var":
+            return [(None, node["name"])]
+        return []
+
     async def visit_declaration(self, node, env, path=""):
-        # We need the key first to build the path for the value
         target = node["target"]
-        if target["type"] == "pair":
-             target_name = target["value"]["name"]
-        elif target["type"] == "var":
-             target_name = target["name"]
-        else:
-             target_name = None # For complex / tuple destructuring
-             
+        items = await self._get_target(target)
+        
+        # We need a primary name for the path if possible
+        target_name = items[0][1] if items else None
+        
         val_path = f"{path}.{target_name}" if path and target_name else (target_name or path)
         val, _ = await self.visit(node["value"], env, path=val_path)
-        key, _ = await self.visit(node["target"], env, path=path)
         meta   = node.get("meta")
-        items  = key if isinstance(key[0], tuple) else [key]
-        if node["target"]["type"] == "pair":
-            tipo, name = node["target"]["key"]["name"], node["target"]["value"]["name"]
+        
+        if len(items) == 1:
+            tipo, name = items[0]
             if tipo == "type": self.custom_types[name] = val; return (name, val), env
             return (name, await self._check(val, tipo, meta, name, path=val_path)), env
+            
         keys, values = [], []
-        for i, _ in enumerate(items):
-            tipo = node["target"]["items"][i]["key"]["name"]
-            name = node["target"]["items"][i]["value"]["name"]
+        for i, (tipo, name) in enumerate(items):
             if tipo == "type": self.custom_types[name] = val
             keys.append(name)
             item_val_path = f"{val_path}[{i}]" if val_path else f"[{i}]"
-            values.append(await self._check(val[i] if isinstance(val, tuple) else val, tipo, meta, name, path=item_val_path))
+            values.append(await self._check(val[i] if isinstance(val, (tuple, list)) else val, tipo, meta, name, path=item_val_path))
         return (tuple(keys), tuple(values)), env
 
     # ── dict ─────────────────────────────────────────────────────────────────

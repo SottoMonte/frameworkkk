@@ -34,11 +34,9 @@ class repository:
         return max(valid, key=lambda x: x[1])[0] if valid else None
 
 
-    async def results(self, **data):
+    async def results(self, transaction,profile):
         # Normalizza la struttura della transazione filtrando solo i dizionari
-        print("###############################",data)
-        transaction = data.get('transaction', {})
-        results = transaction.get('result', [])
+        
         #print("###############################",transaction)
         #print("###############################",results)
         #if not isinstance(results, list):
@@ -79,5 +77,7 @@ class repository:
 
         # 4. Formattazione finale del percorso
         path = await scheme.format(template, **combined)
+
+        #print("path", combined)
         
         return process | {'location': path, 'provider': profile, 'payload': payload, 'filter': inputs.get('filter', {})}

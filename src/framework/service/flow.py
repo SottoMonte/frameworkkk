@@ -35,6 +35,8 @@ def success(v, t0=None): return _res(True,  v,    None, t0)
 def error(e,   t0=None): return _res(False, None, e,    t0)
 def output(v):           return v.get("outputs") if isinstance(v, dict) and v.get("success") is not None else v
 def is_result(v):        return isinstance(v, dict) and v.get("success") is not None
+def flux(v): return success(output(v)) if v.get("success") is not None else error(v.get("errors"))
+def check(v): return v.get("success") is not None
 
 # ─────────────────────────────────────────────
 # HELPERS

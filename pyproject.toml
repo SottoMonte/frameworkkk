@@ -18,9 +18,9 @@ url = "https://jarmungkgwudddmzuuxu.supabase.co"
 key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
 db_url = "postgresql://postgres.jarmungkgwudddmzuuxu:ELAldleEwVLOUJOo@aws-1-eu-north-1.pooler.supabase.com:6543/postgres"
 
-[persistence.GITHUB]
+[persistence.API]
 adapter = "api"
-url = "http://localhost:5000/"
+url = "https://jsonplaceholder.typicode.com/"
 key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
 
 

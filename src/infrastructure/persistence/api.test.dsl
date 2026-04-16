@@ -7,130 +7,51 @@ exports: {
     'foreach': imports.storekeeper.foreach;
 };
 
-type:API_user := {
-    "id": {
-        "type": "integer";
-        "default": 0;
-    };
-    "name": {
+type:scheme := {
+    "action": {
         "type": "string";
-        "default": "";
+        "default": "unknown";
     };
-    "email": {
+    "inputs": {
+        "type": "list";
+        "default": [];
+    };
+    "outputs": {
+        "type": "list";
+        "default": [];
+        "convert": list;
+    };
+    "errors": {
+        "type": "list";
+        "default": [];
+    };
+    "success": {
+        "type": "boolean";
+        "default": false;
+    };
+    "time": {
         "type": "string";
-        "default": "";
+        "default": "0";
     };
-    "username": {
+    "worker": {
         "type": "string";
-        "default": "";
-    };
-    "address": {
-        "type": "dict";
-        "schema": {
-            "street": { "type": "string"; "default": "" };
-            "suite": { "type": "string"; "default": "" };
-            "city": { "type": "string"; "default": "" };
-            "zipcode": { "type": "string"; "default": "" };
-            "geo": { "type": "dict"; "default": {} };
-        };
-        "default": {};
-    };
-    "phone": {
-        "type": "string";
-        "default": "";
-    };
-    "website": {
-        "type": "string";
-        "default": "";
-    };
-    "company": {
-        "type": "dict";
-        "schema": {
-            "name": { "type": "string"; "default": "" };
-            "catchPhrase": { "type": "string"; "default": "" };
-            "bs": { "type": "string"; "default": "" };
-        };
-        "default": {};
+        "default": "unknown";
     };
 };
 
-API:{
-    location: {
-        "API": [
-            //"posts",
-            //"posts/{id}",
-            //"posts/{id}/comments",
-            "users",
-            "users/{id}",
-            "users/{id}/posts",
-            "users/{id}/albums",
-            "users/{id}/todos",
-            "users?id={{filter.eq.id}}",
-            //"albums",
-            //"albums/{id}",
-            //"albums/{id}/photos",
-            //"photos",
-            //"photos/{id}",
-            //"comments",
-            //"comments/{id}",
-            //"todos",
-            //"todos/{id}",
-        ]
-    };
-    
-    model: {};
-    
-    values: {
-        //"tree": { "MODEL": build_tree_dict };
-    };
-    
-    mapper: {
-        "sha":{"GITHUB":"commit.commit.tree.sha"};
-        "name":{"GITHUB":"name"};
-        "branch":{"GITHUB":"default_branch"};
-        "owner":{"GITHUB":"owner.login"};
-        "type":{"REPOSITORY":"type"};
-        //"content":{"REPOSITORY":"content"};
-        "created":{"GITHUB":"created_at"};
-        "updated":{"GITHUB":"updated_at"};
-        "language":{"REPOSITORY":"language"};
-        //"description":{"REPOSITORY":"description"},
-        "visibility":{"GITHUB":"private"};
-        "tree":{"GITHUB":"tree"};
-        "stars":{"GITHUB":"stargazers_count"};
-        "forks":{"GITHUB":"forks_count"};
-    };
-    
-    payloads: {
-        //"view": view;
-    };
-    
-    functions: {
-        //"update": update_payload;
-    };
-};
-
-
-storekeeper:imports.module.Storekeeper(executor:executor,persistences:loader.get('persistences'),repositories:{'API':API});
+storekeeper:imports.module.Storekeeper(executor:executor,persistences:loader.get('persistences'),repositories:loader.get('repositories'));
 start:storekeeper.start();
+
+"sad":print(storekeeper);
 
 function:success_function := (str:y){x:y;}(str:x);
 
 tuple:test_suite := (
     {
         "action": storekeeper.overview;
-        "inputs":{session:[];storekeeper:{'operation':'view';'repository':'API';'filter':{'eq':{'id':1}}}};
-        API_user:"outputs" := {
-            "id": 1;
-            "name": "Leanne Graham";
-            "username": "Bret";
-            "email": "Sincere@april.biz";
-            "address": {"street": "Kulas Light"; "suite": "Apt. 556"; "city": "Gwenborough"; "zipcode": "92998-3874"; "geo": {"lat": "-37.3159"; "lng": "81.1496"}};
-            "phone": "1-770-736-8031 x56442";
-            "website": "hildegard.org";
-            "company": {"name": "Romaguera-Crona"; "catchPhrase": "Multi-layered client-server neural-net"; "bs": "harness real-time e-markets"}
-        };
-        "assert": @received.outputs.0 == @expected & @received.success == true;
+        "inputs":{session:[];storekeeper:{'operation':'view';'repository':'repository'}};
+        "outputs": [];
+        "assert": @received.outputs == @expected & @received.success == true;
         "note": "overview";
     },
     /*{
