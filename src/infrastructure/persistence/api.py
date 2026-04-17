@@ -107,7 +107,7 @@ class adapter(persistence.port):
         method = constants.get('method','')
         payload = constants.get('payload',{})
         url = f"{self.api_url}{location}" if location else self.api_url
-        print('url:',self.api_url)
+        print('url:',url)
         print('location:',location)
         #if payload and method == 'GET':
         #    url += '?' + urlencode(payload)

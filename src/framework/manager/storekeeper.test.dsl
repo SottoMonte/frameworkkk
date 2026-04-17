@@ -10,19 +10,19 @@ exports: {
 type:API_user := {
     "id": {
         "type": "integer";
-        "default": 0;
+        "required": true;
     };
     "name": {
         "type": "string";
-        "default": "";
+        "required": true;
     };
     "email": {
         "type": "string";
-        "default": "";
+        "required": true;
     };
     "username": {
         "type": "string";
-        "default": "";
+        "required": true;
     };
     "address": {
         "type": "dict";
@@ -37,11 +37,11 @@ type:API_user := {
     };
     "phone": {
         "type": "string";
-        "default": "";
+        "required": true;
     };
     "website": {
         "type": "string";
-        "default": "";
+        "required": true;
     };
     "company": {
         "type": "dict";
@@ -61,11 +61,11 @@ API:{
             //"posts/{id}",
             //"posts/{id}/comments",
             "users",
-            "users/{id}",
-            "users/{id}/posts",
-            "users/{id}/albums",
-            "users/{id}/todos",
-            "users?id={{filter.eq.id}}",
+            "users?{% for key, value in filter.eq.items() %}{{ key }}={{ value }}{% if not loop.last %}&{% endif %}{% endfor %}",
+            "users/{{filter.eq.id}}",
+            "users/{{filter.eq.id}}/posts",
+            "users/{{filter.eq.id}}/albums",
+            "users/{{filter.eq.id}}/todos",
             //"albums",
             //"albums/{id}",
             //"albums/{id}/photos",
@@ -129,6 +129,32 @@ tuple:test_suite := (
             "phone": "1-770-736-8031 x56442";
             "website": "hildegard.org";
             "company": {"name": "Romaguera-Crona"; "catchPhrase": "Multi-layered client-server neural-net"; "bs": "harness real-time e-markets"}
+        };
+        "assert": @received.outputs.0 == @expected & @received.success == true;
+        "note": "overview";
+    },
+    {
+        "action": storekeeper.overview;
+        "inputs":{session:[];storekeeper:{'operation':'view';'repository':'API';'filter':{'eq':{'name':"Ervin Howell"}}}};
+        API_user:"outputs" := {
+            "id": 2;
+            "name": "Ervin Howell";
+            "username": "Antonette";
+            "email": "Shanna@melissa.tv";
+            "address": {
+                "street": "Victor Plains";
+                "suite": "Suite 879";
+                "city": "Wisokyburgh";
+                "zipcode": "90566-7771";
+                "geo": {"lat": "-43.9509"; "lng": "-34.4618"}
+            };
+            "phone": "010-692-6593 x09125";
+            "website": "anastasia.net";
+            "company": {
+                "name": "Deckow-Crist";
+                "catchPhrase": "Proactive didactic contingency";
+                "bs": "synergize scalable supply-chains"
+            }
         };
         "assert": @received.outputs.0 == @expected & @received.success == true;
         "note": "overview";

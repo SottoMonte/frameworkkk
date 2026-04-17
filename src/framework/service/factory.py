@@ -1,83 +1,84 @@
 import re
-import framework.service.scheme as scheme
-import framework.service.flow as flow
+from urllib.parse import quote
+from jinja2 import Environment, meta
+
+
 
 class repository:
     def __init__(self, **constants):
         self.location = constants.get('location', {})
-        self.mapper = constants.get('mapper', {})
-        self.values = constants.get('values', {})
         self.actions = constants.get('actions', {})
         self.schema = constants.get('model')
 
-    def _get_placeholders(self, template):
-        return re.findall(r'\{\{\s*([\w\.]+)\s*\}\}', template)
-
-    def can_format(self, template, data):
-        placeholders = self._get_placeholders(template)
-        # Verifica se tutti i placeholder sono risolvibili (valore non None)
-        results = [scheme.get(data, key) is not None for key in placeholders]
-        return all(results), len(placeholders)
-
-    def do_format(self, template, data):
+    def get_requirements(self, template_str):
+        """Estrae i requisiti (variabili globali) da un template Jinja2."""
         try:
-            return template.format_map(data)
-        except KeyError:
-            return template
+            if not template_str or not isinstance(template_str, str) or '{' not in template_str:
+                return []
+            return list(meta.find_undeclared_variables(jinja.parse(template_str)))
+        except Exception:
+            return re.findall(r'\{(\w+)\}', template_str)
 
-    def find_best_template(self, templates, data):
-        valid = []
-        for t in templates:
-            ok, count = self.can_format(t, data)
-            if ok:
-                valid.append((t, count))
-        return max(valid, key=lambda x: x[1])[0] if valid else None
-
-
-    async def results(self, transaction,profile):
-        # Normalizza la struttura della transazione filtrando solo i dizionari
+    def select(self, templates, data):
+        """
+        Sceglie il miglior template dalla lista in base ai dati forniti.
+        Ritorna il template migliore o None.
+        """
+        best_t, max_score = None, -1
         
-        #print("###############################",transaction)
-        #print("###############################",results)
-        #if not isinstance(results, list):
-        #    raise ValueError("Il campo 'result' deve essere una lista.")
+        for t in (templates if isinstance(templates, list) else [templates]):
+            reqs = self.get_requirements(t)
+            if not reqs:
+                score = 0.1
+            else:
+                if all(scheme.get(data, r) is not None for r in reqs):
+                    score = len(reqs) + (0.5 if '{%' in t else 0)
+                else:
+                    score = -1
             
-        #transaction['result'] = [item for item in results if isinstance(item, dict)]
+            if score > max_score:
+                max_score, best_t = score, t
+                
+        return best_t if max_score >= 0 else None
+
+    async def results(self, transaction, profile):
+        """Hook opzionale per post-processing."""
         return transaction
 
-    #@flow.action()
     async def parameters(self, **inputs):
-        # 1. Recupera l'action (payload + logica)
-        ops = inputs.get('operation')
+        """Prepara i parametri della rotta risolvendo il template tramite Scheme."""
+        
+        operation = inputs.get('operation')
         profile = inputs.get('provider')
-        action = self.actions.get(ops, {})
+        action = self.actions.get(operation, {})
         
-        payload = action.get('payload')
-        payload = payload(**inputs.get('payload', {})) if callable(payload) else inputs.get('payload', {})
-        process = action.get('logic')
-        process = process(**inputs) if callable(process) else inputs
+        # 1. Definizione Payload e Logica
+        payload_fn = action.get('payload')
+        payload = payload_fn(**inputs.get('payload', {})) if callable(payload_fn) else inputs.get('payload', {})
         
-        # 2. Trasformazione dati via self.values
-        processed_values = {}
-        for key, transformer in self.values.items():
-            if key in inputs:
-                #processed_values[key] = await transformer.get('MODEL', lambda x: x)(inputs[key])
-                pass
+        logic_fn = action.get('logic')
+        process = logic_fn(**inputs) if callable(logic_fn) else inputs
         
-        # 3. Risoluzione template
-        combined = {**inputs, **payload, **processed_values}
-        #print(combined)
+        # 2. Selezione dinamica del Template
+        combined = {**inputs, **payload, **process}
         templates = self.location.get(profile, [])
-        #print(templates)
-        template = self.find_best_template(templates, combined)
-        #print(template)
+        template = self.select(templates, combined)
         
         if not template:
-            raise ValueError(f"Nessun template valido per: {profile}")
+            raise ValueError(f"Nessun template compatibile trovato per {profile}. Dati: {list(combined.keys())}")
 
-        # 4. Formattazione finale del percorso
+        # 3. Formattazione e Encoding
         path = await scheme.format(template, **combined)
-
-        #print("path", combined)
         
-        return process | {'location': path, 'provider': profile, 'payload': payload, 'filter': inputs.get('filter', {})}
+        if '?' in path:
+            base, query = path.split('?', 1)
+            path = f"{base}?{quote(query, safe='=&%')}"
+        else:
+            path = quote(path)
+            
+        return process | {
+            'location': path, 
+            'provider': profile, 
+            'payload': payload, 
+            'filter': inputs.get('filter', {})
+        }

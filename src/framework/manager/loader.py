@@ -95,9 +95,16 @@ class ModuleLoader:
     def _exec(name: str, path: str, inject: dict):
         spec = importlib.util.spec_from_file_location(name, path)
         mod  = importlib.util.module_from_spec(spec)
-        for k, v in inject.items():
-            setattr(mod, k, v)
+        
+        # Doppia Iniezione (Native Power)
+        # 1. Prima dell'esecuzione per supportare definizioni top-level
+        for k, v in inject.items(): setattr(mod, k, v)
+            
         spec.loader.exec_module(mod)
+        
+        # 2. Dopo l'esecuzione per garantire la persistenza contro sovrascritture o reset del namespace
+        for k, v in inject.items(): setattr(mod, k, v)
+        
         return mod
 
     @staticmethod
@@ -135,6 +142,7 @@ class Builder:
 
         for k, v in kwargs.items():
             setattr(mod, k, v)
+                
         return mod
 
     def _resolve(self, names: list[str]) -> dict:
@@ -225,10 +233,7 @@ class ProjectLoader:
                             print(f"[!] Errore sintassi JSON in {filename}: {e}")
                             continue
 
-        env = Environment(loader=BaseLoader())
-        if 'tojson' not in env.filters:
-            env.filters['tojson'] = lambda obj: json.dumps(obj)
-        env.globals['uuid4'] = lambda: str(uuid.uuid4())
+        env = self._c.get('jinja')
         
         cache = {}
         def resolve_schema(name):
@@ -393,7 +398,7 @@ class Lifecycle:
 
 _SERVICES: list[dict] = [
     {"name": "container",       "path": "src/framework/service/container.py",      "mod_deps": [],                   "is_class": False, "config": {}},
-    {"name": "scheme",          "path": "src/framework/service/scheme.py",         "mod_deps": [],                   "is_class": False, "config": {}},
+    {"name": "scheme",          "path": "src/framework/service/scheme.py",         "mod_deps": ["jinja"],            "is_class": False, "config": {}},
     {"name": "flow",            "path": "src/framework/service/flow.py",           "mod_deps": ["scheme", "loader"], "is_class": False, "config": {}},
     {"name": "language",        "path": "src/framework/service/language.py",       "mod_deps": ["scheme", "flow"],   "is_class": False, "config": {}},
     {"name": "interpreter",     "path": "src/framework/service/language.py",       "mod_deps": ["scheme", "flow"],   "is_class": True,  "config": {}},
@@ -402,7 +407,7 @@ _SERVICES: list[dict] = [
     {"name": "presentation",    "path": "src/framework/port/presentation.py",      "mod_deps": ["scheme","loader"],  "is_class": False, "config": {}},
     {"name": "persistence",     "path": "src/framework/port/persistence.py",       "mod_deps": ["flow"],             "is_class": False, "config": {}},
     {"name": "authentication",  "path": "src/framework/port/authentication.py",    "mod_deps": ["flow"],             "is_class": False, "config": {}},
-    {"name": "factory",         "path": "src/framework/service/factory.py",        "mod_deps": ["flow"],             "is_class": False, "config": {}},
+    {"name": "factory",         "path": "src/framework/service/factory.py",        "mod_deps": ["flow", "jinja", "scheme"], "is_class": False, "config": {}},
 ]
 
 
@@ -421,6 +426,16 @@ class Loader:
         self._project    = ProjectLoader(self._container)
         self._lifecycle  = Lifecycle(self._container)
         self.ready        = asyncio.Event()
+
+        # Inizializzazione Ambiente Jinja2 Centrale
+        self._jinja = Environment(loader=BaseLoader())
+        self._jinja.filters['tojson'] = lambda obj: json.dumps(obj)
+        self._jinja.globals['uuid4'] = lambda: str(uuid.uuid4())
+        
+        # Filtro 'get' nativo: delegazione pigra allo Scheme Service
+        self._jinja.filters['get'] = lambda d, k, default=None: self._container.get('scheme').get(d, k, default)
+        
+        self._container.set('jinja', self._jinja)
 
     def get(self, name: str):
         return self._container.get(name)

@@ -4,7 +4,7 @@ import tomli
 import hashlib
 import copy
 from urllib.parse import urlparse, urlencode
-from jinja2 import Environment
+from jinja2 import Environment, meta
 from cerberus import Validator
 from collections.abc import Mapping
 
@@ -39,11 +39,12 @@ async def convert(target, output,input=''):
     except Exception as e:
         raise ValueError(f"Errore conversione: {e}")
 
-async def format(target ,**constants):
+async def format(target, **constants):
+    """Formatta una stringa usando Jinja2 e l'environment condiviso (jinja)."""
     try:
-        jinjaEnv = Environment()
-        jinjaEnv.filters['get'] = lambda d, k, default=None: d.get(k, default) if isinstance(d, (dict, Mapping)) else default
-        template = jinjaEnv.from_string(target)
+        if not target or not isinstance(target, str) or '{' not in target:
+            return target
+        template = jinja.from_string(target)
         return template.render(constants)
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
@@ -124,11 +125,19 @@ def _format_validation_errors(errors: dict, schema: dict, data: dict) -> list:
     return result
 
 async def normalize(value, schema, mode='full'):
+    if isinstance(value, list):
+        results = [await normalize(item, schema, mode) for item in value]
+        # Se ci sono errori in qualche elemento, aggregali
+        all_data = [r["data"] for r in results if r["data"] is not None]
+        all_errors = [r["errors"] for r in results if r["errors"] is not None]
+        return {"data": all_data, "errors": all_errors if all_errors else None}
+
     value = value or {}
     if not isinstance(schema, Mapping):
         raise TypeError("Lo schema deve essere un dizionario valido per Cerberus.", schema)
     if not isinstance(value, Mapping):
-        raise TypeError("I dati devono essere un dizionario valido per Cerberus.", value)
+        # Se non è una mappa e non era una lista, allora è un errore di tipo
+        return {"data": None, "errors": [{"field": "_root", "message": "Expected dict or list"}]}
 
     processed_value = value
 
