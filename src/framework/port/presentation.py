@@ -500,14 +500,15 @@ class port(ABC):
             f"src/application/view/component/{tag}.xml"
         ]'''
 
-        ROOT_DIR = pathlib.Path(__file__).parent.parent.parent.parent.absolute()
+        base_path = os.environ.get("BASE_PATH", os.getcwd()) 
 
-        component_paths = [
-            os.path.join(ROOT_DIR, "src", "application", "view", "component", f"{tag}.xml"),
-            os.path.join(ROOT_DIR, "src", "application", "view", "layout", f"{tag}.xml"), # Aggiungi layout qui!
+        # 2. Definiamo dove cercare i componenti (Percorso Assoluto per il controllo)
+        search_paths = [
+            os.path.join(base_path, "src/application/view/component", f"{tag}.xml"),
+            os.path.join(base_path, "src/application/view/layout", f"{tag}.xml")
         ]
 
-        for path in component_paths:
+        for path in search_paths:
             if os.path.exists(path):
                 # Rimuove "src/" per passarlo a render_template
                 # poiché render_template aggiunge già "src/"
