@@ -1,7 +1,7 @@
 # Stage 1: Build
 FROM python:3-alpine AS builder
 
-ARG REPO_URL="https://github.com/ldmtecknoit-lab/e-commerce"
+ARG REPO_URL="https://github.com/SottoMonte/frameworkkk"
 
 WORKDIR /app
 
