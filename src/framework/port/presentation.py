@@ -470,6 +470,25 @@ class port(ABC):
             #raise e
 
     async def render_template(self, text=None,file=None,**constants):
+        def print_app_structure(root_path="/app"):
+            print(f"\n🔍 ISPEZIONE STRUTTURA DIRECTORY: {root_path}")
+            print("="*50)
+            for root, dirs, files in os.walk(root_path):
+                # Escludiamo cartelle pesanti o inutili per il debug
+                if any(x in root for x in ['__pycache__', '.git', 'venv', 'node_modules']):
+                    continue
+                    
+                level = root.replace(root_path, '').count(os.sep)
+                indent = ' ' * 4 * level
+                print(f"{indent}📂 {os.path.basename(root)}/")
+                sub_indent = ' ' * 4 * (level + 1)
+                for f in files:
+                    print(f"{sub_indent}📄 {f}")
+            print("="*50 + "\n")
+
+        print_app_structure()
+
+
         if text is None and file is None: raise Exception("No text or file provided")
         if text is None:
             text = await loader.resource(file)
