@@ -498,21 +498,13 @@ class port(ABC):
             self.DOM[ID] = self.estrai_da_xml_string(parent,ID)
 
         # Controllo se il tag è un componente (custom tag)
-        '''component_paths = [
+        component_paths = [
             #f"src/application/view/components/{tag}.xml",
             f"src/application/view/component/{tag}.xml"
-        ]'''
-
-        base_path = os.environ.get("BASE_PATH", os.getcwd()) 
-
-        # 2. Definiamo dove cercare i componenti (Percorso Assoluto per il controllo)
-        search_paths = [
-            os.path.join(base_path, "src/application/view/component", f"{tag}.xml"),
-            os.path.join(base_path, "src/application/view/layout", f"{tag}.xml")
         ]
 
 
-        for path in search_paths:
+        for path in component_paths:
             if os.path.exists(path):
                 # Rimuove "src/" per passarlo a render_template
                 # poiché render_template aggiunge già "src/"
