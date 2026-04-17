@@ -53,7 +53,7 @@ roles:{
 
 routes: {
     // Home
-    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"landing/index.xml"; controller:"tris" };
+    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"cartoleria.xml"; controller:"tris" };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };
     // Auth
     route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"auth/login.xml" };

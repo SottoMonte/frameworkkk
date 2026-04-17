@@ -12,6 +12,9 @@ import os
 from urllib.parse import urlparse, parse_qs, urljoin
 from enum import Enum
 
+import os
+import pathlib
+
 class Tag(Enum):
     WINDOW = "window"
     TEXT = "text"
@@ -492,9 +495,16 @@ class port(ABC):
             self.DOM[ID] = self.estrai_da_xml_string(parent,ID)
 
         # Controllo se il tag è un componente (custom tag)
-        component_paths = [
+        '''component_paths = [
             #f"src/application/view/components/{tag}.xml",
             f"src/application/view/component/{tag}.xml"
+        ]'''
+
+        ROOT_DIR = pathlib.Path(__file__).parent.parent.parent.parent.absolute()
+
+        component_paths = [
+            os.path.join(ROOT_DIR, "src", "application", "view", "component", tag_file),
+            os.path.join(ROOT_DIR, "src", "application", "view", "layout", tag_file), # Aggiungi layout qui!
         ]
 
         for path in component_paths:
