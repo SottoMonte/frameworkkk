@@ -512,7 +512,8 @@ class port(ABC):
             if os.path.exists(path):
                 # Rimuove "src/" per passarlo a render_template
                 # poiché render_template aggiunge già "src/"
-                relative_path = path.replace("src/", "", 1)
+                #relative_path = path.replace("src/", "", 1)
+                relative_path = path
                 
                 # 1. Cattura i nodi figli originali come stringa XML pura (non renderizzata)
                 # Questo evita che il parser XML veda tag HTML durante l'espansione
