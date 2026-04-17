@@ -483,7 +483,9 @@ class port(ABC):
             return view
         except Exception as e:
             print(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
-            raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
+            raise e
+            #raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
+            
 
     async def render_node(self, parent,node, context):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
@@ -509,6 +511,7 @@ class port(ABC):
             os.path.join(base_path, "src/application/view/component", f"{tag}.xml"),
             os.path.join(base_path, "src/application/view/layout", f"{tag}.xml")
         ]
+
 
         for path in search_paths:
             if os.path.exists(path):
