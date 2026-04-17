@@ -446,6 +446,10 @@ class Loader:
         return self._container.get("models").get(name)
 
     async def resource(self, path: str):
+        base_path = os.environ.get("BASE_PATH", os.getcwd()) 
+        if not path.startswith("src"):
+            path = "src/" + path
+        path = base_path + "/" + path
         if not os.path.exists(path):
             raise FileNotFoundError(f"Risorsa non trovata: {path}")
 
