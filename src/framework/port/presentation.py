@@ -467,11 +467,12 @@ class port(ABC):
             print(f"[+] Routes: {list(self.routes.keys())}")
         except Exception as e:
             print(f"[!] Error: {e}")
+            #raise e
 
     async def render_template(self, text=None,file=None,**constants):
         if text is None and file is None: raise Exception("No text or file provided")
         if text is None:
-            text = await loader.resource("src/" + file)
+            text = await loader.resource(file)
 
         template = self.env.from_string(text)
         try:
