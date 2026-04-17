@@ -472,8 +472,7 @@ class port(ABC):
     async def render_template(self, text=None,file=None,**constants):
         if text is None and file is None: raise Exception("No text or file provided")
         if text is None:
-            base_path = os.environ.get("BASE_PATH", os.getcwd()) 
-            text = await loader.resource(base_path + "/src/" + file)
+            text = await loader.resource(file)
 
         template = self.env.from_string(text)
         try:
