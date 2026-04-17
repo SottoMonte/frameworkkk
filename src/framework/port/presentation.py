@@ -503,8 +503,8 @@ class port(ABC):
         ROOT_DIR = pathlib.Path(__file__).parent.parent.parent.parent.absolute()
 
         component_paths = [
-            os.path.join(ROOT_DIR, "src", "application", "view", "component", tag_file),
-            os.path.join(ROOT_DIR, "src", "application", "view", "layout", tag_file), # Aggiungi layout qui!
+            os.path.join(ROOT_DIR, "src", "application", "view", "component", f"{tag}.xml"),
+            os.path.join(ROOT_DIR, "src", "application", "view", "layout", f"{tag}.xml"), # Aggiungi layout qui!
         ]
 
         for path in component_paths:
