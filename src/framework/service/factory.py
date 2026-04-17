@@ -1,6 +1,6 @@
 import re
 from urllib.parse import quote
-from jinja2 import Environment, meta
+from jinja2 import Environment, meta, nodes
 
 
 
@@ -11,28 +11,82 @@ class repository:
         self.schema = constants.get('model')
 
     def get_requirements(self, template_str):
-        """Estrae i requisiti (variabili globali) da un template Jinja2."""
+        """
+        Estrae i requisiti dal template analizzando l'albero sintattico (AST) di Jinja2.
+        Più robusto: supporta notazione a parentesi [] e ignora scope e cicli interni.
+        """
         try:
             if not template_str or not isinstance(template_str, str) or '{' not in template_str:
                 return []
-            return list(meta.find_undeclared_variables(jinja.parse(template_str)))
+            
+            ast = jinja.parse(template_str)
+            valid_roots = meta.find_undeclared_variables(ast)
+            paths = set()
+            
+            def visit(node):
+                if isinstance(node, nodes.Name):
+                    return node.name if node.name in valid_roots else None
+                elif isinstance(node, nodes.Getattr):
+                    base = visit(node.node)
+                    if base:
+                        return f"{base}.{node.attr}"
+                elif isinstance(node, nodes.Getitem):
+                    base = visit(node.node)
+                    if base and isinstance(node.arg, nodes.Const) and isinstance(node.arg.value, str):
+                        return f"{base}.{node.arg.value}"
+                elif isinstance(node, nodes.Call):
+                    return visit(node.node)
+                return None
+
+            def traverse(node):
+                path = visit(node)
+                if path:
+                    paths.add(path)
+                for child in node.iter_child_nodes():
+                    traverse(child)
+
+            traverse(ast)
+            
+            cleaned_paths = set()
+            for p in paths:
+                if p.endswith('.items') or p.endswith('.keys') or p.endswith('.values'):
+                    cleaned_paths.add(p.rsplit('.', 1)[0])
+                else:
+                    cleaned_paths.add(p)
+                    
+            final_paths = set(cleaned_paths)
+            for p in cleaned_paths:
+                for p2 in cleaned_paths:
+                    if p != p2 and p2.startswith(p + '.'):
+                        final_paths.discard(p)
+
+            return list(final_paths)
         except Exception:
+            # Fallback
             return re.findall(r'\{(\w+)\}', template_str)
 
     def select(self, templates, data):
         """
-        Sceglie il miglior template dalla lista in base ai dati forniti.
-        Ritorna il template migliore o None.
+        Sceglie il miglior template in base alla densità di requisiti soddisfatti.
+        Prioritizza i template che utilizzano percorsi più profondi (più specifici).
         """
         best_t, max_score = None, -1
         
         for t in (templates if isinstance(templates, list) else [templates]):
             reqs = self.get_requirements(t)
+            score = 0
+            
             if not reqs:
-                score = 0.1
+                score = 0.1 # Template statico
             else:
-                if all(scheme.get(data, r) is not None for r in reqs):
-                    score = len(reqs) + (0.5 if '{%' in t else 0)
+                # Verifichiamo quali requisiti sono presenti nei dati tramite il servizio Scheme
+                met = [r for r in reqs if scheme.get(data, r) is not None]
+                if len(met) == len(reqs):
+                    # Calcoliamo lo score: numero requisiti ponderato per la profondità dei path
+                    # Ogni segmento del path conta come precisione aggiuntiva
+                    score = sum(r.count('.') + 1 for r in reqs)
+                    # Bonus per l'utilizzo di logica complessa (cicli, ecc)
+                    score += 0.5 if '{%' in t else 0
                 else:
                     score = -1
             

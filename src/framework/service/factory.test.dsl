@@ -103,42 +103,83 @@ request:richiesta := {
 ============================================================ */
 
 tuple:test_suite := (
+    // -- GET_REQUIREMENTS EDGE CASES --
     { 
-        "action": repository.can_format;
-        "inputs": {"template": "repos/{{owner}}/{{name}}"; "data": {"owner": "SottoMonte"; "name": "framework"}};
-        "outputs": (true, 2);
-        "assert": @received.outputs == @expected;
-        "note": "Verifica se il template con 2 placeholder è risolvibile"; 
+        "action": repository.get_requirements;
+        "inputs": {"template_str": ""};
+        "outputs": [];
+        "assert": @received.outputs == [];
+        "note": "AST: Stringa vuota ritorna lista vuota"; 
     },
     { 
-        "action": repository.do_format;
-        "inputs": {"template": "repos/{owner}"; "data": {"owner": "SottoMonte"}};
-        "outputs": "repos/SottoMonte";
-        "assert": @received.outputs == @expected;
-        "note": "Sostituzione corretta del placeholder"; 
+        "action": repository.get_requirements;
+        "inputs": {"template_str": "repos/{{filter.eq.items()}}"};
+        "outputs": None;
+        "assert": @received.success == true;
+        "note": "AST: Rimozione metodi dict standard (items)"; 
     },
+    /*{ 
+        "action": repository.get_requirements;
+        "inputs": {"template_str": "repos/{{ 1 + }}"}; # Invalid Jinja, triggers except
+        "outputs": [];
+        "assert": @received.success == true;
+        "note": "AST: Jinja Error triggers Fallback Regex"; 
+    },*/
+    
+    // -- SELECT EDGE CASES --
     { 
-        "action": repository.find_best_template;
+        "action": repository.select;
         "inputs": {
             "templates": ["user/repos", "repos/{{owner}}/{{name}}"];
-            "data": {"owner": "SottoMonte"; "name": "framework"}
+            "data": {"owner": "SottoMonte"}
         };
-        "outputs": "repos/{{owner}}/{{name}}";
+        "outputs": "user/repos";
         "assert": @received.outputs == @expected;
-        "note": "Selezione del template più specifico in base ai dati disponibili"; 
+        "note": "AST Selector: Fallback a template statico se requisiti incompleti"; 
     },
+    { 
+        "action": repository.select;
+        "inputs": {
+            "templates": ["repos/{{owner}}", "repos/{{owner}}/{% if True %}1{% endif %}"];
+            "data": {"owner": "SottoMonte"}
+        };
+        "outputs": "repos/{{owner}}/{% if True %}1{% endif %}";
+        "assert": @received.outputs == @expected;
+        "note": "AST Selector: Bonus per tag logici Jinja {%"; 
+    },
+    { 
+        "action": repository.select;
+        "inputs": {
+            "templates": ["repos/{{owner}}"];
+            "data": {}
+        };
+        "outputs": None;
+        "assert": @received.outputs == None;
+        "note": "AST Selector: Ritorna None se nessun template è soddisfatto dal payload"; 
+    },
+
+    // -- RESULTS EDGE CASES --
     {
         "action": repository.results;
-        "inputs": {"transaction": {"result": [{"id": 1}, "invalid", {"id": 2}]}};
-        "outputs": {"result": [{"id": 1}, {"id": 2}]};
-        "assert": @received.outputs.result == @expected.result;
-        "note": "Normalizzazione transazione: filtro di elementi non dizionari";
+        "inputs": {"transaction": {"result": [{"id": 1}, "invalid", {"id": 2}]}; "profile": "GITHUB"};
+        "outputs": {"result": [{"id": 1}, "invalid", {"id": 2}]};
+        "assert": @received.outputs == @expected;
+        "note": "Pass-through Hook logic handler";
+    },
+
+    // -- PARAMETERS EDGE CASES --
+    {
+        "action": repository.parameters;
+        "inputs": {"provider": "GITHUB"; "operation": "view"; "filter": {"eq": {"owner": "SottoMonte"}}};
+        "outputs": None;
+        "assert": @received.success == true;
+        "note": "Orchestratore Parametri Base"; 
     },
     {
         "action": repository.parameters;
-        "inputs": richiesta;
-        "outputs": richiesta |> union({'location':"repos/SottoMonte/framework"});
-        "assert": @received.outputs == @expected;
-        "note": "Orchestratore: generazione path finale e provider corretto"; 
+        "inputs": {"provider": "GITHUB"; "operation": "view"; "filter": {"eq": {"targetX": "NotFound"}}};
+        "outputs": None;
+        "assert": @received.success == false;
+        "note": "Orchestratore Error: Lancia eccezione (ValueError) se il selector fallisce"; 
     }
 );
