@@ -5,8 +5,7 @@ class messenger():
 
     def __init__(self,**constants):
         self.executor = constants.get('executor')
-        self.providers = constants.get('message', [])
-        pass
+        self.providers = constants.get('messages', [])
 
     async def post(self, **constants):
         session_id = constants['session']
