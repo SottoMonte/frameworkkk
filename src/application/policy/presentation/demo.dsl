@@ -97,6 +97,11 @@ policies: {
 }
     
 
+requirement:REQUIRES := {
+
+}
+
+
 rules : {
     "/": [policies.GET_ALLOW_ALL];
     "/profile": [policies.GET_ALLOW_PATH];
