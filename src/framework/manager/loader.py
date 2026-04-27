@@ -341,7 +341,7 @@ class ProjectLoader:
         cfg["provider"] = provider
         return {
             "name":     f"{port.lower()}.{provider.lower()}",
-            "path":     f"src/infrastructure/{port}/{adapter}.py",
+            "path":     f"src/infrastructure/{port}/{adapter}.server.py",
             "mod_deps": [port, "flow"],
             "cls_deps": PORT_REGISTRY[port],
             "port":     port,

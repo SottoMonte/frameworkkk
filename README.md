@@ -41,6 +41,12 @@ host = "0.0.0.0"
 port = "8000"
 view = "page/welcome.xml"
 routes = "policy/web.xml"
+
+#server.py: Applicazioni desktop, server web, CLI tools
+#browser.py: Web apps con Pyodide/WASM
+#mobile.py: App mobile cross-platform (Kivy, BeeWare)
+#embedded.py: IoT, Raspberry Pi, dispositivi embedded
+
 ```
 
 ---
