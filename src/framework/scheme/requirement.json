@@ -39,69 +39,7 @@
     "type": "dict",
     "required": false,
     "description": "Obiettivi di servizio generici per il provider.",
-    "schema": {
-      "latency_ms": {
-        "type": "float",
-        "required": false,
-        "min": 0,
-        "description": "Latenza massima accettabile in millisecondi."
-      },
-      "throughput_mbps": {
-        "type": "float",
-        "required": false,
-        "min": 0,
-        "description": "Throughput minimo richiesto in Megabit al secondo."
-      },
-      "availability_pct": {
-        "type": "float",
-        "required": false,
-        "min": 0,
-        "max": 100,
-        "description": "Disponibilità minima richiesta in percentuale."
-      },
-      "error_rate_pct": {
-        "type": "float",
-        "required": false,
-        "min": 0,
-        "max": 100,
-        "description": "Tasso di errore massimo tollerabile in percentuale."
-      },
-      "consistency": {
-        "type": "string",
-        "required": false,
-        "allowed": ["strong", "eventual", "causal", "session"],
-        "description": "Livello di consistenza richiesto per la persistenza o l'integrazione."
-      },
-      "durability": {
-        "type": "string",
-        "required": false,
-        "allowed": ["low", "medium", "high", "critical"],
-        "description": "Livello di durabilità richiesto per i dati."
-      }
-    }
-  },
-  "security": {
-    "type": "dict",
-    "required": false,
-    "description": "Requisiti di sicurezza generici per l'interfaccia o il provider.",
-    "schema": {
-      "level": {
-        "type": "string",
-        "required": false,
-        "allowed": ["none", "encrypted", "authenticated", "private"],
-        "description": "Livello di sicurezza richiesto."
-      },
-      "encryption": {
-        "type": "string",
-        "required": false,
-        "description": "Tipo di crittografia richiesta."
-      },
-      "compliance": {
-        "type": "string",
-        "required": false,
-        "description": "Requisiti di conformità, ad esempio GDPR o PCI."
-      }
-    }
+    "schema": "{{ user }}"
   },
   "priority": {
     "type": "string",
@@ -114,18 +52,5 @@
     "required": false,
     "allowed": ["low", "medium", "high"],
     "description": "Sensibilità al costo per questo requisito."
-  },
-  "tags": {
-    "type": "list",
-    "required": false,
-    "schema": {
-      "type": "string"
-    },
-    "description": "Tag generici per classificare o filtrare i requisiti."
-  },
-  "custom": {
-    "type": "dict",
-    "required": false,
-    "description": "Requisiti personalizzati non previsti dallo schema standard."
   }
 }
