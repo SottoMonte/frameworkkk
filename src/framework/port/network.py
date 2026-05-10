@@ -45,3 +45,35 @@ class port(ABC):
     def migrate(self, migrate_spec: Dict[str, Any]) -> Dict[str, Any]:
         """Migra l'applicazione tra reti/provider (es. da on-prem a cloud)."""
         pass
+
+    @abstractmethod
+    def add_node(self, node_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Aggiunge un nuovo nodo alla rete."""
+        pass
+
+    @abstractmethod
+    def remove_node(self, node_id: str) -> Dict[str, Any]:
+        """Rimuove un nodo esistente dalla rete."""
+        pass
+
+    @abstractmethod
+    def connect_nodes(self, src_node_id: str, dst_node_id: str, connection_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Crea una connessione tra due nodi."""
+        pass
+    
+    @abstractmethod
+    def disconnect_nodes(self, src_node_id: str, dst_node_id: str) -> Dict[str, Any]:
+        """Rimuove la connessione tra due nodi."""
+        pass
+
+    @abstractmethod
+    def get_topology(self) -> Dict[str, Any]:
+        """Restituisce la topologia attuale della rete (nodi e connessioni)."""
+        pass
+    
+    @abstractmethod
+    def add_layer(self, layer_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Aggiunge un nuovo layer alla rete."""
+        pass
+
+    

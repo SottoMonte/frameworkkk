@@ -2,55 +2,46 @@
   "service": {
     "type": "string",
     "required": false,
-    "allowed": ["persistence", "messaging", "authentication", "authorization", "presentation", "network", "logging", "monitoring", "integration", "cache"],
-    "description": "Categoria del servizio o del port cui si riferiscono i requisiti."
+    "allowed": ["persistence", "messaging", "authentication", "authorization", "presentation", "network", "logging", "monitoring", "integration", "cache"]
   },
   "interface": {
     "type": "string",
-    "required": false,
-    "description": "Nome dell'interfaccia o del port richiesto."
+    "required": false
   },
   "platform": {
     "type": "string",
     "required": false,
-    "allowed": ["server", "browser", "mobile", "embedded"],
-    "description": "Piattaforma su cui deve girare il provider."
+    "allowed": ["server", "browser", "mobile", "embedded"]
   },
   "provider": {
     "type": "string",
     "required": false,
-    "regex": "^[a-zA-Z0-9_-]+$",
-    "description": "Nome logico del provider richiesto, se si desidera forzare un vendor specifico."
+    "regex": "^[a-zA-Z0-9_-]+$"
   },
   "capabilities": {
     "type": "dict",
     "required": false,
-    "description": "Capacità richieste dal provider, come throughput, transazioni, messaggistica o storage.",
     "schema": {
       "type": "string"
     }
   },
   "constraints": {
     "type": "dict",
-    "required": false,
-    "description": "Vincoli funzionali o non funzionali associati al servizio."
+    "required": false
   },
   "sla": {
     "type": "dict",
     "required": false,
-    "description": "Obiettivi di servizio generici per il provider.",
     "schema": "{{ user }}"
   },
   "priority": {
     "type": "string",
     "required": false,
-    "allowed": ["low", "normal", "high", "critical"],
-    "description": "Priorità del requisito o della richiesta."
+    "allowed": ["low", "normal", "high", "critical"]
   },
   "cost_sensitivity": {
     "type": "string",
     "required": false,
-    "allowed": ["low", "medium", "high"],
-    "description": "Sensibilità al costo per questo requisito."
+    "allowed": ["low", "medium", "high"]
   }
 }
