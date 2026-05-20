@@ -1,11 +1,3 @@
-"""
-textual.server.py — Adapter Textual TUI nativo per il Framework
-Equivalente nativo di starlette.server.py
-
-Integrazione diretta con il sistema di Dependency Injection del Framework.
-Segue lo stesso pattern di Adapter(presentation.port) di Starlette.
-"""
-
 import asyncio
 import uuid
 import json
@@ -19,29 +11,87 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Static, Button, Input, Select, TextArea, Header, Footer
 from textual.screen import Screen
 from textual.binding import Binding
+import xml.etree.ElementTree as ET
 
-
-class PrimaApp(App):
-    """Una semplice applicazione Textual."""
+class XmlScreen(Screen):
+    """Una schermata che si auto-costruisce leggendo un file XML."""
     
-    # Definisce le scorciatoie da tastiera globali (visibili nel Footer)
+    def __init__(self, xml_code: str, **kwargs):
+        super().__init__(**kwargs)
+        self.xml_code = xml_code
+        # Dizionario di mappatura: associa il tag XML alla classe Textual
+        self.MAPPATURA_TAG = {
+            "text": Static,
+            "button": Button,
+            "row": Horizontal,
+            "column": Vertical
+        }
+
+    def compose(self) -> ComposeResult:
+        # 1. Parsiamo il file XML
+        tree = ET.fromstring(self.xml_code)
+        root = tree
+
+        # 2. Gestiamo il tag radice <window> per configurare la schermata
+        if root.tag == "window":
+            self.title = root.attrib.get("title", "App")
+            self.sub_title = root.attrib.get("subtitle", "")
+
+        yield Header()
+
+        # 3. Generiamo ricorsivamente i widget figli
+        for child in root:
+            yield from self.renderizza_nodo(child)
+
+        yield Footer()
+
+    def renderizza_nodo(self, nodo: ET.Element):
+        """Trasforma un nodo XML nel rispettivo Widget di Textual."""
+        tag = nodo.tag.lower()
+        
+        # Recuperiamo gli attributi comuni
+        node_id = nodo.attrib.get("id")
+        variant = nodo.attrib.get("variant", "default")
+        
+        # Se il tag è mappato a un contenitore (es. row -> Horizontal)
+        if tag in ("row", "column"):
+            classe_contenitore = self.MAPPATURA_TAG[tag]
+            # Creiamo il contenitore e inseriamo ricorsivamente i suoi figli
+            figli_widget = []
+            for child in nodo:
+                figli_widget.extend(list(self.renderizza_nodo(child)))
+            
+            yield classe_contenitore(*figli_widget, id=node_id)
+            
+        # Se è un widget singolo (es. button o text)
+        elif tag in self.MAPPATURA_TAG:
+            classe_widget = self.MAPPATURA_TAG[tag]
+            testo_interno = nodo.text.strip() if nodo.text else ""
+            
+            if classe_widget == Button:
+                yield Button(testo_interno, id=node_id, variant=variant)
+            elif classe_widget == Static:
+                yield Static(testo_interno, id=node_id)
+
+class AppDinamica(App):
     BINDINGS = [
         ("d", "toggle_dark", "Cambia Tema"),
         ("q", "quit", "Esci")
     ]
 
-    def compose(self) -> ComposeResult:
-        """Qui si definisce l'interfaccia utente."""
-        yield Header()  # Barra superiore con il titolo
-        yield Static("Benvenuto in Textual! Questa è una TUI moderna.", id="messaggio")
-        yield Button("Cliccami!", id="mio_bottone", variant="success")
-        yield Footer()  # Barra inferiore con le scorciatoie
+    def __init__(self, adapter, **kwargs):
+        super().__init__(**kwargs)
+        self.adapter = adapter
+
+    async def on_mount(self) -> None:
+        await self.adapter.render_view(url="/")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Gestore degli eventi: intercetta il click sul bottone."""
-        if event.button.id == "mio_bottone":
-            # Trova il widget con id 'messaggio' e ne aggiorna il testo
-            self.query_one("#messaggio", Static).update("Hai premuto il bottone! 🎉")
+        """Gestiamo i click dei bottoni generati dall'XML sfruttando i loro ID."""
+        if event.button.id == "btn_salva":
+            self.query_one("#messaggio", Static).update("Dati Salvati con Successo! 🎉")
+        elif event.button.id == "btn_cancella":
+            self.query_one("#messaggio", Static).update("Azione Annullata. ❌")
 
 class Adapter(presentation.port):
     """
@@ -67,17 +117,11 @@ class Adapter(presentation.port):
         self.defender = constants.get('defender')
         self.executor = constants.get('executor')
         self.presenter = constants.get('presenter')
-        
+        self.initialize()
         # Stato TUI
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.active_screens: Dict[str, 'TUIScreen'] = {}
-        self.app = PrimaApp()
-        
-        self.initialize()
-    
-    def initialize(self):
-        """Inizializzazione dell'adapter"""
-        pass
+        self.app = AppDinamica(self)
     
     async def start(self):
         """
@@ -89,15 +133,39 @@ class Adapter(presentation.port):
         """
 
         # Restituisci il coroutine di esecuzione (come fa Starlette)
+        await self.parse_route()
         return self.app.run_async()
     
-    def compose(self) -> ComposeResult:
-        """Qui si definisce l'interfaccia utente."""
-        yield Header()  # Barra superiore con il titolo
-        yield Static("Benvenuto in Textual! Questa è una TUI moderna.", id="messaggio")
-        yield Button("Cliccami!", id="mio_bottone", variant="success")
-        yield Footer()  # Barra inferiore con le scorciatoie
+    def mount_css(self, css_content: str) -> None:
+        """
+        Inietta lo stile nell'applicazione.
+        Nel web mappa su un file CSS. In Textual, carichiamo le regole nel foglio di stile dell'App.
+        """
+        if self.app:
+            # Textual permette di iniettare stringhe CSS dinamicamente
+            self.app.parse_stylesheet(css_content)
+
+    async def mount_view(self,url):
+        xml_view = await presentation.loader.resource(self.routes['/']['GET']['view'])
+        return XmlScreen(xml_view)
+
+    async def render_view(self,url):
+        print("Mounting view...",self.routes)
+        screen = await self.mount_view(url=url)
+        self.app.push_screen(screen)
     
+    async def mount_route(self, routes):
+        for path, methods_dict in self.routes.items():
+            for method, data in methods_dict.items():
+                typee = data.get('type')
+                # method = data.get('method')
+                view = data.get('view')
+
+                # Associa il path alla view (utile per debug o reverse lookup)
+                self.views[path] = view
+
+                #routes.append(r)
+
     async def authenticate(self, session: Dict[str, Any], **credentials) -> Dict[str, Any]:
         """
         Autentica un utente
@@ -125,6 +193,12 @@ class Adapter(presentation.port):
             return await self.defender.activate(session, **credentials)
         return {"success": False, "errors": ["Attivazione non disponibile"]}
     
+    async def rebuild(self, session: Dict[str, Any], **credentials):
+        pass
+
+    async def render_reactive(self, session: Dict[str, Any], view: Any, context: Dict[str, Any]) -> Any:
+        pass
+
     def node_create(self, tag: str, attrs: Dict[str, Any] = None, inner: List[Any] = None):
         """
         Crea un widget Textual da un tag DSL
