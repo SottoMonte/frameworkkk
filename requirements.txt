@@ -41,3 +41,5 @@ mistql>=0.4.12
 networkx>=3.0
 htpy>=25.12.0
 psycopg2-binary>=2.9.10
+textual>=0.40.0
+rich>=13.0.0

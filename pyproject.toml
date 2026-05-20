@@ -33,10 +33,16 @@ username = "default"
 password = "3LkESG6clHa2hJj1zF8CabQlqU50O6zL"
 
 
-[presentation.backend]
+[apresentation.backend]
+# Scegli tra "starlette" (web) o "textual" (tui)
 adapter = "starlette"
 host = "0.0.0.0"
 port = "5000"
 #route = "web.xml"
 #ssl_keyfile = "key.pem"
 #ssl_certfile = "cert.pem"
+
+# Alternativa TUI (decommentare per usare Textual):
+[presentation.backend]
+adapter = "textual"
+default_view = "home"
