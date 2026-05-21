@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window type="page" title="Omniport" background="#fdfbf7,#f5f2eb" font="sans">
+    
+    <!-- Navbar 
+    <Navigation width="full" background="#1a365d" padding="15px,40px" shadow="medium">
+        <Row justify="between" align="center">
+            <Row align="center" spacing="12px">
+                <Icon name="bi-file-earmark-text-fill" size="28px" color="#ffd700" />
+                <Column>
+                    <Text type="h4" font="extrabold" color="#ffffff" spacing="1px">CARTOLERIA IRPINA</Text>
+                    <Text size="12px" color="#ffd700" uppercase="true" font="bold">Avellino &amp; Provincia</Text>
+                </Column>
+            </Row>
+            
+            <Row spacing="25px" align="center">
+                <Action type="link" route="/cartoleria"><Text color="#ffffff" font="bold">Home</Text></Action>
+                <Action type="link" route="#prodotti"><Text color="#cbd5e0">Prodotti</Text></Action>
+                <Action type="link" route="#servizi"><Text color="#cbd5e0">Servizi</Text></Action>
+                <Action type="button" background="#ffd700" radius="medium" padding="8px,20px">
+                    <Text color="#1a365d" font="bold">ORDINA ORA</Text>
+                </Action>
+            </Row>
+        </Row>
+    </Navigation>-->
+
+    <Text>ciao</Text>
+    <Input placeholder="Scrivi qualcosa..." />
+    <Input placeholder="Scrivi qualcosa..." type="select" >
+        <Text value="1">Opzione 1</Text>
+        <Text value="1">Opzione 2</Text>
+        <Text value="1">Opzione 3</Text>
+    </Input>
+</Window>
