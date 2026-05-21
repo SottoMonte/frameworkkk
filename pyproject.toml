@@ -33,7 +33,7 @@ username = "default"
 password = "3LkESG6clHa2hJj1zF8CabQlqU50O6zL"
 
 
-[apresentation.backend]
+[apresentation.backend1]
 # Scegli tra "starlette" (web) o "textual" (tui)
 adapter = "starlette"
 host = "0.0.0.0"

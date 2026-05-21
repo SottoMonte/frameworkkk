@@ -24,7 +24,52 @@
     </Navigation>-->
 
     <Text>ciao</Text>
-    <Input placeholder="Scrivi qualcosa..." />
+    <Text type="markdown">
+## Markdown
+
+- Typography *emphasis*, **strong**, `inline code` etc.    
+- Headers    
+- Lists    
+- Syntax highlighted code blocks
+- Tables and more
+
+## Quotes
+
+## Tables
+
+| Name            | Type   | Default | Description                        |
+| --------------- | ------ | ------- | ---------------------------------- |
+| `show_header`   | `bool` | `True`  | Show the table header              |
+| `fixed_rows`    | `int`  | `0`     | Number of fixed rows               |
+| `fixed_columns` | `int`  | `0`     | Number of fixed columns            |
+
+## Code blocks
+
+
+![Alt text](https://examplefile.com/images/logo.png?v=4 "Title")
+
+![](https://samplelib.com/mp4/sample-5s.mp4)
+
+```python
+def loop_last(values: Iterable[T]) - Iterable[Tuple[bool, T]]:
+    #Iterate and generate a tuple with a flag for last value.
+    iter_values = iter(values)
+    try:
+        previous_value = next(iter_values)
+    except StopIteration:
+        return
+    for value in iter_values:
+        yield False, previous_value
+        previous_value = value
+    yield True, previous_value
+```
+    </Text>
+    <Row>
+        <Action type="button">
+            <Text color="#ffffff" font="bold">VOCE</Text>
+        </Action>
+        <Input placeholder="Scrivi qualcosa..." />
+    </Row>
     <Input placeholder="Scrivi qualcosa..." type="select" >
         <Text value="1">Opzione 1</Text>
         <Text value="1">Opzione 2</Text>

@@ -553,7 +553,8 @@ class port(ABC):
             
         if node_id:
             attributes['id'] = node_id
-        if node.text:
+        
+        if node.text and tag.lower() == "text":
             children.append(node.text)
 
         bind_var = attributes.pop("bind", None)
@@ -609,5 +610,5 @@ class port(ABC):
                         
                         runner.attach_node(controller_file, bind_node)
 
-        # mount_view: Il driver crea l'istanza del widget/tag
+        # mount_view: Il driver crea l'istanza del widget/tag 
         return self.mount_tag(tag, attributes, children, in_svg)

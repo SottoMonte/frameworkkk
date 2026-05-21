@@ -7,11 +7,21 @@ from typing import Dict, Any, Optional, List
 
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Static, Button, Input, Select, TextArea, Header, Footer, Label
+from textual.containers import Container, HorizontalGroup, Vertical
+from textual.widgets import Static, Button, Input, Select, TextArea, Header, Footer, Label, Markdown
 from rich.text import Text
 from textual.screen import Screen
 from textual.binding import Binding
+
+def attrs(widget,attrs):
+    '''for k,v in attrs.items():
+        setattr(widget, k, v)'''
+    widget.styles.overflow_y = "auto"
+    widget.styles.overflow_x = "hidden"
+
+    # 3. Se necessario, gli dai una dimensione bloccata o flessibile
+    widget.styles.height = "80%"  # oppure "1fr"
+    return widget
 
 class XmlScreen(Screen):
     """Una schermata che si auto-costruisce leggendo un file XML."""
@@ -73,11 +83,11 @@ class Adapter(presentation.port):
             "column": lambda x: Vertical(*x.get('inner',[])),
         },
         presentation.Tag.ROW.value: { 
-            "row": lambda x: Horizontal(*x.get('inner',[])),
+            "row": lambda x: HorizontalGroup(*x.get('inner',[])),
         },
         presentation.Tag.ACTION.value: { 
             "link": lambda x: Button(str(x.get('inner',[''])[0]), id="link"),
-            "button": lambda x: Button(str(x.get('inner',[''][0])), id="button"),
+            "button": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]), id="button"),
         },
         presentation.Tag.INPUT.value: { 
             "select": lambda x: Select([(str(i.render()),0) if type(i) != str else (i,0) for i in x.get('inner',[])]),
@@ -85,7 +95,8 @@ class Adapter(presentation.port):
             "input": lambda x: Input(placeholder=x.get('attrs', {}).get('placeholder', ''))
         },
         presentation.Tag.TEXT.value: {
-            "text": lambda x: Label(Text(*x.get('inner','')))
+            "text": lambda x: Label(Text(*x.get('inner',''))),
+            "markdown": lambda x: attrs(Markdown(*x.get('inner','')), x.get('attrs', {}))
         },
         presentation.Tag.NAVIGATION.value: {
             "navigation": lambda x: Static(*x.get('inner',[]), id="nav")
@@ -195,7 +206,7 @@ class Adapter(presentation.port):
         pass
     
     def node_create(self, tag, attrs={}, inner=[]):
-        #inner =  [f for f in inner if not isinstance(f, str)]
+        #inner =  [f for f in inner if not isinstance(f, str) and tag == ]
         # Se tag è una funzione (es. un componente funzionale/lambda)
         if callable(tag) and type(tag).__name__ == "function":
             return tag({"inner": inner, "attrs": attrs})
