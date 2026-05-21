@@ -66,7 +66,7 @@ def loop_last(values: Iterable[T]) - Iterable[Tuple[bool, T]]:
     </Text>
     <Row>
         <Action type="button">
-            <Text color="#ffffff" font="bold">VOCE</Text>
+            <Text color="#ffffff" font="bold">🎤VOCE</Text>
         </Action>
         <Input placeholder="Scrivi qualcosa..." />
     </Row>
@@ -75,4 +75,5 @@ def loop_last(values: Iterable[T]) - Iterable[Tuple[bool, T]]:
         <Text value="1">Opzione 2</Text>
         <Text value="1">Opzione 3</Text>
     </Input>
+    <Input type="text" />
 </Window>
