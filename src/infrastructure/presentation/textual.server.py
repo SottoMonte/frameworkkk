@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, HorizontalGroup, Vertical
-from textual.widgets import Static, Button, Input, Select, TextArea, Header, Footer, Label, Markdown
+from textual.widgets import Link, Checkbox, Static, Button, Input, Select, TextArea, Header, Footer, Label, Markdown
 from rich.text import Text
 from textual.screen import Screen
 from textual.binding import Binding
@@ -61,11 +61,14 @@ class AppDinamica(App):
 
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Gestiamo i click dei bottoni generati dall'XML sfruttando i loro ID."""
-        if event.button.id == "btn_salva":
-            self.query_one("#messaggio", Static).update("Dati Salvati con Successo! 🎉")
-        elif event.button.id == "btn_cancella":
-            self.query_one("#messaggio", Static).update("Azione Annullata. ❌")
+        if event.button.id:
+            return None
+
+        widget = self.DOM[event.button.id]
+
+
+        
+        print(f"Button {event.button.id} premuto!")
 
 class Adapter(presentation.port):
     """
@@ -86,23 +89,35 @@ class Adapter(presentation.port):
             "row": lambda x: HorizontalGroup(*x.get('inner',[])),
         },
         presentation.Tag.ACTION.value: { 
-            "link": lambda x: Button(str(x.get('inner',[''])[0]), id="link"),
+            "link": lambda x: Link(str(x.get('inner',[''])[0]),url=x.get('attrs', {}).get('href', '#')),
             "button": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]), id="button"),
         },
         presentation.Tag.INPUT.value: { 
             "select": lambda x: Select([(str(i.render()),0) if type(i) != str else (i,0) for i in x.get('inner',[])]),
             "text":  lambda x: TextArea(),
-            "input": lambda x: Input(placeholder=x.get('attrs', {}).get('placeholder', ''))
+            "input": lambda x: Input(placeholder=x.get('attrs', {}).get('placeholder', '')),
+            "checkbox": lambda x: Checkbox(str(x.get('inner',[''])[0])),
+            "masked": lambda x: MaskedInput(template=x.get('attrs', {}).get('placeholder', '')),
+            "option": lambda x: OptionList(*x.get('inner',[])),
+            "switch": lambda x: Switch(str(x.get('inner',[''])[0])),
         },
         presentation.Tag.TEXT.value: {
             "text": lambda x: Label(Text(*x.get('inner',''))),
-            "markdown": lambda x: attrs(Markdown(*x.get('inner','')), x.get('attrs', {}))
+            "markdown": lambda x: attrs(Markdown(*x.get('inner','')), x.get('attrs', {})),
+            "pretty": lambda x: Pretty(*x.get('inner',[])),
         },
         presentation.Tag.NAVIGATION.value: {
             "navigation": lambda x: Static(*x.get('inner',[]), id="nav")
         },
         presentation.Tag.WINDOW.value: {
             "window": lambda x: XmlScreen([f for f in x.get('inner',[]) if not isinstance(f, str)], x.get('attrs', {}).get('title', 'App'), x.get('attrs', {}).get('subtitle', ''))
+        },
+        presentation.Tag.GROUP.value: {
+            "list": lambda x: ListView(*[ListItem(f) for f in x.get('inner',[])]),
+            "tab": lambda x: Tabs(*[Tab(f, title=f.get('attrs', {}).get('title', 'Tab')) for f in x.get('inner',[])])
+        },
+        presentation.Tag.DIVIDER.value: {
+            "horizontal": lambda x: Rule(),
         }
     }
 
@@ -202,8 +217,11 @@ class Adapter(presentation.port):
     async def rebuild(self, session: Dict[str, Any], **credentials):
         pass
 
-    async def render_reactive(self, session: Dict[str, Any], view: Any, context: Dict[str, Any]) -> Any:
-        pass
+    async def render_reactive(self, session, view: Any, context) -> Any:
+        file_path = f"src/application/controller/{dsl_alias}.dsl"
+        content = await presentation.loader.resource(file_path)
+        await self.executor.add_file(file_path, content)
+        self.executor.interpreter.runner.emit(sid, file_path, event_name)
     
     def node_create(self, tag, attrs={}, inner=[]):
         #inner =  [f for f in inner if not isinstance(f, str) and tag == ]
