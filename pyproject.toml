@@ -12,13 +12,14 @@ presentation = "demo.dsl"
 #persistence = "redis.toml"
 #message = "log.toml"
 
-[authentication.backend]
+[aauthentication.backend]
 adapter = "supabase"
 url = "https://jarmungkgwudddmzuuxu.supabase.co"
 key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
 db_url = "postgresql://postgres.jarmungkgwudddmzuuxu:ELAldleEwVLOUJOo@aws-1-eu-north-1.pooler.supabase.com:6543/postgres"
 
-[persistence.API]
+
+[apersistence.API]
 adapter = "api"
 url = "https://jsonplaceholder.typicode.com/"
 key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
