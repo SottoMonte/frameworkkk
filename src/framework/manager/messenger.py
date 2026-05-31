@@ -1,11 +1,11 @@
 import sys
 import asyncio
 
-class messenger():
+class MessengerManager:
 
-    def __init__(self,**constants):
+    def __init__(self, messages: list[MessagePort]):
         self.executor = constants.get('executor')
-        self.providers = constants.get('messages', [])
+        self.providers = messages
 
     async def post(self, **constants):
         session_id = constants['session']

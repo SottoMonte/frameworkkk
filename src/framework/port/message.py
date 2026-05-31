@@ -1,19 +1,20 @@
-from abc import ABC, abstractmethod
+from typing import Protocol, Any, runtime_checkable
 
-class port(ABC):
+@runtime_checkable
+class MessagePort(Protocol):
 
-    @abstractmethod
-    def loader(self,*services,**constants):
-        pass
+    def loader(self, config: dict[str, Any]) -> None:
+        """Inizializza o configura l'adapter con i dati passati dal framework."""
+        ...
 
-    @abstractmethod
-    async def post(self,*services,**constants):
-        pass
+    async def get(self, endpoint: str, context: dict[str, Any]) -> Any:
+        """Gestisce una richiesta in ingresso di tipo GET."""
+        ...
 
-    @abstractmethod
-    async def get(self,*services,**constants):
-        pass
+    async def post(self, endpoint: str, payload: dict[str, Any]) -> Any:
+        """Gestisce una richiesta in ingresso di tipo POST."""
+        ...
 
-    @abstractmethod
-    async def can(self,*services,**constants):
-        pass
+    async def can(self, identity: str, action: str) -> bool:
+        """Verifica i permessi di sicurezza (ACL/RBAC) per un determinato modulo."""
+        ...

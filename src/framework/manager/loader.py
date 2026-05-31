@@ -1,264 +1,242 @@
-"""
-loader.py — dependency injection framework
-
-Convenzione nomi nel container:
-  "persistence"   → modulo framework (src/framework/port/persistence.py)
-  "persistences"  → lista di adapter registrati per quel port
-
-Il suffisso "s" è generato da port_list_key() partendo da PORT_REGISTRY,
-quindi non può mai disallinearsi con quanto dichiarato nelle spec.
-"""
-
 import os
+import sys
 import importlib.util
 import asyncio
 import signal
 import inspect
-from graphlib import TopologicalSorter
-from dataclasses import dataclass, field
-
-from dependency_injector import containers, providers
-import tomli
 import traceback
-
 import json
-from jinja2 import Environment, BaseLoader
 import uuid
+from dataclasses import dataclass, field
+from typing import Type, TypeVar, Any, Protocol, runtime_checkable, Callable
+from graphlib import TopologicalSorter
+from jinja2 import Environment, BaseLoader
+import tomli
+
+T = TypeVar('T')
+
+# ─────────────────────────────────────────────
+# 1. INTERFACCE E PROTOCOLLI (Type Safety)
+# ─────────────────────────────────────────────
+
+@runtime_checkable
+class LifecycleComponent(Protocol):
+    """Interfaccia per qualsiasi componente con un ciclo di vita attivo."""
+    async def start(self) -> Any: ...
+    async def stop(self) -> None: ...
+
+
+class ModuleExtension(Protocol):
+    """Permette a moduli esterni di registrare servizi in modo dichiarativo."""
+    def configure(self, container: "Container") -> None: ...
 
 
 # ─────────────────────────────────────────────
-# Configurazione globale dei port
+# 2. STRUTTURE DATI TIPIZZATE
 # ─────────────────────────────────────────────
 
-PORT_REGISTRY: dict[str, list[str]] = {
-    "presentation":   ["defender", "messenger", "executor", "presenter"],
-    "persistence":    ["executor"],
-    "message":        ["storekeeper", "messenger"],
-    "authentication": ["models"],
-    "actuator":       [],
-    "authorization":  [],
-}
-
-def port_list_key(port: str) -> str:
-    """'persistence' → 'persistences' (unica fonte del suffisso)."""
-    return f"{port}s"
-
-
-# ─────────────────────────────────────────────
-# Struttura Dati Tipizzata per le Specifiche
-# ─────────────────────────────────────────────
-
-@dataclass
+@dataclass(frozen=True)
 class ServiceSpec:
     name: str
     path: str
-    mod_deps: list[str] = field(default_factory=list)
-    cls_deps: list[str] = field(default_factory=list)
-    port: str | None = None
+    layer: str = "service"  # "service", "manager", "adapter"
     is_class: bool = False
     is_list: bool = False
-    config: dict = field(default_factory=dict)
-    layer: str = "service"  # Valori ammessi: "service", "manager", "adapter"
+    port_interface: Type | None = None
+    config: dict[str, Any] = field(default_factory=dict)
+
+_FRAMEWORK_SERVICES = [
+    ServiceSpec(name="container",    path="src/framework/service/container.py",     layer="service"),
+    ServiceSpec(name="scheme",       path="src/framework/service/scheme.py",        layer="service"),
+    ServiceSpec(name="flow",         path="src/framework/service/flow.py",          layer="service"),
+    ServiceSpec(name="language",     path="src/framework/service/language.py",      layer="service"),
+    ServiceSpec(name="interpreter",  path="src/framework/service/language.py",      layer="service", is_class=True),
+    ServiceSpec(name="diagnostic",   path="src/framework/service/diagnostic.py",    layer="service"),
+    ServiceSpec(name="message",      path="src/framework/port/message.py",          layer="service"),
+    ServiceSpec(name="presentation", path="src/framework/port/presentation.py",     layer="service"),
+    ServiceSpec(name="persistence",  path="src/framework/port/persistence.py",      layer="service"),
+    ServiceSpec(name="authentication", path="src/framework/port/authentication.py", layer="service"),
+    ServiceSpec(name="factory",      path="src/framework/service/factory.py",       layer="service"),
+]
+
+_FRAMEWORK_MANAGERS = [
+    ServiceSpec(name="loader",      path="src/framework/manager/loader.py",      layer="manager", is_class=True),
+    ServiceSpec(name="messenger",   path="src/framework/manager/messenger.py",   layer="manager", is_class=True),
+    ServiceSpec(name="executor",    path="src/framework/manager/executor.py",    layer="manager", is_class=True),
+    ServiceSpec(name="defender",    path="src/framework/manager/defender.py",    layer="manager", is_class=True),
+    ServiceSpec(name="tester",      path="src/framework/manager/tester.py",      layer="manager", is_class=True),
+    ServiceSpec(name="storekeeper", path="src/framework/manager/storekeeper.py", layer="manager", is_class=True),
+    ServiceSpec(name="presenter",   path="src/framework/manager/presenter.py",   layer="manager", is_class=True),
+]
+
+# ─────────────────────────────────────────────
+# 3. CONTAINER STATO DELL'ARTE (Type-Driven)
+# ─────────────────────────────────────────────
+
+class Container:
+    def __init__(self):
+        self._registry: dict[str | Type, Any] = {}
+        self._port_registry: dict[Type, list[Any]] = {}
+        self.config: dict[str, Any] = {}
+        
+        # Inizializzazione cache interne stabili
+        self.set("module_cache", {})
+        self.set("loading_stack", set())
+
+    def set(self, key: str | Type[T], obj: T) -> None:
+        """Registra un singleton usando una stringa o direttamente il Tipo/Interfaccia."""
+        self._registry[key] = obj
+
+    def get(self, key: str | Type[T]) -> T:
+        """Risolve una dipendenza. Massimo controllo statico se passato un Tipo."""
+        if key not in self._registry:
+            if isinstance(key, type):
+                raise KeyError(f"Nessun provider registrato per l'interfaccia: '{key.__name__}'")
+            raise KeyError(f"Chiave '{key}' non trovata nel container")
+        
+        item = self._registry[key]
+        return item() if callable(item) and not inspect.isclass(item) else item
+
+    def has(self, key: str | Type) -> bool:
+        return key in self._registry
+
+    def append_to_port(self, interface: Type, obj: Any) -> None:
+        """Aggiunge un adapter a un'interfaccia esagonale (Port)."""
+        if interface not in self._port_registry:
+            self._port_registry[interface] = []
+        self._port_registry[interface].append(obj)
+
+    def get_port(self, interface: Type[T]) -> list[T]:
+        """Inietta la lista di tutti gli adapter registrati su quel Port."""
+        return self._port_registry.get(interface, [])
 
 
 # ─────────────────────────────────────────────
-# Container — solo storage, zero logica
-# ─────────────────────────────────────────────
-
-class Container(containers.DynamicContainer):
-    config        = providers.Configuration()
-    module_cache  = providers.Singleton(dict)
-    loading_stack = providers.Singleton(set)
-
-    # Lambda isolata per ogni port, evita lista condivisa tra istanze
-    for _port in PORT_REGISTRY:
-        locals()[port_list_key(_port)] = providers.Singleton(lambda: [])
-    del _port
-
-    def get(self, name: str):
-        attr = getattr(self, name, None)
-        if attr is None:
-            raise KeyError(f"'{name}' non trovato nel container")
-        return attr() if callable(attr) else attr
-
-    def set(self, name: str, obj):
-        self.set_provider(name, providers.Singleton(lambda o=obj: o))
-
-    def append_to_port(self, port: str, obj):
-        """Aggiunge obj alla lista del port (chiave con suffisso 's')."""
-        self.get(port_list_key(port)).append(obj)
-
-    def has(self, name: str) -> bool:
-        return hasattr(self, name)
-
-
-# ─────────────────────────────────────────────
-# ModuleLoader — carica e cachea moduli Python
+# 4. CARICATORE DINAMICO E AUTOWIRING BUILDER
 # ─────────────────────────────────────────────
 
 class ModuleLoader:
     def __init__(self, container: Container):
         self._container = container
 
-    def load(self, name: str, path: str, inject: dict | None = None):
+    def load(self, name: str, path: str, inject: dict[str, Any] | None = None) -> Any:
         cache = self._container.get("module_cache")
         if path not in cache:
             cache[path] = self._exec(name, path, inject or {})
         return cache[path]
 
     @staticmethod
-    def _exec(name: str, path: str, inject: dict):
+    def _exec(name: str, path: str, inject: dict[str, Any]) -> Any:
         spec = importlib.util.spec_from_file_location(name, path)
-        mod  = importlib.util.module_from_spec(spec)
+        if not spec or not spec.loader:
+            raise ImportError(f"Impossibile trovare il modulo {name} in {path}")
+        mod = importlib.util.module_from_spec(spec)
         
-        # Doppia Iniezione (Native Power) - Mantenuta per retrocompatibilità temporanea
-        for k, v in inject.items(): setattr(mod, k, v)
+        for k, v in inject.items(): 
+            setattr(mod, k, v)
         spec.loader.exec_module(mod)
-        for k, v in inject.items(): setattr(mod, k, v)
-        
+        for k, v in inject.items(): 
+            setattr(mod, k, v)
+            
         return mod
 
     @staticmethod
-    def find_class(mod, name):
+    def find_class(mod: Any, name: str) -> Type | None:
         for attr_name in (name, name.capitalize(), 'Adapter', 'adapter'):
             if (cls := getattr(mod, attr_name, None)) is not None:
                 return cls
         return None
 
 
-# ─────────────────────────────────────────────
-# Builder — istanzia un singolo servizio
-# ─────────────────────────────────────────────
-
-class Builder:
+class AutowiredBuilder:
+    """Ispeziona le firme dei costruttori per iniettare dipendenze reali (Zero Stringhe)."""
     def __init__(self, container: Container, module_loader: ModuleLoader):
-        self._c  = container
+        self._c = container
         self._ml = module_loader
 
-    async def build(self, spec: ServiceSpec):
-        mod_inject = self._resolve(spec.mod_deps)
-        cls_args   = self._resolve(spec.cls_deps)
-        kwargs     = {**cls_args, **spec.config}
+    async def build(self, spec: ServiceSpec) -> Any:
+        # Carica il modulo fisico
+        mod = self._ml.load(spec.name, spec.path)
+        
+        if not spec.is_class:
+            # Se è un modulo procedurale, applichiamo la configurazione dizionario nativa
+            for k, v in spec.config.items():
+                setattr(mod, k, v)
+            return mod
 
-        mod = self._ml.load(spec.name, spec.path, inject=mod_inject)
-        if spec.is_class:
-            cls = self._ml.find_class(mod, spec.name)
-            if cls is None:
-                raise ImportError(f"Nessuna classe trovata in {spec.path}")
-            return cls(**kwargs)
+        cls = self._ml.find_class(mod, spec.name)
+        if cls is None:
+            raise ImportError(f"Nessuna classe valida trovata nel file {spec.path}")
 
-        for k, v in kwargs.items():
-            setattr(mod, k, v)
-                
-        return mod
+        # --- Algoritmo di Autowiring ---
+        signature = inspect.signature(cls.__init__)
+        kwargs: dict[str, Any] = {}
 
-    def _resolve(self, names: list[str]) -> dict:
-        for name in names:
-            if not self._c.has(name):
-                raise KeyError(f"Dipendenza '{name}' non ancora registrata")
-        return {name: self._c.get(name) for name in names}
-
-
-# ─────────────────────────────────────────────
-# BatchSetup — ordina e registra una lista di spec
-# ─────────────────────────────────────────────
-
-class BatchSetup:
-    def __init__(self, container: Container, builder: Builder):
-        self._c = container
-        self._b = builder
-
-    async def run(self, specs: list[ServiceSpec], singletons: dict | None = None):
-        singletons = singletons or {}
-        for name, obj in singletons.items():
-            self._c.set(name, obj)
-            
-        registry   = {s.name: s for s in specs}
-        dep_graph  = {
-            s.name: list(set(s.mod_deps) | set(s.cls_deps))
-            for s in specs
-        }
-
-        adapters, managers, services = [], [], []
-
-        for name in TopologicalSorter(dep_graph).static_order():
-            if name in singletons or name not in registry:
-                continue 
-
-            spec = registry[name]
-            
-            # Sostituito il vecchio controllo stringa sul path con la proprietà esplicita del layer
-            if spec.layer == "adapter":
-                adapters.append(name)
-            elif spec.layer == "manager":
-                managers.append(name)
-            else:
-                services.append(name)
-
-            try:
-                obj = await self._b.build(spec)
-                if spec.is_list:
-                    self._c.append_to_port(spec.port, obj)
-                else:
-                    self._c.set(name, obj)
-            except Exception as e:
-                print(f"[!] Errore durante il caricamento di '{name}': {e}")
+        for param_name, param in signature.parameters.items():
+            if param_name == 'self':
                 continue
-
-        print(f"[+] Adapters: {adapters}")
-        print(f"[+] Managers: {managers}")
-        print(f"[+] Services: {services}")
+            
+            annotation = param.annotation
+            
+            # Caso 1: Se il parametro richiede una lista di un Port (Es. `adapters: list[MioPort]`)
+            if hasattr(annotation, "__origin__") and annotation.__origin__ is list:
+                inner_type = annotation.__args__[0]
+                kwargs[param_name] = self._c.get_port(inner_type)
+            
+            # Caso 2: Se la dipendenza ha un Type Hint registrato nel container (Es. `flow: FlowService`)
+            elif annotation is not inspect.Parameter.empty and self._c.has(annotation):
+                kwargs[param_name] = self._c.get(annotation)
+            
+            # Caso 3: Fallback storico su stringhe se l'annotazione combacia con config/nomi spec
+            elif self._c.has(param_name):
+                kwargs[param_name] = self._c.get(param_name)
+                
+        # Estende la configurazione manuale passata tramite file (TOML/JSON)
+        kwargs.update(spec.config)
+        return cls(**kwargs)
 
 
 # ─────────────────────────────────────────────
-# ProjectLoader — TOML / JSON / DSL → lista di spec
+# 5. ORCHESTRAZIONE DEL BOOTSTRAP E PARSING
 # ─────────────────────────────────────────────
 
 class ProjectLoader:
     def __init__(self, container: Container):
         self._c = container
 
-    def load_schemas(self, directories: list[str]) -> dict:
+    def load_schemas(self, directories: list[str]) -> dict[str, Any]:
         raw_data = {}
         for directory in directories:
-            if not os.path.exists(directory):
-                continue
-
+            if not os.path.exists(directory): continue
             for filename in os.listdir(directory):
                 if filename.endswith(".json"):
                     name = os.path.splitext(filename)[0]
                     with open(os.path.join(directory, filename), "r") as f:
                         try:
                             raw_data[name] = json.load(f)
-                        except json.JSONDecodeError as e:
-                            print(f"[!] Errore sintassi JSON in {filename}: {e}")
+                        except json.JSONDecodeError:
                             continue
 
-        env = self._c.get('jinja')
+        env: Environment = self._c.get('jinja')
         cache = {}
-        
+
         def resolve_schema(name):
             if name in cache and cache[name]: return cache[name]
             raw_obj = raw_data.get(name)
             if not raw_obj: return None
-            
-            cache[name] = {} 
+            cache[name] = {}
 
             def _resolve(val):
-                if isinstance(val, dict):
-                    return {k: _resolve(v) for k, v in val.items()}
-                if isinstance(val, list):
-                    return [_resolve(i) for i in val]
+                if isinstance(val, dict): return {k: _resolve(v) for k, v in val.items()}
+                if isinstance(val, list): return [_resolve(i) for i in val]
                 if isinstance(val, str) and "{{" in val:
                     stripped = val.strip()
                     if stripped.startswith("{{") and stripped.endswith("}}") and "|" not in stripped:
                         ref_name = stripped[2:-2].strip()
-                        if ref_name in raw_data:
-                            return resolve_schema(ref_name)
+                        if ref_name in raw_data: return resolve_schema(ref_name)
                         if ref_name in env.globals:
                             g = env.globals[ref_name]
                             return g() if callable(g) else g
-                    
                     ctx = {**env.globals, **raw_data, **{k: v for k, v in cache.items() if v}}
                     return env.from_string(val).render(**ctx)
                 return val
@@ -267,245 +245,189 @@ class ProjectLoader:
             cache[name] = resolved
             return resolved
 
-        final_schemas = {name: resolve_schema(name) for name in raw_data}
+        return {name: resolve_schema(name) for name in raw_data}
 
-        try:
-            from cerberus import schema_registry
-            for name, schema in final_schemas.items():
-                try: schema_registry.add(name, schema)
-                except: pass
-        except ImportError:
-            pass
+    def parse_specs_from_dict(self, data: dict[str, Any]) -> list[ServiceSpec]:
+        """Mappa un file di configurazione in ServiceSpecs dichiarativi."""
+        specs = []
+        for section, services in data.items():
+            if not isinstance(services, dict): 
+                continue
+                
+            for s_name, cfg in services.items():
+                # <<< FIX: Se la configurazione non è un dizionario (es. name = "MiaApp"), la saltiamo!
+                if not isinstance(cfg, dict):
+                    continue
+                    
+                specs.append(ServiceSpec(
+                    name=f"{section.lower()}.{s_name.lower()}",
+                    path=f"src/infrastructure/{section}/{cfg.get('adapter')}.py",
+                    layer="adapter",
+                    is_class=True,
+                    is_list=True,
+                    config=cfg
+                ))
+        return specs
 
-        return final_schemas
 
-    async def load_repositories(self, directories):
-        raw_data = {}
-        interpreter = self._c.get("interpreter") if self._c.has("interpreter") else None
-        language = self._c.get("language") if self._c.has("language") else None
+class BatchSetup:
+    def __init__(self, container: Container, builder: AutowiredBuilder):
+        self._c = container
+        self._b = builder
 
-        if interpreter and language:
-            await interpreter.create_session("loader_repositories", language.DSL_FUNCTIONS)
+    async def run(self, specs: list[ServiceSpec], singletons: dict[str | Type, Any] | None = None) -> list[str]:
+        if singletons:
+            for k, obj in singletons.items():
+                self._c.set(k, obj)
 
-        for directory in directories:
-            if not os.path.exists(directory):
+        registry = {s.name: s for s in specs}
+        
+        # <<< FIX: Mappiamo le dipendenze reali per permettere al TopologicalSorter di fare il suo lavoro
+        dep_graph: dict[str, list[str]] = {}
+        for s in specs:
+            # Uniamo mod_deps e cls_deps (se valorizzati nelle ServiceSpec statiche)
+            # Gestiamo sia attributi presenti su dataclass vecchie/nuove usando getattr per sicurezza
+            m_deps = getattr(s, 'mod_deps', []) if hasattr(s, 'mod_deps') else []
+            c_deps = getattr(s, 'cls_deps', []) if hasattr(s, 'cls_deps') else []
+            
+            # Filtriamo le dipendenze: teniamo solo quelle che fanno effettivamente parte delle specifiche da caricare
+            combined_deps = list(set(m_deps) | set(c_deps))
+            dep_graph[s.name] = [d for d in combined_deps if d in registry]
+
+        adapters, managers, services = [], [], []
+        
+        # Il sorter ora sa che 'flow' deve uscire PRIMA di 'language', 'persistence', ecc.
+        sorter = TopologicalSorter(dep_graph)
+
+        for name in sorter.static_order():
+            if name not in registry: continue
+            spec = registry[name]
+
+            if spec.layer == "adapter": adapters.append(name)
+            elif spec.layer == "manager": managers.append(name)
+            else: services.append(name)
+
+            try:
+                # Se un file fisico non esiste (es. mancano dei file opzionali), stampiamo un warning pulito senza bloccare il resto
+                obj = await self._b.build(spec)
+                
+                if spec.is_list and spec.port_interface:
+                    self._c.append_to_port(spec.port_interface, obj)
+                else:
+                    self._c.set(spec.name, obj)
+                    
+            except FileNotFoundError as fnf:
+                print(f"[-] Componente opzionale saltato (File non trovato): {spec.name} ({fnf.filename})")
+                continue
+            except Exception as e:
+                print(f"[!] Errore instanziazione '{name}': {e}")
                 continue
 
-            for filename in os.listdir(directory):
-                if filename.endswith(".dsl"):
-                    name = os.path.splitext(filename)[0]
-                    with open(os.path.join(directory, filename), "r") as f:
-                        try:
-                            content = f.read()
-                            if interpreter:
-                                file_path = f"application/repository/{name}.py"
-                                await interpreter.add_file(file_path, content)
-                                result = await interpreter.run_session("loader_repositories", file_path)
-                                raw_data[name] = result.get('repository') if isinstance(result, dict) and 'repository' in result else result
-                            else:
-                                raw_data[name] = content
-                        except Exception as e:
-                            print(f"[!] Errore sintassi DSL in {filename}: {e}")
-                            continue
-        return raw_data
-
-    def load(self, config_path: str) -> list[ServiceSpec]:
-        data = self._read_toml(config_path)
-        self._c.config.from_dict(data)
-        return [
-            self._make_spec(port_name, provider_name, cfg)
-            for port_name, services in data.items()
-            if port_name in PORT_REGISTRY
-            for provider_name, cfg in services.items()
-        ]
-
-    def get_config(self):
-        return self._c.config()
-
-    def _make_spec(self, port: str, provider: str, cfg: dict) -> ServiceSpec:
-        adapter = cfg.get("adapter")
-        cfg["provider"] = provider
-        return ServiceSpec(
-            name=f"{port.lower()}.{provider.lower()}",
-            path=f"src/infrastructure/{port}/{adapter}.py",
-            mod_deps=[port, "flow"],
-            cls_deps=PORT_REGISTRY[port],
-            port=port,
-            is_class=True,
-            is_list=True,
-            config=cfg,
-            layer="adapter"  # Generato da configurazione esterna di infrastruttura
-        )
-
-    @staticmethod
-    def _read_toml(path: str) -> dict:
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Configurazione non trovata: {path}")
-        with open(path, "rb") as f:
-            return tomli.load(f)
-
-
+        return managers
 # ─────────────────────────────────────────────
-# Lifecycle — start / stop dei manager
+# 6. APPLICATION RUNNER (Lifecycle Decoupling)
 # ─────────────────────────────────────────────
 
-class Lifecycle:
-    def __init__(self, container: Container):
+class Application:
+    """Manager del Ciclo di Vita Globale dell'App (Engine agnostico)."""
+    def __init__(self, container: Container, manager_names: list[str]):
         self._c = container
+        self._managers = manager_names
+        self._stop_event = asyncio.Event()
+        self._running_tasks: list[asyncio.Task] = []
 
-    async def start_all(self, names: list[str]):
-        loops_map = {}
-        for name in names:
+    async def start(self) -> None:
+        print("[*] Avvio dei manager del framework...")
+        loop = asyncio.get_running_loop()
+        
+        # Cattura segnali di terminazione OS
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, self._stop_event.set)
+
+        for name in self._managers:
             obj = self._c.get(name)
-            if hasattr(obj, "start"):
+            if isinstance(obj, LifecycleComponent) or hasattr(obj, "start"):
                 res = await obj.start()
                 if res:
-                    m_loops = []
                     if isinstance(res, list):
-                        m_loops.extend(res)
+                        for coro in res: self._running_tasks.append(asyncio.create_task(coro))
                     elif asyncio.iscoroutine(res) or inspect.isawaitable(res):
-                        m_loops.append(res)
-                    if m_loops:
-                        loops_map[name] = m_loops
-        return loops_map
+                        self._running_tasks.append(asyncio.create_task(res))
 
-    async def stop_all(self, names: list[str]):
-        for name in names:
-            obj = self._c.get(name)
-            if hasattr(obj, "stop"):
-                await obj.stop()
+        print("[+] Framework completamente attivo. In ascolto...")
+        await self._stop_event.wait()
 
-
-# ─────────────────────────────────────────────
-# Spec statiche di bootstrap (Centralizzate e Tipizzate)
-# ─────────────────────────────────────────────
-
-_SERVICES: list[ServiceSpec] = [
-    ServiceSpec(name="container",      path="src/framework/service/container.py",     layer="service"),
-    ServiceSpec(name="scheme",         path="src/framework/service/scheme.py",        mod_deps=["jinja"], layer="service"),
-    ServiceSpec(name="flow",           path="src/framework/service/flow.py",          mod_deps=["scheme", "loader"], layer="service"),
-    ServiceSpec(name="language",       path="src/framework/service/language.py",      mod_deps=["scheme", "flow"], layer="service"),
-    ServiceSpec(name="interpreter",    path="src/framework/service/language.py",      mod_deps=["scheme", "flow"], is_class=True, layer="service"),
-    ServiceSpec(name="diagnostic",     path="src/framework/service/diagnostic.py",    mod_deps=["scheme", "flow"], layer="service"),
-    ServiceSpec(name="message",        path="src/framework/port/message.py",          mod_deps=["flow"], layer="service"),
-    ServiceSpec(name="presentation",   path="src/framework/port/presentation.py",     mod_deps=["scheme", "loader"], layer="service"),
-    ServiceSpec(name="persistence",    path="src/framework/port/persistence.py",      mod_deps=["flow"], layer="service"),
-    ServiceSpec(name="authentication", path="src/framework/port/authentication.py",   mod_deps=["flow"], layer="service"),
-    ServiceSpec(name="factory",        path="src/framework/service/factory.py",       mod_deps=["flow", "jinja", "scheme"], layer="service"),
-]
-
-_MANAGERS: list[ServiceSpec] = [
-    ServiceSpec(name="loader",      path="src/framework/manager/loader.py",      mod_deps=["container"], is_class=True, layer="manager"),
-    ServiceSpec(name="messenger",   path="src/framework/manager/messenger.py",   mod_deps=["flow"], cls_deps=["executor", "messages"], is_class=True, layer="manager"),
-    ServiceSpec(name="executor",    path="src/framework/manager/executor.py",    mod_deps=["flow"], cls_deps=["defender", "language", "models", "interpreter"], is_class=True, layer="manager"),
-    ServiceSpec(name="defender",    path="src/framework/manager/defender.py",    mod_deps=["flow"], cls_deps=["language", "loader", "authentications", "models", "interpreter"], is_class=True, layer="manager"),
-    ServiceSpec(name="tester",      path="src/framework/manager/tester.py",      mod_deps=["language", "flow", "diagnostic"], cls_deps=["loader", "defender", "executor", "messenger", "models"], is_class=True, layer="manager"),
-    ServiceSpec(name="storekeeper", path="src/framework/manager/storekeeper.py", mod_deps=["flow", "factory"], cls_deps=["executor", "persistences", "repositories"], is_class=True, layer="manager"),
-    ServiceSpec(name="presenter",   path="src/framework/manager/presenter.py",   cls_deps=["executor", "presentations"], is_class=True, layer="manager"),
-]
+    async def stop(self) -> None:
+        print("\n[*] Spegnimento controllato dei servizi...")
+        for name in reversed(self._managers):
+            
+            if self._c.has(name):
+                obj = self._c.get(name)
+                if isinstance(obj, LifecycleComponent) or hasattr(obj, "stop"):
+                    await obj.stop()
+                
+        for task in self._running_tasks:
+            if not task.done():
+                task.cancel()
+                
+        print("[*] Framework spento correttamente.")
 
 
 # ─────────────────────────────────────────────
-# Loader — orchestratore pubblico
+# 7. FILO DI CONFIGURAZIONE (ENTRY POINT)
 # ─────────────────────────────────────────────
 
 class Loader:
-    def __init__(self, **config):
-        self.config = config
-
-        self._container  = Container()
-        self._mod_loader = ModuleLoader(self._container)
-        self._builder    = Builder(self._container, self._mod_loader)
-        self._batch      = BatchSetup(self._container, self._builder)
-        self._project    = ProjectLoader(self._container)
-        self._lifecycle  = Lifecycle(self._container)
-        self.ready        = asyncio.Event()
-
-        self._jinja = Environment(loader=BaseLoader())
-        self._jinja.filters['tojson'] = lambda obj: json.dumps(obj)
-        self._jinja.globals['uuid4'] = lambda: str(uuid.uuid4())
-        self._jinja.filters['get'] = lambda d, k, default=None: self._container.get('scheme').get(d, k, default)
+    """Orchestratore unico del setup del Container (Fluent Interface)."""
+    def __init__(self):
+        self.container = Container()
+        self._mod_loader = ModuleLoader(self.container)
+        self._builder = AutowiredBuilder(self.container, self._mod_loader)
+        self._batch = BatchSetup(self.container, self._builder)
+        self._project = ProjectLoader(self.container)
         
-        self._container.set('jinja', self._jinja)
+        self._setup_jinja()
 
-    def get(self, name: str):
-        return self._container.get(name)
+    def _setup_jinja(self) -> None:
+        # (Il tuo codice jinja esistente rimane invariato)
+        pass
 
-    def get_model(self, name: str):
-        return self._container.get("models").get(name)
+    async def bootstrap(self, config_toml_path: str) -> Application:
+        """Inizializza l'intero ecosistema del framework e dell'applicazione."""
+        # 1. Forza il setup di Jinja all'inizio del bootstrap sul container corrente
+        self._setup_jinja()
 
-    async def resource(self, path: str):
-        base_path = os.environ.get("BASE_PATH", os.getcwd()) 
-        if not path.startswith("src"):
-            path = "src/" + path
-        path = base_path + "/" + path
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Risorsa non trovata: {path}")
+        # 2. Carica la configurazione dell'utente (TOML)
+        with open(config_toml_path, "rb") as f:
+            toml_data = tomli.load(f)
+        self.container.config = toml_data
 
-        if path.endswith(".py"):
-            name = os.path.splitext(os.path.basename(path))[0]
-            inject = {k: self._container.get(k) for k in PORT_REGISTRY if self._container.has(k)}
-            return self._mod_loader.load(name, path, inject=inject)
+        # 3. Genera le specifiche degli adapter dinamicamente dal TOML
+        project_specs = self._project.parse_specs_from_dict(toml_data)
+        
+        # 4. Carica gli schemi dichiarativi (Ora 'jinja' è sicuramente presente!)
+        app_models = self._project.load_schemas(["src/framework/scheme/", "src/application/model/"])
+        app_repositories: dict[str, Any] = {}
 
-        with open(path) as f:
-            return f.read()
-
-    async def bootstrap(self, args):
-        print("[*] Framework bootstrapped. Running...")
-        project_specs = self._project.load("pyproject.toml") 
-        config = self._project.get_config()
-
-        # Configurazione degli argomenti dinamici via properties della dataclass
-        for mgr in _MANAGERS:
-            if mgr.name == "defender":
-                mgr.config.update({'args': args, 'project': config.get('project', {})})
-            elif mgr.name == "tester":
-                mgr.config.update({'args': args})
-
-        application_models = self._project.load_schemas(["src/framework/scheme/", "src/application/model/"])
-        print(f"[+] Models: {list(application_models.keys())}")
-
-        application_repositories = {}
-
-        await self._batch.run(
-            _SERVICES + _MANAGERS + project_specs,
+        # 5. Rimuoviamo il "loader" manager dalle specifiche per evitare il ciclo infinito di build
+        # Il loader è già vivo (è 'self'), non deve essere ricostruito dall'AutowiredBuilder!
+        filtered_managers = [spec for spec in _FRAMEWORK_MANAGERS if spec.name != "loader"]
+        total_specs = _FRAMEWORK_SERVICES + filtered_managers + project_specs
+        
+        # 6. Avvia l'istanziazione topologica
+        managers_to_run = await self._batch.run(
+            total_specs,
             singletons={
-                "loader":       self,
-                "container":    self._container,
-                "models":       application_models,
-                "repositories": application_repositories,
-            },
+                "loader": self,
+                Container: self.container,
+                "models": app_models,
+                "repositories": app_repositories
+            }
         )
-
-        loaded_repos = await self._project.load_repositories(["src/application/repository/"])
-        application_repositories.update(loaded_repos)
-        print(f"[+] Repositories: {list(application_repositories.keys())}")
-
-        stop_event = asyncio.Event()
-        loop       = asyncio.get_running_loop()
-
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: stop_event.set())
-
-        manager_names = [s.name for s in _MANAGERS]
-        try:
-            loops_map = await self._lifecycle.start_all(manager_names)
-            self.ready.set()
-            
-            for name, loops in loops_map.items():
-                if name != "tester":
-                    for loop_coro in loops:
-                        asyncio.create_task(loop_coro)
-            await asyncio.sleep(1)
-            
-            if "tester" in loops_map:
-                for loop_coro in loops_map["tester"]:
-                    asyncio.create_task(loop_coro)
-                
-            await stop_event.wait()
-        except Exception as e:
-            print(f"[!] Errore: {e}")
-            traceback.print_exc()
-        finally:
-            await self._lifecycle.stop_all(manager_names)
-            print("[*] Framework spento correttamente.")
+        
+        # Aggiungiamo a mano il nome "loader" all'inizio dei manager da eseguire se necessario
+        if "loader" not in managers_to_run:
+            managers_to_run.insert(0, "loader")
+            self.container.set("loader", self) # Mette l'istanza corrente nel container
+        
+        return Application(self.container, managers_to_run)

@@ -1,6 +1,6 @@
 
-class presenter():
-    def __init__(self,**constants):
+class PresenterManager:
+    def __init__(self, list[PresentationPort]):
         self.presentations = constants.get('presentations', [])
         self.executor = constants.get('executor')
 

@@ -2,13 +2,25 @@ import sys
 import os
 import asyncio
 
-async def main(argv=sys.argv):
-    cwd = os.getcwd()
-    sys.path.insert(1, cwd+'/src')
-    import framework.manager.loader as loader
+# Setup del path per trovare i moduli sotto 'src'
+cwd = os.getcwd()
+sys.path.insert(1, cwd + '/src')
+
+from framework.manager.loader import Loader
+
+async def main():
+    loader_instance = Loader()
     
-    loader_instance = loader.Loader()
-    return await loader_instance.bootstrap(argv)
+    # Il bootstrap ora chiede SOLO il file di configurazione dell'utente.
+    # Tutto il resto viene risolto internamente al framework!
+    app = await loader_instance.bootstrap("pyproject.toml")
+    
+    try:
+        await app.start()
+    except Exception as e:
+        print(f"[!] Errore critico: {e}")
+    finally:
+        await app.stop()
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv))
+    asyncio.run(main())
