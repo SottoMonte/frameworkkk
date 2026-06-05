@@ -13,6 +13,8 @@ from graphlib import TopologicalSorter
 from jinja2 import Environment, BaseLoader
 import tomli
 
+from dependency_injector import containers, providers
+
 T = TypeVar('T')
 
 # ─────────────────────────────────────────────
@@ -28,7 +30,7 @@ class LifecycleComponent(Protocol):
 
 class ModuleExtension(Protocol):
     """Permette a moduli esterni di registrare servizi in modo dichiarativo."""
-    def configure(self, container: "Container") -> None: ...
+    def configure(self, container: "ContainerWrapper") -> None: ...
 
 
 # ─────────────────────────────────────────────
@@ -70,45 +72,51 @@ _FRAMEWORK_MANAGERS = [
 ]
 
 # ─────────────────────────────────────────────
-# 3. CONTAINER STATO DELL'ARTE (Type-Driven)
+# 3. CONTAINER DI (dependency-injector)
 # ─────────────────────────────────────────────
 
-class Container:
+class ContainerWrapper:
+    """DI Container minimalista senza wrapper superflui."""
+    
+    class _DIContainer(containers.DeclarativeContainer):
+        config = providers.Configuration()
+        module_cache = providers.Singleton(dict)
+        loading_stack = providers.Singleton(set)
+        jinja = providers.Singleton(lambda: Environment(loader=BaseLoader()))
+    
     def __init__(self):
-        self._registry: dict[str | Type, Any] = {}
-        self._port_registry: dict[Type, list[Any]] = {}
-        self.config: dict[str, Any] = {}
-        
-        # Inizializzazione cache interne stabili
-        self.set("module_cache", {})
-        self.set("loading_stack", set())
-
+        self._di = self._DIContainer()
+        self._ports: dict[Type, list[Any]] = {}
+    
     def set(self, key: str | Type[T], obj: T) -> None:
-        """Registra un singleton usando una stringa o direttamente il Tipo/Interfaccia."""
-        self._registry[key] = obj
-
+        """Registra un singleton nel container."""
+        key_str = key if isinstance(key, str) else key.__name__
+        setattr(self._di, key_str, providers.Singleton(lambda o=obj: o))
+    
     def get(self, key: str | Type[T]) -> T:
-        """Risolve una dipendenza. Massimo controllo statico se passato un Tipo."""
-        if key not in self._registry:
-            if isinstance(key, type):
-                raise KeyError(f"Nessun provider registrato per l'interfaccia: '{key.__name__}'")
-            raise KeyError(f"Chiave '{key}' non trovata nel container")
-        
-        item = self._registry[key]
-        return item() if callable(item) and not inspect.isclass(item) else item
-
+        """Risolve una dipendenza dal container."""
+        key_str = key if isinstance(key, str) else key.__name__
+        attr = getattr(self._di, key_str, None)
+        if attr is None:
+            raise KeyError(f"Chiave '{key_str}' non trovata nel container")
+        if isinstance(attr, providers.Provider):
+            return attr()
+        return attr
+    
     def has(self, key: str | Type) -> bool:
-        return key in self._registry
-
+        """Verifica se una chiave è registrata."""
+        key_str = key if isinstance(key, str) else key.__name__
+        return hasattr(self._di, key_str)
+    
     def append_to_port(self, interface: Type, obj: Any) -> None:
-        """Aggiunge un adapter a un'interfaccia esagonale (Port)."""
-        if interface not in self._port_registry:
-            self._port_registry[interface] = []
-        self._port_registry[interface].append(obj)
+        """Aggiunge un adapter a un Port."""
+        if interface not in self._ports:
+            self._ports[interface] = []
+        self._ports[interface].append(obj)
 
     def get_port(self, interface: Type[T]) -> list[T]:
-        """Inietta la lista di tutti gli adapter registrati su quel Port."""
-        return self._port_registry.get(interface, [])
+        """Inietta tutti gli adapter su un Port."""
+        return self._ports.get(interface, [])
 
 
 # ─────────────────────────────────────────────
@@ -116,7 +124,7 @@ class Container:
 # ─────────────────────────────────────────────
 
 class ModuleLoader:
-    def __init__(self, container: Container):
+    def __init__(self, container: ContainerWrapper):
         self._container = container
 
     def load(self, name: str, path: str, inject: dict[str, Any] | None = None) -> Any:
@@ -150,20 +158,25 @@ class ModuleLoader:
 
 
 class AutowiredBuilder:
-    """Ispeziona le firme dei costruttori per iniettare dipendenze reali (Zero Stringhe)."""
-    def __init__(self, container: Container, module_loader: ModuleLoader):
+    """Ispeziona le firme dei costruttori per iniettare dipendenze reali usando dependency-injector."""
+    def __init__(self, container: ContainerWrapper, module_loader: ModuleLoader):
         self._c = container
         self._ml = module_loader
 
     async def build(self, spec: ServiceSpec) -> Any:
-        # Carica il modulo fisico
-        # Prepare an inject dict with any string-keyed singletons already registered
+        # Prepare an inject dict con i servizi già registrati nel container
         inject: dict[str, Any] = {}
         try:
-            registry = getattr(self._c, "_registry", {})
-            for k, v in registry.items():
-                if isinstance(k, str):
-                    inject[k] = v
+            # Itera su tutti gli attributi del Container
+            for attr_name in dir(self._c._di):
+                if attr_name.startswith('_'):
+                    continue
+                attr = getattr(self._c._di, attr_name)
+                if isinstance(attr, providers.Provider):
+                    try:
+                        inject[attr_name] = attr()
+                    except Exception:
+                        pass
         except Exception:
             inject = {}
 
@@ -208,13 +221,18 @@ class AutowiredBuilder:
             annotation = param.annotation
 
             # Caso speciale: se il costruttore accetta **kwargs, passiamo tutte
-            # le entry string-keyed già registrate nel container come defaults.
+            # le entry registrate nel container come defaults.
             if param.kind == inspect.Parameter.VAR_KEYWORD:
                 try:
-                    registry = getattr(self._c, "_registry", {})
-                    for k, v in registry.items():
-                        if isinstance(k, str) and k not in kwargs:
-                            kwargs[k] = v
+                    for attr_name in dir(self._c._di):
+                        if attr_name.startswith('_') or attr_name in kwargs:
+                            continue
+                        attr = getattr(self._c._di, attr_name)
+                        if isinstance(attr, providers.Provider):
+                            try:
+                                kwargs[attr_name] = attr()
+                            except Exception:
+                                pass
                 except Exception:
                     pass
                 continue
@@ -243,13 +261,14 @@ class AutowiredBuilder:
 # ─────────────────────────────────────────────
 
 class ProjectLoader:
-    def __init__(self, container: Container):
+    def __init__(self, container: ContainerWrapper):
         self._c = container
 
     def load_schemas(self, directories: list[str]) -> dict[str, Any]:
         raw_data = {}
         for directory in directories:
-            if not os.path.exists(directory): continue
+            if not os.path.exists(directory):
+                continue
             for filename in os.listdir(directory):
                 if filename.endswith(".json"):
                     name = os.path.splitext(filename)[0]
@@ -259,23 +278,32 @@ class ProjectLoader:
                         except json.JSONDecodeError:
                             continue
 
-        env: Environment = self._c.get('jinja')
+        try:
+            env: Environment = self._c.get('jinja')
+        except KeyError:
+            env = Environment(loader=BaseLoader())
+            
         cache = {}
 
         def resolve_schema(name):
-            if name in cache and cache[name]: return cache[name]
+            if name in cache and cache[name]:
+                return cache[name]
             raw_obj = raw_data.get(name)
-            if not raw_obj: return None
+            if not raw_obj:
+                return None
             cache[name] = {}
 
             def _resolve(val):
-                if isinstance(val, dict): return {k: _resolve(v) for k, v in val.items()}
-                if isinstance(val, list): return [_resolve(i) for i in val]
+                if isinstance(val, dict):
+                    return {k: _resolve(v) for k, v in val.items()}
+                if isinstance(val, list):
+                    return [_resolve(i) for i in val]
                 if isinstance(val, str) and "{{" in val:
                     stripped = val.strip()
                     if stripped.startswith("{{") and stripped.endswith("}}") and "|" not in stripped:
                         ref_name = stripped[2:-2].strip()
-                        if ref_name in raw_data: return resolve_schema(ref_name)
+                        if ref_name in raw_data:
+                            return resolve_schema(ref_name)
                         if ref_name in env.globals:
                             g = env.globals[ref_name]
                             return g() if callable(g) else g
@@ -313,44 +341,38 @@ class ProjectLoader:
 
 
 class BatchSetup:
-    def __init__(self, container: Container, builder: AutowiredBuilder):
+    def __init__(self, container: ContainerWrapper, builder: AutowiredBuilder):
         self._c = container
         self._b = builder
 
-    async def run(self, specs: list[ServiceSpec], singletons: dict[str | Type, Any] | None = None) -> list[str]:
-        if singletons:
-            for k, obj in singletons.items():
-                self._c.set(k, obj)
-
+    async def run(self, specs: list[ServiceSpec]) -> list[str]:
+        """Istanzia tutti i servizi in ordine topologico."""
         registry = {s.name: s for s in specs}
         
-        # <<< FIX: Mappiamo le dipendenze reali per permettere al TopologicalSorter di fare il suo lavoro
+        # Mappiamo le dipendenze reali per permettere al TopologicalSorter di fare il suo lavoro
         dep_graph: dict[str, list[str]] = {}
         for s in specs:
-            # Uniamo mod_deps e cls_deps (se valorizzati nelle ServiceSpec statiche)
-            # Gestiamo sia attributi presenti su dataclass vecchie/nuove usando getattr per sicurezza
             m_deps = getattr(s, 'mod_deps', []) if hasattr(s, 'mod_deps') else []
             c_deps = getattr(s, 'cls_deps', []) if hasattr(s, 'cls_deps') else []
-            
-            # Filtriamo le dipendenze: teniamo solo quelle che fanno effettivamente parte delle specifiche da caricare
             combined_deps = list(set(m_deps) | set(c_deps))
             dep_graph[s.name] = [d for d in combined_deps if d in registry]
 
         adapters, managers, services = [], [], []
-        
-        # Il sorter ora sa che 'flow' deve uscire PRIMA di 'language', 'persistence', ecc.
         sorter = TopologicalSorter(dep_graph)
 
         for name in sorter.static_order():
-            if name not in registry: continue
+            if name not in registry:
+                continue
             spec = registry[name]
 
-            if spec.layer == "adapter": adapters.append(name)
-            elif spec.layer == "manager": managers.append(name)
-            else: services.append(name)
+            if spec.layer == "adapter":
+                adapters.append(name)
+            elif spec.layer == "manager":
+                managers.append(name)
+            else:
+                services.append(name)
 
             try:
-                # Se un file fisico non esiste (es. mancano dei file opzionali), stampiamo un warning pulito senza bloccare il resto
                 obj = await self._b.build(spec)
                 
                 if spec.is_list and spec.port_interface:
@@ -371,8 +393,8 @@ class BatchSetup:
 # ─────────────────────────────────────────────
 
 class Application:
-    """Manager del Ciclo di Vita Globale dell'App (Engine agnostico)."""
-    def __init__(self, container: Container, manager_names: list[str]):
+    """Manager del Ciclo di Vita Globale dell'App."""
+    def __init__(self, container: ContainerWrapper, manager_names: list[str]):
         self._c = container
         self._managers = manager_names
         self._stop_event = asyncio.Event()
@@ -420,9 +442,15 @@ class Application:
 # ─────────────────────────────────────────────
 
 class Loader:
-    """Orchestratore unico del setup del Container (Fluent Interface)."""
+    """Orchestratore unico del setup del Container (Fluent Interface + dependency-injector)."""
     def __init__(self):
-        self.container = Container()
+        # Instanzia il Container
+        self.container = ContainerWrapper()
+        
+        # Inizializza cache
+        self.container._di.module_cache.override({})
+        self.container._di.loading_stack.override(set())
+        
         self._mod_loader = ModuleLoader(self.container)
         self._builder = AutowiredBuilder(self.container, self._mod_loader)
         self._batch = BatchSetup(self.container, self._builder)
@@ -438,63 +466,58 @@ class Loader:
             return None
 
     def get_model(self, name: str) -> Any:
-        models = self.container.get('models') if self.container.has('models') else {}
-        return models.get(name)
+        try:
+            models = self.container.get('models')
+            return models.get(name)
+        except KeyError:
+            return None
 
     def _setup_jinja(self) -> None:
-        # Inizializza un Environment minimale e lo registra nel container
-        # I template possono usare le globals aggiunte qui sotto.
+        # Inizializza un Environment e lo registra nel container
         try:
             env = Environment(loader=BaseLoader())
             # Helper utili per i template
             env.globals.setdefault("uuid", lambda: str(uuid.uuid4()))
             env.globals.setdefault("uid", lambda: str(uuid.uuid4()))
-            # Compatibilità con template che chiamano `uuid4()`
             env.globals.setdefault("uuid4", lambda: str(uuid.uuid4()))
-            env.globals.setdefault("config", self.container.config)
+            env.globals.setdefault("config", {})
 
-            # Registrazione in container sotto la chiave 'jinja'
-            self.container.set('jinja', env)
+            # Registrazione come Singleton nel container
+            self.container._di.jinja.override(env)
         except Exception as e:
-            # Non vogliamo bloccare il bootstrap per un problema non critico con Jinja
             print(f"[!] Impossibile inizializzare Jinja: {e}")
 
     async def bootstrap(self, config_toml_path: str) -> Application:
         """Inizializza l'intero ecosistema del framework e dell'applicazione."""
-        # 1. Forza il setup di Jinja all'inizio del bootstrap sul container corrente
+        # 1. Forza il setup di Jinja all'inizio del bootstrap
         self._setup_jinja()
 
         # 2. Carica la configurazione dell'utente (TOML)
         with open(config_toml_path, "rb") as f:
             toml_data = tomli.load(f)
-        self.container.config = toml_data
+        self.container._di.config.override(toml_data)
 
         # 3. Genera le specifiche degli adapter dinamicamente dal TOML
         project_specs = self._project.parse_specs_from_dict(toml_data)
         
-        # 4. Carica gli schemi dichiarativi (Ora 'jinja' è sicuramente presente!)
+        # 4. Carica gli schemi dichiarativi
         app_models = self._project.load_schemas(["src/framework/scheme/", "src/application/model/"])
         app_repositories: dict[str, Any] = {}
 
-        # 5. Rimuoviamo il "loader" manager dalle specifiche per evitare il ciclo infinito di build
-        # Il loader è già vivo (è 'self'), non deve essere ricostruito dall'AutowiredBuilder!
+        # 5. Registra i singletons nel container (usando dependency-injector)
+        self.container.set("loader", self)
+        self.container.set("models", app_models)
+        self.container.set("repositories", app_repositories)
+
+        # 6. Filtra il "loader" manager dalle specifiche per evitare cicli infiniti
         filtered_managers = [spec for spec in _FRAMEWORK_MANAGERS if spec.name != "loader"]
         total_specs = _FRAMEWORK_SERVICES + filtered_managers + project_specs
         
-        # 6. Avvia l'istanziazione topologica
-        managers_to_run = await self._batch.run(
-            total_specs,
-            singletons={
-                "loader": self,
-                Container: self.container,
-                "models": app_models,
-                "repositories": app_repositories
-            }
-        )
+        # 7. Avvia l'istanziazione topologica
+        managers_to_run = await self._batch.run(total_specs)
         
-        # Aggiungiamo a mano il nome "loader" all'inizio dei manager da eseguire se necessario
+        # 8. Assicura che "loader" sia presente nei manager da eseguire
         if "loader" not in managers_to_run:
             managers_to_run.insert(0, "loader")
-            self.container.set("loader", self) # Mette l'istanza corrente nel container
         
         return Application(self.container, managers_to_run)
