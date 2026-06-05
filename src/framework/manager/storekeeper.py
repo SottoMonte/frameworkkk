@@ -4,9 +4,9 @@ import importlib
 class Storekeeper():
 
     def __init__(self,**constants):
-        self.executor = constants['executor']
-        self.persistences = constants['persistences']
-        self.repositories = constants['repositories']
+        self.executor = constants.get('executor')
+        self.persistences = constants.get('persistences', [])
+        self.repositories = constants.get('repositories', {})
         self.maked = {}
 
     async def start(self):

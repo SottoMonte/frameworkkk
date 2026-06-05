@@ -142,7 +142,8 @@ class ModuleLoader:
 
     @staticmethod
     def find_class(mod: Any, name: str) -> Type | None:
-        for attr_name in (name, name.capitalize(), 'Adapter', 'adapter'):
+        candidates = [name, name.capitalize(), f"{name.capitalize()}Manager", f"{name.capitalize()}Service", 'Adapter', 'adapter']
+        for attr_name in candidates:
             if (cls := getattr(mod, attr_name, None)) is not None:
                 return cls
         return None
@@ -156,7 +157,35 @@ class AutowiredBuilder:
 
     async def build(self, spec: ServiceSpec) -> Any:
         # Carica il modulo fisico
-        mod = self._ml.load(spec.name, spec.path)
+        # Prepare an inject dict with any string-keyed singletons already registered
+        inject: dict[str, Any] = {}
+        try:
+            registry = getattr(self._c, "_registry", {})
+            for k, v in registry.items():
+                if isinstance(k, str):
+                    inject[k] = v
+        except Exception:
+            inject = {}
+
+        # Carica i Port (es. MessagePort) e aggiunge le loro symbols all'inject
+        try:
+            ports_dir = os.path.join("src", "framework", "port")
+            if os.path.isdir(ports_dir):
+                for fname in os.listdir(ports_dir):
+                    if not fname.endswith('.py'):
+                        continue
+                    ppath = os.path.join(ports_dir, fname)
+                    try:
+                        pmod = self._ml.load(f"port.{os.path.splitext(fname)[0]}", ppath, inject=inject)
+                        for attr_name, attr_val in vars(pmod).items():
+                            if not attr_name.startswith("_") and attr_name not in inject:
+                                inject[attr_name] = attr_val
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        mod = self._ml.load(spec.name, spec.path, inject=inject)
         
         if not spec.is_class:
             # Se è un modulo procedurale, applichiamo la configurazione dizionario nativa
@@ -177,6 +206,18 @@ class AutowiredBuilder:
                 continue
             
             annotation = param.annotation
+
+            # Caso speciale: se il costruttore accetta **kwargs, passiamo tutte
+            # le entry string-keyed già registrate nel container come defaults.
+            if param.kind == inspect.Parameter.VAR_KEYWORD:
+                try:
+                    registry = getattr(self._c, "_registry", {})
+                    for k, v in registry.items():
+                        if isinstance(k, str) and k not in kwargs:
+                            kwargs[k] = v
+                except Exception:
+                    pass
+                continue
             
             # Caso 1: Se il parametro richiede una lista di un Port (Es. `adapters: list[MioPort]`)
             if hasattr(annotation, "__origin__") and annotation.__origin__ is list:
@@ -194,6 +235,7 @@ class AutowiredBuilder:
         # Estende la configurazione manuale passata tramite file (TOML/JSON)
         kwargs.update(spec.config)
         return cls(**kwargs)
+
 
 
 # ─────────────────────────────────────────────
@@ -388,9 +430,34 @@ class Loader:
         
         self._setup_jinja()
 
+    # Proxy minimi richiesti dai moduli (flow, ecc.)
+    def get(self, key: str | Type[T]) -> Any:
+        try:
+            return self.container.get(key)
+        except KeyError:
+            return None
+
+    def get_model(self, name: str) -> Any:
+        models = self.container.get('models') if self.container.has('models') else {}
+        return models.get(name)
+
     def _setup_jinja(self) -> None:
-        # (Il tuo codice jinja esistente rimane invariato)
-        pass
+        # Inizializza un Environment minimale e lo registra nel container
+        # I template possono usare le globals aggiunte qui sotto.
+        try:
+            env = Environment(loader=BaseLoader())
+            # Helper utili per i template
+            env.globals.setdefault("uuid", lambda: str(uuid.uuid4()))
+            env.globals.setdefault("uid", lambda: str(uuid.uuid4()))
+            # Compatibilità con template che chiamano `uuid4()`
+            env.globals.setdefault("uuid4", lambda: str(uuid.uuid4()))
+            env.globals.setdefault("config", self.container.config)
+
+            # Registrazione in container sotto la chiave 'jinja'
+            self.container.set('jinja', env)
+        except Exception as e:
+            # Non vogliamo bloccare il bootstrap per un problema non critico con Jinja
+            print(f"[!] Impossibile inizializzare Jinja: {e}")
 
     async def bootstrap(self, config_toml_path: str) -> Application:
         """Inizializza l'intero ecosistema del framework e dell'applicazione."""

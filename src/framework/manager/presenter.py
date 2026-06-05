@@ -1,7 +1,7 @@
 
 class PresenterManager:
-    def __init__(self, list[PresentationPort]):
-        self.presentations = constants.get('presentations', [])
+    def __init__(self, presentations: list["PresentationPort"] = None, **constants):
+        self.presentations = presentations or constants.get('presentations', [])
         self.executor = constants.get('executor')
 
     async def start(self):
