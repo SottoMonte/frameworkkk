@@ -2,7 +2,49 @@ import re
 from urllib.parse import quote
 from jinja2 import Environment, meta, nodes
 
+class Application:
+    """Manager del Ciclo di Vita Globale dell'App."""
+    def __init__(self, container: ContainerWrapper, manager_names: list[str]):
+        self._c = container
+        self._managers = manager_names
+        self._stop_event = asyncio.Event()
+        self._running_tasks: list[asyncio.Task] = []
 
+    async def start(self) -> None:
+        print("[*] Avvio dei manager del framework...")
+        loop = asyncio.get_running_loop()
+        
+        # Cattura segnali di terminazione OS
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, self._stop_event.set)
+
+        for name in self._managers:
+            obj = self._c.get(name)
+            if isinstance(obj, LifecycleComponent) or hasattr(obj, "start"):
+                res = await obj.start()
+                if res:
+                    if isinstance(res, list):
+                        for coro in res: self._running_tasks.append(asyncio.create_task(coro))
+                    elif asyncio.iscoroutine(res) or inspect.isawaitable(res):
+                        self._running_tasks.append(asyncio.create_task(res))
+
+        print("[+] Framework completamente attivo. In ascolto...")
+        await self._stop_event.wait()
+
+    async def stop(self) -> None:
+        print("\n[*] Spegnimento controllato dei servizi...")
+        for name in reversed(self._managers):
+            
+            if self._c.has(name):
+                obj = self._c.get(name)
+                if isinstance(obj, LifecycleComponent) or hasattr(obj, "stop"):
+                    await obj.stop()
+                
+        for task in self._running_tasks:
+            if not task.done():
+                task.cancel()
+                
+        print("[*] Framework spento correttamente.")
 
 class repository:
     def __init__(self, **constants):
