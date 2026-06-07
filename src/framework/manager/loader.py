@@ -41,18 +41,23 @@ class ContainerWrapper:
     
     def get(self, key: str | Type[T]) -> T:
         """Risolve una dipendenza dal container."""
-        key_str = key if isinstance(key, str) else key.__name__
-        attr = getattr(self._di, key_str, None)
-        if attr is None:
-            raise KeyError(f"Chiave '{key_str}' non trovata nel container")
+        if not isinstance(key, str):
+            if key in self._ports:
+                return self._ports[key]
+            key = key.__name__
+
+        attr = getattr(self._di, key, None)
         if isinstance(attr, providers.Provider):
             return attr()
         return attr
     
     def has(self, key: str | Type) -> bool:
         """Verifica se una chiave è registrata."""
-        key_str = key if isinstance(key, str) else key.__name__
-        return hasattr(self._di, key_str)
+        if not isinstance(key, str):
+            if key in self._ports:
+                return True
+            key = key.__name__
+        return hasattr(self._di, key)
     
     def append_to_port(self, interface: Type, obj: Any) -> None:
         """Aggiunge un adapter a un Port."""
@@ -63,100 +68,6 @@ class ContainerWrapper:
     def get_port(self, interface: Type[T]) -> list[T]:
         """Inietta tutti gli adapter su un Port."""
         return self._ports.get(interface, [])
-
-class AutowiredBuilder:
-    """Ispeziona le firme dei costruttori per iniettare dipendenze reali usando dependency-injector."""
-
-    async def build(self, spec) -> Any:
-        # Prepare an inject dict con i servizi già registrati nel container
-        inject: dict[str, Any] = {}
-        try:
-            # Itera su tutti gli attributi del Container
-            for attr_name in dir(self._c._di):
-                if attr_name.startswith('_'):
-                    continue
-                attr = getattr(self._c._di, attr_name)
-                if isinstance(attr, providers.Provider):
-                    try:
-                        inject[attr_name] = attr()
-                    except Exception:
-                        pass
-        except Exception:
-            inject = {}
-
-        # Carica i Port (es. MessagePort) e aggiunge le loro symbols all'inject
-        try:
-            ports_dir = os.path.join("src", "framework", "port")
-            if os.path.isdir(ports_dir):
-                for fname in os.listdir(ports_dir):
-                    if not fname.endswith('.py'):
-                        continue
-                    ppath = os.path.join(ports_dir, fname)
-                    try:
-                        pmod = self._ml.load(f"port.{os.path.splitext(fname)[0]}", ppath, inject=inject)
-                        for attr_name, attr_val in vars(pmod).items():
-                            if not attr_name.startswith("_") and attr_name not in inject:
-                                inject[attr_name] = attr_val
-                    except Exception:
-                        continue
-        except Exception:
-            pass
-
-        mod = self._ml.load(spec.name, spec.path, inject=inject)
-        
-        if not spec.is_class:
-            # Se è un modulo procedurale, applichiamo la configurazione dizionario nativa
-            for k, v in spec.config.items():
-                setattr(mod, k, v)
-            return mod
-
-        cls = self._ml.find_class(mod, spec.name)
-        if cls is None:
-            raise ImportError(f"Nessuna classe valida trovata nel file {spec.path}")
-
-        # --- Algoritmo di Autowiring ---
-        signature = inspect.signature(cls.__init__)
-        kwargs: dict[str, Any] = {}
-
-        for param_name, param in signature.parameters.items():
-            if param_name == 'self':
-                continue
-            
-            annotation = param.annotation
-
-            # Caso speciale: se il costruttore accetta **kwargs, passiamo tutte
-            # le entry registrate nel container come defaults.
-            if param.kind == inspect.Parameter.VAR_KEYWORD:
-                try:
-                    for attr_name in dir(self._c._di):
-                        if attr_name.startswith('_') or attr_name in kwargs:
-                            continue
-                        attr = getattr(self._c._di, attr_name)
-                        if isinstance(attr, providers.Provider):
-                            try:
-                                kwargs[attr_name] = attr()
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-                continue
-            
-            # Caso 1: Se il parametro richiede una lista di un Port (Es. `adapters: list[MioPort]`)
-            if hasattr(annotation, "__origin__") and annotation.__origin__ is list:
-                inner_type = annotation.__args__[0]
-                kwargs[param_name] = self._c.get_port(inner_type)
-            
-            # Caso 2: Se la dipendenza ha un Type Hint registrato nel container (Es. `flow: FlowService`)
-            elif annotation is not inspect.Parameter.empty and self._c.has(annotation):
-                kwargs[param_name] = self._c.get(annotation)
-            
-            # Caso 3: Fallback storico su stringhe se l'annotazione combacia con config/nomi spec
-            elif self._c.has(param_name):
-                kwargs[param_name] = self._c.get(param_name)
-                
-        # Estende la configurazione manuale passata tramite file (TOML/JSON)
-        kwargs.update(spec.config)
-        return cls(**kwargs)
 
 
 # ─────────────────────────────────────────────
@@ -286,15 +197,20 @@ class Loader:
             module = await self.string_to_module(code, name, adapter_path)
             adapter_class = getattr(module, 'Manager' if key == 'Managers' else 'Adapter', None)
             signature = inspect.signature(adapter_class.__init__)
-            ok =[param.annotation.__args__[0] if param_name != 'self' and hasattr(param.annotation, "__origin__") and param.annotation.__origin__ is list else 'ok' for param_name, param in signature.parameters.items()]
+            ok = [param.annotation.__args__[0] if param_name != 'self' and hasattr(param.annotation, "__origin__") and param.annotation.__origin__ is list else None for param_name, param in signature.parameters.items()]
             print("---->",ok)
-            instance = adapter_class(**config)
+            
             match key:
                 case 'Managers':
+                    
+                    args = [ self.container.get(item) for item in ok if item]
+                    instance = adapter_class(*args, **config)
                     self.container.set(name, instance)
                     print(f"[+] Manager '{name}' caricato e registrato come singleton")
                 case _:
-                    self.container.append_to_port(key+'s', instance)
+                    #print("---->",name,key,getattr(module, key).Port,dir(module))
+                    instance = adapter_class(**config)
+                    self.container.append_to_port(getattr(module, key).Port, instance)
                     print(f"[+] Adapter '{name}' in {key}s caricato e registrato per il Port '{key}'")
         else:
             print(f"Attenzione: File dell'adapter '{name}' non trovato in '{adapter_path}'")
