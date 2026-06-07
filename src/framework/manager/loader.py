@@ -90,7 +90,7 @@ class Loader:
 
     managers: dict[str, Any] = {
         'messenger': 'src/framework/manager/messenger.py',
-        #'storekeeper': 'src/framework/manager/storekeeper.py',
+        'storekeeper': 'src/framework/manager/storekeeper.py',
         #'presenter': 'src/framework/manager/presenter.py',
         #'defender': 'src/framework/manager/defender.py',
         #'orchestrator': 'src/framework/manager/orchestrator.py',
@@ -103,6 +103,7 @@ class Loader:
     def __init__(self):
         # Instanzia il Container
         self.container = ContainerWrapper()
+        self.container.set(Loader, self)  # Placeholder per la factory, sarà sovrascritta dopo il bootstrap
 
 
     async def string_to_module(self, module_code: str, module_name: str, module_path: str) -> types.ModuleType:
@@ -197,17 +198,17 @@ class Loader:
             module = await self.string_to_module(code, name, adapter_path)
             adapter_class = getattr(module, 'Manager' if key == 'Managers' else 'Adapter', None)
             signature = inspect.signature(adapter_class.__init__)
-            ok = [param.annotation.__args__[0] if param_name != 'self' and hasattr(param.annotation, "__origin__") and param.annotation.__origin__ is list else None for param_name, param in signature.parameters.items()]
-            print("---->",ok)
-            
+            ok = [param.annotation.__args__[0] if hasattr(param.annotation, "__origin__") and param.annotation.__origin__ is list else param.annotation for param_name, param in signature.parameters.items() if param_name != 'self' and param.annotation is not inspect._empty ]
             match key:
                 case 'Managers':
                     
-                    args = [ self.container.get(item) for item in ok if item]
+                    print("---->",name,key,ok)
+                    args = [self.container.get(param) for param in ok]
                     instance = adapter_class(*args, **config)
-                    self.container.set(name, instance)
+                    self.container.set(adapter_class, instance)
                     print(f"[+] Manager '{name}' caricato e registrato come singleton")
                 case _:
+                    
                     #print("---->",name,key,getattr(module, key).Port,dir(module))
                     instance = adapter_class(**config)
                     self.container.append_to_port(getattr(module, key).Port, instance)

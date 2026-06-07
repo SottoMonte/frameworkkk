@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import flow
 
-class port(ABC):
+class Port(ABC):
 
     _method_decorators = {
         "create":      flow.result(inputs=("session","storekeeper"), ),
@@ -16,10 +16,10 @@ class port(ABC):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        for method_name, decorator in port._method_decorators.items():
+        '''for method_name, decorator in Port._method_decorators.items():
             if method_name in cls.__dict__:  # solo se definito direttamente
                 original = cls.__dict__[method_name]
-                setattr(cls, method_name, decorator(original))
+                setattr(cls, method_name, decorator(original))'''
 
     @abstractmethod
     async def create(self,*services,**constants):

@@ -1,19 +1,24 @@
 import asyncio
 import importlib
+import persistence
+import flow
 
-class Storekeeper():
+from messenger import Manager as Messenger
 
-    def __init__(self,**constants):
-        self.executor = constants.get('executor')
-        self.persistences = constants.get('persistences', [])
-        self.repositories = constants.get('repositories', {})
+class Manager:
+
+    def __init__(self,providers: list[persistence.Port], messenger: Messenger,**constants):
+        #self.executor = constants.get('executor')
+        self.persistences = providers
+        #self.repositories = constants.get('repositories', {})
         self.maked = {}
+        self.messenger = messenger
 
     async def start(self):
         for repository in self.repositories:
             self.maked[repository] = factory.repository(**self.repositories[repository])
 
-    @flow.result(inputs=("session",))
+    #@flow.result(inputs=("session",))
     async def preparation(self, session, storekeeper):
         repository_name = storekeeper.get('repository')
         repository = self.maked.get(repository_name)
