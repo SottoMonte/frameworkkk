@@ -177,7 +177,7 @@ class Loader:
         'persistence': 'src/framework/port/persistence.py',
     }
 
-    ccc: dict[str, Any] = {
+    managers: dict[str, Any] = {
         'messenger': 'src/framework/manager/messenger.py',
         #'storekeeper': 'src/framework/manager/storekeeper.py',
         #'presenter': 'src/framework/manager/presenter.py',
@@ -278,6 +278,27 @@ class Loader:
                     code, path = module_codes[module_name]
                     await self.string_to_module(code, module_name, path)
 
+
+    async def _load_level(self,name,config,key,path):
+        adapter_path = path
+        if os.path.isfile(adapter_path):
+            code = await self.read(adapter_path)
+            module = await self.string_to_module(code, name, adapter_path)
+            adapter_class = getattr(module, 'Manager' if key == 'Managers' else 'Adapter', None)
+            signature = inspect.signature(adapter_class.__init__)
+            ok =[param.annotation.__args__[0] if param_name != 'self' and hasattr(param.annotation, "__origin__") and param.annotation.__origin__ is list else 'ok' for param_name, param in signature.parameters.items()]
+            print("---->",ok)
+            instance = adapter_class(**config)
+            match key:
+                case 'Managers':
+                    self.container.set(name, instance)
+                    print(f"[+] Manager '{name}' caricato e registrato come singleton")
+                case _:
+                    self.container.append_to_port(key+'s', instance)
+                    print(f"[+] Adapter '{name}' in {key}s caricato e registrato per il Port '{key}'")
+        else:
+            print(f"Attenzione: File dell'adapter '{name}' non trovato in '{adapter_path}'")
+
     async def bootstrap(self, config_toml_path: str):
         """Avvia il framework caricando i moduli in ordine di dipendenze."""
         await self._load_in_order()
@@ -292,22 +313,30 @@ class Loader:
                 for i,adapter_name in enumerate(adapters):
                     adapter_config = adapters[adapter_name]
                     adapter_path = f"src/infrastructure/{key}/{adapter_name}.py"
+                    await self._load_level(adapter_name,adapter_config[i],key,adapter_path)
+                    
+
+        '''for key in self.ports.keys():
+            if key in config_data:
+                adapters = config_data[key]
+                for i,adapter_name in enumerate(adapters):
+                    adapter_config = adapters[adapter_name]
+                    adapter_path = f"src/infrastructure/{key}/{adapter_name}.py"
                     if os.path.isfile(adapter_path):
                         code = await self.read(adapter_path)
                         module = await self.string_to_module(code, adapter_name, adapter_path)
                         adapter_class = module.Adapter
-                        print(adapter_config[i])
+                        signature = inspect.signature(adapter_class.__init__)
+                        ok =[param.annotation.__args__[0] if param_name != 'self' and hasattr(param.annotation, "__origin__") and param.annotation.__origin__ is list else 'ok' for param_name, param in signature.parameters.items()]
+                        print("---->",ok)
                         instance = adapter_class(**adapter_config[i])
                         self.container.append_to_port(key+'s', instance)
                         print(f"[+] Adapter '{adapter_name}' in {key}s caricato e registrato per il Port '{key}'")
                     else:
-                        print(f"Attenzione: File dell'adapter '{adapter_name}' non trovato in '{adapter_path}'")
+                        print(f"Attenzione: File dell'adapter '{adapter_name}' non trovato in '{adapter_path}'")'''
 
 
-
-        for name, path in self.ccc.items():
-            code = await self.read(path)
-            module = await self.string_to_module(code, name, path)
-            self.container.set(name, module)
-            print(f"[+] Manager '{name}' caricato da '{path}'")
+        #print(self.container.get_port('messages'))
+        for name, path in self.managers.items():
+            await self._load_level(name, {}, 'Managers', path)
         return self.container.get('factory').Application(self.container, [])

@@ -15,7 +15,7 @@ class Adapter(message.Port):
     }
     RESET_COLOR = "\033[0m"  # Reset colori ANSI
 
-    def __init__(self, **constants):
+    def __init__(self,**constants):
         
         #self.config = constants['config']
         '''self.history = dict()
