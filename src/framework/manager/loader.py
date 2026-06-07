@@ -2,7 +2,6 @@ import os
 import sys
 import importlib.util
 import asyncio
-import signal
 import inspect
 import traceback
 import json
@@ -166,23 +165,24 @@ class AutowiredBuilder:
 
 class Loader:
     services: dict[str, Any] = {
-        'flow': 'src/framework/service/flow.py'
+        'flow': 'src/framework/service/flow.py',
+        'factory': 'src/framework/service/factory.py',
+        'language': 'src/framework/service/language.py',
+        'scheme': 'src/framework/service/scheme.py',
+
+        'message': 'src/framework/port/message.py',
+        'presentation': 'src/framework/port/presentation.py',
+        'persistence': 'src/framework/port/persistence.py',
     }
+
+
 
 
     """Orchestratore unico del setup del Container (Fluent Interface + dependency-injector)."""
     def __init__(self):
         # Instanzia il Container
         self.container = ContainerWrapper()
-        
-        # Inizializza cache
-        #self.container._di.module_cache.override({})
-        #self.container._di.loading_stack.override(set())
-        
-        '''self._mod_loader = ModuleLoader(self.container)
-        self._builder = AutowiredBuilder(self.container, self._mod_loader)
-        self._batch = BatchSetup(self.container, self._builder)
-        self._project = ProjectLoader(self.container)'''
+
 
     async def string_to_module(self, module_code: str, module_name: str = "dynamic_module", module_path: str | None = None) -> types.ModuleType:
         """
@@ -210,6 +210,7 @@ class Loader:
         # 3. (Opzionale ma consigliato) Registra il modulo nel sistema sys.modules
         # Questo permette al modulo di gestire correttamente eventuali import interni
         sys.modules[module_name] = mod
+        self.container.set(module_name, mod)  # Registra il modulo nel container per eventuali dipendenze future
         
         try:
             # 4. Esegue il codice della stringa all'interno del dizionario del nuovo modulo
@@ -219,7 +220,7 @@ class Loader:
             # Rimuove il modulo da sys.modules in caso di errore per non lasciare rimasugli
             del sys.modules[module_name]
             raise e
-        print(f"Modulo '{module_name}' caricato con successo da '{module_path}'",mod)
+        print(f"[+] Modulo '{module_name}' caricato con successo da '{module_path}'",mod)
         return mod
 
     async def estrai_imports(self, codice_sorgente: str) -> list:
@@ -267,3 +268,5 @@ class Loader:
         '''# 2. Carica la configurazione dell'utente (TOML)
         with open(config_toml_path, "rb") as f:
             toml_data = tomli.load(f)'''
+        
+        return self.container.get('factory').Application(self.container,[])

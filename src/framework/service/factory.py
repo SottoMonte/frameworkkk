@@ -1,10 +1,12 @@
 import re
 from urllib.parse import quote
 from jinja2 import Environment, meta, nodes
+import asyncio 
+import signal
 
 class Application:
     """Manager del Ciclo di Vita Globale dell'App."""
-    def __init__(self, container: ContainerWrapper, manager_names: list[str]):
+    def __init__(self, container , manager_names: list[str]):
         self._c = container
         self._managers = manager_names
         self._stop_event = asyncio.Event()
