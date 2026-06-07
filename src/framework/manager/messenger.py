@@ -1,9 +1,11 @@
 import sys
 import asyncio
 
-class MessengerManager:
+import message
 
-    def __init__(self, messages: list[MessagePort], **constants):
+class Manager:
+
+    def __init__(self, messages: list[message.Port], **constants):
         self.executor = constants.get('executor')
         self.providers = messages
 

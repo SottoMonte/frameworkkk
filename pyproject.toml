@@ -1,49 +1,22 @@
 [project]
-name = "cloud.colosso"                      # Nome del progetto
-version = "0.1.0"                           # Versione dell'app
-description = "Un'app di esempio con OmniPort"           # Descrizione del progetto
-readme = "README.md"                        # File di documentazione
-requires-python = ">=3.9"                   # Versione minima di Python richiesta
-key = "rSc4ExXBDvtKF03pHd8W3Kz5VfSW7z0ITQsAR46nELg"                       # Chiave segreta dell'app
-mode = "development"                        # Modalita applicazione development/production
+name = "cloud.colosso"
+version = "0.1.0"
+description = "Un'app di esempio con OmniPort"  
+readme = "README.md"
+requires-python = ">=3.9"
+key = "rSc4ExXBDvtKF03pHd8W3Kz5VfSW7z0ITQsAR46nELg"
+mode = "development"
 
 [project.policy]
 presentation = "demo.dsl"
 #persistence = "redis.toml"
 #message = "log.toml"
 
-[aauthentication.backend]
-adapter = "supabase"
-url = "https://jarmungkgwudddmzuuxu.supabase.co"
-key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
-db_url = "postgresql://postgres.jarmungkgwudddmzuuxu:ELAldleEwVLOUJOo@aws-1-eu-north-1.pooler.supabase.com:6543/postgres"
 
-
-[apersistence.API]
-adapter = "api"
-url = "https://jsonplaceholder.typicode.com/"
-key = "sb_publishable_zybhSkfPaIvRMrvBkE_VAg_g_mVMWyC"
-
-
-[amessage.backend]
-adapter = "redis"
+[[message.console]]
+name = "backend"
 host = "xxxx"
 port = "13976"
 database = "database-MJZMYZ6J"
 username = "default"
 password = "3LkESG6clHa2hJj1zF8CabQlqU50O6zL"
-
-
-[apresentation.backend1]
-# Scegli tra "starlette" (web) o "textual" (tui)
-adapter = "starlette"
-host = "0.0.0.0"
-port = "5000"
-#route = "web.xml"
-#ssl_keyfile = "key.pem"
-#ssl_certfile = "cert.pem"
-
-# Alternativa TUI (decommentare per usare Textual):
-[presentation.backend]
-adapter = "textual"
-default_view = "home"

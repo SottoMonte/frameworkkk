@@ -1,7 +1,7 @@
 from typing import Protocol, Any, runtime_checkable
 
 @runtime_checkable
-class MessagePort(Protocol):
+class Port(Protocol):
 
     def loader(self, config: dict[str, Any]) -> None:
         """Inizializza o configura l'adapter con i dati passati dal framework."""

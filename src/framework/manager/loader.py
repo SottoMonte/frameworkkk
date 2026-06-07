@@ -169,10 +169,20 @@ class Loader:
         'factory': 'src/framework/service/factory.py',
         'language': 'src/framework/service/language.py',
         'scheme': 'src/framework/service/scheme.py',
+    }
 
+    ports: dict[str, Any] = {
         'message': 'src/framework/port/message.py',
         'presentation': 'src/framework/port/presentation.py',
         'persistence': 'src/framework/port/persistence.py',
+    }
+
+    ccc: dict[str, Any] = {
+        'messenger': 'src/framework/manager/messenger.py',
+        #'storekeeper': 'src/framework/manager/storekeeper.py',
+        #'presenter': 'src/framework/manager/presenter.py',
+        #'defender': 'src/framework/manager/defender.py',
+        #'orchestrator': 'src/framework/manager/orchestrator.py',
     }
 
 
@@ -252,7 +262,8 @@ class Loader:
         dependencies = {}
         module_codes = {}
         
-        for name, path in self.services.items():
+        carica = self.services | self.ports
+        for name, path in carica.items():
             if name in sys.modules:
                 continue
             code = await self.read(path)
@@ -270,4 +281,33 @@ class Loader:
     async def bootstrap(self, config_toml_path: str):
         """Avvia il framework caricando i moduli in ordine di dipendenze."""
         await self._load_in_order()
+
+        config = await self.read(config_toml_path)
+        config_data = tomli.loads(config)
+        print(f"[+] Configurazione caricata da '{config_data}'")
+
+        for key in self.ports.keys():
+            if key in config_data:
+                adapters = config_data[key]
+                for i,adapter_name in enumerate(adapters):
+                    adapter_config = adapters[adapter_name]
+                    adapter_path = f"src/infrastructure/{key}/{adapter_name}.py"
+                    if os.path.isfile(adapter_path):
+                        code = await self.read(adapter_path)
+                        module = await self.string_to_module(code, adapter_name, adapter_path)
+                        adapter_class = module.Adapter
+                        print(adapter_config[i])
+                        instance = adapter_class(**adapter_config[i])
+                        self.container.append_to_port(key+'s', instance)
+                        print(f"[+] Adapter '{adapter_name}' in {key}s caricato e registrato per il Port '{key}'")
+                    else:
+                        print(f"Attenzione: File dell'adapter '{adapter_name}' non trovato in '{adapter_path}'")
+
+
+
+        for name, path in self.ccc.items():
+            code = await self.read(path)
+            module = await self.string_to_module(code, name, path)
+            self.container.set(name, module)
+            print(f"[+] Manager '{name}' caricato da '{path}'")
         return self.container.get('factory').Application(self.container, [])
