@@ -184,27 +184,42 @@ class Loader:
         self._batch = BatchSetup(self.container, self._builder)
         self._project = ProjectLoader(self.container)'''
 
-    async def string_to_module(self, module_code: str, module_name: str = "dynamic_module") -> types.ModuleType:
+    async def string_to_module(self, module_code: str, module_name: str = "dynamic_module", module_path: str | None = None) -> types.ModuleType:
         """
         Prende una stringa contenente codice Python e la compila 
         restituendo un oggetto modulo Python 3 pronto all'uso.
         """
-        # 1. Crea un oggetto modulo vuoto con il nome specificato
+        # 1. Risolve eventuali import di servizi interni prima dell'esecuzione
+        imports = await self.estrai_imports(module_code)
+        for imp in imports:
+            if imp in self.services:
+                nested_code = await self.read(self.services[imp])
+                await self.string_to_module(nested_code, imp, self.services[imp])
         mod = types.ModuleType(module_name)
         
-        # 2. (Opzionale ma consigliato) Registra il modulo nel sistema sys.modules
+        # 2. Imposta i metadati del modulo prima dell'esecuzione
+        mod.__file__ = module_path or f"<{module_name}>"
+        mod.__package__ = module_name.rpartition('.')[0]
+        mod.__spec__ = importlib.util.spec_from_loader(module_name, loader=None)
+        mod.__loader__ = None
+        mod.__dict__.setdefault('__name__', module_name)
+        mod.__dict__.setdefault('__file__', mod.__file__)
+        mod.__dict__.setdefault('__package__', mod.__package__)
+        mod.__dict__.setdefault('__spec__', mod.__spec__)
+        
+        # 3. (Opzionale ma consigliato) Registra il modulo nel sistema sys.modules
         # Questo permette al modulo di gestire correttamente eventuali import interni
         sys.modules[module_name] = mod
         
         try:
-            # 3. Esegue il codice della stringa all'interno del dizionario del nuovo modulo
+            # 4. Esegue il codice della stringa all'interno del dizionario del nuovo modulo
             # exec() popolerà il namespace del modulo con funzioni, classi e variabili
             exec(module_code, mod.__dict__)
         except Exception as e:
             # Rimuove il modulo da sys.modules in caso di errore per non lasciare rimasugli
             del sys.modules[module_name]
             raise e
-            
+        print(f"Modulo '{module_name}' caricato con successo da '{module_path}'",mod)
         return mod
 
     async def estrai_imports(self, codice_sorgente: str) -> list:
@@ -236,8 +251,19 @@ class Loader:
         # Rimuove i duplicati mantenendo l'ordine di apparizione
         return list(dict.fromkeys(moduli_importati))
 
-    async def bootstrap(self, config_toml_path: str):
+    async def read(self, path: str):
 
         # 2. Carica la configurazione dell'utente (TOML)
+        with open(path, "rb") as f:
+            return f.read().decode()
+
+    async def bootstrap(self, config_toml_path: str):
+        for imp, path in self.services.items():
+            if imp in sys.modules:
+                continue
+            module_code = await self.read(path)
+            _ = await self.string_to_module(module_code, imp, path)
+
+        '''# 2. Carica la configurazione dell'utente (TOML)
         with open(config_toml_path, "rb") as f:
-            toml_data = tomli.load(f)
+            toml_data = tomli.load(f)'''
