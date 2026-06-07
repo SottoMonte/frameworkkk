@@ -7,8 +7,10 @@ import inspect
 import traceback
 import json
 import uuid
+import ast
 from dataclasses import dataclass, field
 from typing import Type, TypeVar, Any, Protocol, runtime_checkable, Callable
+import types
 from graphlib import TopologicalSorter
 from jinja2 import Environment, BaseLoader
 import tomli
@@ -65,9 +67,6 @@ class ContainerWrapper:
 
 class AutowiredBuilder:
     """Ispeziona le firme dei costruttori per iniettare dipendenze reali usando dependency-injector."""
-    def __init__(self, container: ContainerWrapper, module_loader: ModuleLoader):
-        self._c = container
-        self._ml = module_loader
 
     async def build(self, spec) -> Any:
         # Prepare an inject dict con i servizi già registrati nel container
@@ -166,6 +165,11 @@ class AutowiredBuilder:
 # ─────────────────────────────────────────────
 
 class Loader:
+    services: dict[str, Any] = {
+        'flow': 'src/framework/service/flow.py'
+    }
+
+
     """Orchestratore unico del setup del Container (Fluent Interface + dependency-injector)."""
     def __init__(self):
         # Instanzia il Container
@@ -180,7 +184,7 @@ class Loader:
         self._batch = BatchSetup(self.container, self._builder)
         self._project = ProjectLoader(self.container)'''
 
-    async def string_to_module(module_code: str, module_name: str = "dynamic_module") -> types.ModuleType:
+    async def string_to_module(self, module_code: str, module_name: str = "dynamic_module") -> types.ModuleType:
         """
         Prende una stringa contenente codice Python e la compila 
         restituendo un oggetto modulo Python 3 pronto all'uso.
@@ -203,10 +207,36 @@ class Loader:
             
         return mod
 
-    async def bootstrap(self, config_toml_path: str) -> Application:
-        """Inizializza l'intero ecosistema del framework e dell'applicazione."""
-        # 1. Forza il setup di Jinja all'inizio del bootstrap
-        self._setup_jinja()
+    async def estrai_imports(self, codice_sorgente: str) -> list:
+        """
+        Analizza una stringa di codice Python ed estrae tutti i moduli importati.
+        Gestisce sia 'import modulo' che 'from modulo import sottomodulo'.
+        """
+        moduli_importati = []
+        
+        try:
+            # Trasforma il codice in un Albero della Sintassi Astratta (AST)
+            albero = ast.parse(codice_sorgente)
+        except SyntaxError as e:
+            print(f"Errore di sintassi nel codice fornito: {e}")
+            return moduli_importati
+
+        # Cammina attraverso tutti i nodi del codice
+        for nodo in ast.walk(albero):
+            # Caso 1: import classico (es. import os, sys)
+            if isinstance(nodo, ast.Import):
+                for nome in nodo.names:
+                    moduli_importati.append(nome.name)
+                    
+            # Caso 2: import dal costrutto 'from' (es. from math import pi)
+            elif isinstance(nodo, ast.ImportFrom):
+                if nodo.module:  # Gestisce il caso in cui il modulo non sia None
+                    moduli_importati.append(nodo.module)
+                    
+        # Rimuove i duplicati mantenendo l'ordine di apparizione
+        return list(dict.fromkeys(moduli_importati))
+
+    async def bootstrap(self, config_toml_path: str):
 
         # 2. Carica la configurazione dell'utente (TOML)
         with open(config_toml_path, "rb") as f:
