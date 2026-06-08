@@ -163,6 +163,8 @@ class Loader:
         self._register_module(module_name, mod)
         
         try:
+            if module_name == "framework.service.scheme":
+                mod.__dict__["schemes"] = self.container.get("schemes")
             exec(module_code, mod.__dict__)
         except Exception as e:
             del sys.modules[module_name]
@@ -205,6 +207,83 @@ class Loader:
         """Legge il contenuto di un file."""
         with open(path, "rb") as f:
             return f.read().decode()
+
+    async def load_schemes(self, directories: list[str]) -> dict:
+        raw_data = {}
+
+        for directory in directories:
+            if not os.path.exists(directory):
+                continue
+
+            for filename in os.listdir(directory):
+                if filename.endswith(".json"):
+                    name = os.path.splitext(filename)[0]
+                    with open(os.path.join(directory, filename), "r", encoding="utf-8") as f:
+                        try:
+                            raw_data[name] = json.load(f)
+                        except json.JSONDecodeError as e:
+                            print(f"[!] Errore sintassi JSON in {filename}: {e}")
+                            continue
+
+        env = Environment(loader=BaseLoader())
+        if 'tojson' not in env.filters:
+            env.filters['tojson'] = lambda obj: json.dumps(obj)
+        env.globals['uuid4'] = lambda: str(uuid.uuid4())
+
+        cache = {}
+        def resolve_schema(name):
+            if name in cache:
+                return cache[name]
+
+            raw_obj = raw_data.get(name)
+            if raw_obj is None:
+                return None
+
+            cache[name] = {}
+
+            def _resolve(val):
+                if isinstance(val, dict):
+                    return {k: _resolve(v) for k, v in val.items()}
+                if isinstance(val, list):
+                    return [_resolve(i) for i in val]
+                if isinstance(val, str) and "{{" in val:
+                    stripped = val.strip()
+                    if stripped.startswith("{{") and stripped.endswith("}}") and "|" not in stripped:
+                        ref_name = stripped[2:-2].strip()
+                        if ref_name in raw_data:
+                            return resolve_schema(ref_name)
+                        if ref_name in env.globals:
+                            g = env.globals[ref_name]
+                            return g() if callable(g) else g
+
+                    ctx = {**env.globals, **raw_data, **{k: v for k, v in cache.items() if v}}
+                    return env.from_string(val).render(**ctx)
+                return val
+
+            resolved = _resolve(raw_obj)
+            cache[name] = resolved
+            return resolved
+
+        final_schemas = {}
+        for name in raw_data:
+            final_schemas[name] = resolve_schema(name)
+
+        if final_schemas:
+            print(f"[+] Schemi caricati: {', '.join(sorted(final_schemas.keys()))}")
+        else:
+            print("[!] Nessuno schema caricato: directory vuota o file JSON non validi")
+
+        try:
+            from cerberus import schema_registry
+            for name, schema in final_schemas.items():
+                try:
+                    schema_registry.add(name, schema)
+                except Exception:
+                    pass
+        except ImportError:
+            pass
+
+        return final_schemas
 
     async def _get_module_dependencies(self, module_code: str) -> set[str]:
         """Estrae le dipendenze da altri moduli framework."""
@@ -264,8 +343,11 @@ class Loader:
 
     async def bootstrap(self, config_toml_path: str):
         """Avvia il framework caricando i moduli in ordine di dipendenze."""
+        schemes = await self.load_schemes(["src/framework/scheme", "src/application/model"])
+        self.container.set('schemes', schemes)
+        
         await self._load_in_order()
-
+        
         config = await self.read(config_toml_path)
         config_data = tomli.loads(config)
         #print(f"[+] Configurazione caricata da '{config_data}'")

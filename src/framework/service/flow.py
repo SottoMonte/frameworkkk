@@ -15,6 +15,8 @@ import functools
 import uuid
 import traceback
 
+import framework.service.scheme as scheme
+
 # ─────────────────────────────────────────────
 # RESULT
 # ─────────────────────────────────────────────
@@ -159,7 +161,7 @@ def result(inputs=(), outputs=(), safe_kwargs=False):
             return {
                 name: model
                 for name in names
-                if name != "self" and (model := loader.get_model(name))
+                if name != "self" and (model := scheme.schemes[name]) is not None
             }
 
         def collapse(d):
@@ -172,7 +174,7 @@ def result(inputs=(), outputs=(), safe_kwargs=False):
             return collapse(res["data"]), None
 
         
-        keys_models = loader.get('models').keys()
+        keys_models = scheme.schemes.keys()
         args_names = [
             name for name, param in sig.parameters.items() 
             if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
