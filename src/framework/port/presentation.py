@@ -15,7 +15,7 @@ from enum import Enum
 import os
 import pathlib
 
-import flow
+import framework.service.flow as flow
 
 class Tag(Enum):
     WINDOW = "window"

@@ -105,25 +105,59 @@ class Loader:
         self.container = ContainerWrapper()
         self.container.set(Loader, self)  # Placeholder per la factory, sarà sovrascritta dopo il bootstrap
 
+    def _ensure_package(self, package_name: str) -> types.ModuleType:
+        """Crea i package intermedi necessari per i moduli framework.*."""
+        if package_name in sys.modules:
+            return sys.modules[package_name]
+
+        pkg = types.ModuleType(package_name)
+        pkg.__path__ = []
+        pkg.__package__ = package_name.rpartition('.')[0]
+        pkg.__spec__ = importlib.util.spec_from_loader(package_name, loader=None)
+        pkg.__loader__ = None
+
+        sys.modules[package_name] = pkg
+
+        if '.' in package_name:
+            parent_name, child_name = package_name.rsplit('.', 1)
+            parent_pkg = self._ensure_package(parent_name)
+            setattr(parent_pkg, child_name, pkg)
+
+        return pkg
+
+    def _register_module(self, module_name: str, module: types.ModuleType) -> None:
+        """Registra il modulo e i relativi alias nel package framework."""
+        sys.modules[module_name] = module
+
+        if '.' in module_name:
+            package_name, short_name = module_name.rsplit('.', 1)
+            parent_pkg = self._ensure_package(package_name)
+            setattr(parent_pkg, short_name, module)
+
+        self.container.set(module_name, module)
 
     async def string_to_module(self, module_code: str, module_name: str, module_path: str) -> types.ModuleType:
         """
         Compila una stringa di codice Python in un modulo.
         Le dipendenze devono essere già caricate in sys.modules.
         """
+        if '.' in module_name:
+            package_name = module_name.rpartition('.')[0]
+            self._ensure_package(package_name)
+
         mod = types.ModuleType(module_name)
         mod.__file__ = module_path
         mod.__package__ = module_name.rpartition('.')[0]
         mod.__spec__ = importlib.util.spec_from_loader(module_name, loader=None)
         mod.__loader__ = None
         
-        sys.modules[module_name] = mod
-        self.container.set(module_name, mod)
+        self._register_module(module_name, mod)
         
         try:
             exec(module_code, mod.__dict__)
         except Exception as e:
             del sys.modules[module_name]
+            print(f"Errore durante il caricamento del modulo '{module_name}' da '{module_path}': {e}")
             raise e
         
         print(f"[+] Modulo '{module_name}' caricato da '{module_path}'")
@@ -164,9 +198,10 @@ class Loader:
             return f.read().decode()
 
     async def _get_module_dependencies(self, module_code: str) -> set[str]:
-        """Estrae le dipendenze da altri servizi framework."""
+        """Estrae le dipendenze da altri moduli framework."""
         imports = await self.estrai_imports(module_code)
-        return {imp for imp in imports if imp in self.services}
+        normalized = [imp.split('.')[-1] for imp in imports]
+        return {imp for imp in normalized if imp in self.services or imp in self.ports}
 
     async def _load_in_order(self):
         """Carica i moduli ordinati topologicamente in base alle dipendenze."""
@@ -176,7 +211,8 @@ class Loader:
         
         carica = self.services | self.ports
         for name, path in carica.items():
-            if name in sys.modules:
+            qualified_name = f"framework.service.{name}" if name in self.services else f"framework.port.{name}"
+            if qualified_name in sys.modules:
                 continue
             code = await self.read(path)
             module_codes[name] = (code, path)
@@ -188,7 +224,8 @@ class Loader:
             for module_name in sorter.static_order():
                 if module_name in module_codes:
                     code, path = module_codes[module_name]
-                    await self.string_to_module(code, module_name, path)
+                    qualified_name = f"framework.service.{module_name}" if module_name in self.services else f"framework.port.{module_name}"
+                    await self.string_to_module(code, qualified_name, path)
 
 
     async def _load_level(self,name,config,key,path):
@@ -230,7 +267,7 @@ class Loader:
                 for i,adapter_name in enumerate(adapters):
                     adapter_config = adapters[adapter_name]
                     adapter_path = f"src/infrastructure/{key}/{adapter_name}.py"
-                    await self._load_level(adapter_name,adapter_config[i],key,adapter_path)
+                    await self._load_level(f"framework.port.{adapter_name}",adapter_config[i],key,adapter_path)
                     
 
         '''for key in self.ports.keys():
@@ -255,5 +292,5 @@ class Loader:
 
         #print(self.container.get_port('messages'))
         for name, path in self.managers.items():
-            await self._load_level(name, {}, 'Managers', path)
-        return self.container.get('factory').Application(self.container, [])
+            await self._load_level(f"framework.manager.{name}", {}, 'Managers', path)
+        return self.container.get('framework.service.factory').Application(self.container, [])

@@ -1,7 +1,7 @@
 import sys
 import asyncio
 
-import message
+import framework.port.message as message
 
 class Manager:
 

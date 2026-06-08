@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import flow
+import framework.service.flow as flow
 
 class Port(ABC):
 

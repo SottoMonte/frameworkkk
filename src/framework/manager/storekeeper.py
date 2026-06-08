@@ -1,9 +1,10 @@
 import asyncio
 import importlib
-import persistence
-import flow
 
-from messenger import Manager as Messenger
+import framework.port.persistence as persistence
+import framework.service.flow as flow
+
+from framework.manager.messenger import Manager as Messenger
 
 class Manager:
 

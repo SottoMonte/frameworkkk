@@ -2,7 +2,7 @@ import sys
 import logging
 import time
 
-import message
+import framework.port.message as message
 
 class Adapter(message.Port):
     
