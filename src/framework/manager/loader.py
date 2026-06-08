@@ -44,7 +44,12 @@ class ContainerWrapper:
         if not isinstance(key, str):
             if key in self._ports:
                 return self._ports[key]
-            key = key.__name__
+            if hasattr(key, "__name__"):
+                key = key.__name__
+            else:
+                #print(dir(key),key)
+                return None
+            
 
         attr = getattr(self._di, key, None)
         if isinstance(attr, providers.Provider):
@@ -56,7 +61,10 @@ class ContainerWrapper:
         if not isinstance(key, str):
             if key in self._ports:
                 return True
-            key = key.__name__
+            if hasattr(key, "__name__"):
+                key = key.__name__
+            else:
+                return False
         return hasattr(self._di, key)
     
     def append_to_port(self, interface: Type, obj: Any) -> None:
@@ -80,6 +88,7 @@ class Loader:
         'factory': 'src/framework/service/factory.py',
         'language': 'src/framework/service/language.py',
         'scheme': 'src/framework/service/scheme.py',
+        'manage': 'src/framework/port/manage.py',
     }
 
     ports: dict[str, Any] = {
@@ -227,7 +236,6 @@ class Loader:
                     qualified_name = f"framework.service.{module_name}" if module_name in self.services else f"framework.port.{module_name}"
                     await self.string_to_module(code, qualified_name, path)
 
-
     async def _load_level(self,name,config,key,path):
         adapter_path = path
         if os.path.isfile(adapter_path):
@@ -239,7 +247,7 @@ class Loader:
             match key:
                 case 'Managers':
                     
-                    print("---->",name,key,ok)
+                    #print("---->",name,key,ok)
                     args = [self.container.get(param) for param in ok]
                     instance = adapter_class(*args, **config)
                     self.container.set(adapter_class, instance)
@@ -250,6 +258,7 @@ class Loader:
                     instance = adapter_class(**config)
                     self.container.append_to_port(getattr(module, key).Port, instance)
                     print(f"[+] Adapter '{name}' in {key}s caricato e registrato per il Port '{key}'")
+            return instance
         else:
             print(f"Attenzione: File dell'adapter '{name}' non trovato in '{adapter_path}'")
 
@@ -259,7 +268,7 @@ class Loader:
 
         config = await self.read(config_toml_path)
         config_data = tomli.loads(config)
-        print(f"[+] Configurazione caricata da '{config_data}'")
+        #print(f"[+] Configurazione caricata da '{config_data}'")
 
         for key in self.ports.keys():
             if key in config_data:
@@ -268,29 +277,9 @@ class Loader:
                     adapter_config = adapters[adapter_name]
                     adapter_path = f"src/infrastructure/{key}/{adapter_name}.py"
                     await self._load_level(f"framework.port.{adapter_name}",adapter_config[i],key,adapter_path)
-                    
-
-        '''for key in self.ports.keys():
-            if key in config_data:
-                adapters = config_data[key]
-                for i,adapter_name in enumerate(adapters):
-                    adapter_config = adapters[adapter_name]
-                    adapter_path = f"src/infrastructure/{key}/{adapter_name}.py"
-                    if os.path.isfile(adapter_path):
-                        code = await self.read(adapter_path)
-                        module = await self.string_to_module(code, adapter_name, adapter_path)
-                        adapter_class = module.Adapter
-                        signature = inspect.signature(adapter_class.__init__)
-                        ok =[param.annotation.__args__[0] if param_name != 'self' and hasattr(param.annotation, "__origin__") and param.annotation.__origin__ is list else 'ok' for param_name, param in signature.parameters.items()]
-                        print("---->",ok)
-                        instance = adapter_class(**adapter_config[i])
-                        self.container.append_to_port(key+'s', instance)
-                        print(f"[+] Adapter '{adapter_name}' in {key}s caricato e registrato per il Port '{key}'")
-                    else:
-                        print(f"Attenzione: File dell'adapter '{adapter_name}' non trovato in '{adapter_path}'")'''
-
-
-        #print(self.container.get_port('messages'))
+        
+        ms = []
         for name, path in self.managers.items():
-            await self._load_level(f"framework.manager.{name}", {}, 'Managers', path)
-        return self.container.get('framework.service.factory').Application(self.container, [])
+            ms.append(await self._load_level(f"framework.manager.{name}", {}, 'Managers', path))
+        
+        return self.container.get('framework.service.factory').Application(self.container, ms)

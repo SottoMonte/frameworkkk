@@ -16,8 +16,9 @@ class Manager:
         self.messenger = messenger
 
     async def start(self):
-        for repository in self.repositories:
-            self.maked[repository] = factory.repository(**self.repositories[repository])
+        await self.messenger.post(domain="ready", payload={"message": "Storekeeper is ready!"})
+        '''for repository in self.repositories:
+            self.maked[repository] = factory.repository(**self.repositories[repository])'''
 
     #@flow.result(inputs=("session",))
     async def preparation(self, session, storekeeper):

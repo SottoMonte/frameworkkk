@@ -20,10 +20,9 @@ class Application:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self._stop_event.set)
 
-        for name in self._managers:
-            obj = self._c.get(name)
-            if isinstance(obj, LifecycleComponent) or hasattr(obj, "start"):
-                res = await obj.start()
+        for manager in self._managers:
+            if  hasattr(manager, "start"):
+                res = await manager.start()
                 if res:
                     if isinstance(res, list):
                         for coro in res: self._running_tasks.append(asyncio.create_task(coro))
@@ -35,13 +34,11 @@ class Application:
 
     async def stop(self) -> None:
         print("\n[*] Spegnimento controllato dei servizi...")
-        for name in reversed(self._managers):
+        for manager in reversed(self._managers):
             
-            if self._c.has(name):
-                obj = self._c.get(name)
-                if isinstance(obj, LifecycleComponent) or hasattr(obj, "stop"):
-                    await obj.stop()
-                
+            if  hasattr(manager, "stop"):
+                await manager.stop()
+
         for task in self._running_tasks:
             if not task.done():
                 task.cancel()

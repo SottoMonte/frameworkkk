@@ -10,7 +10,7 @@ class Manager:
         self.providers = messages
 
     async def post(self, **constants):
-        session_id = constants['session']
+        '''session_id = constants['session']
         payload = constants.get('payload')
         domain = constants.get('domain')
         node_id = constants.get('node')  # opzionale: id del nodo DOM da aggiornare
@@ -27,7 +27,19 @@ class Manager:
         if file_path and event_name:
             #print(f"[messenger] update_state: {event_name} = {payload} (session: {session_id})")
             #self.executor.interpreter.runner.update_state(session_id, file_path, event_name, payload)
-            self.executor.interpreter.runner.emit(session_id, file_path, event_name, payload)
+            self.executor.interpreter.runner.emit(session_id, file_path, event_name, payload)'''
+        
+        payload = constants.get('payload')
+        domain = constants.get('domain')
+        controller = None
+        if ':' in domain:
+            controller = domain.split(':')[0]
+            domain = domain.split(':')[1]
+
+        for provider in self.providers:
+            if controller and provider.config.get('name') != controller:
+                continue
+            await provider.post(**constants|{'domain': domain})
 
     async def read(self, **constants):
         prohibited = constants['prohibited'] if 'prohibited' in constants else []

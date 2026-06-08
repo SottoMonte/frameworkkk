@@ -1,86 +1,163 @@
-import sys
+import datetime
+import fnmatch
 import logging
-import time
+import os
+import sys
+from typing import Any, Dict, List
 
 import framework.port.message as message
 
+
 class Adapter(message.Port):
-    
-    ANSI_COLORS = {
-        'DEBUG': "\033[96m",    # Ciano chiaro
-        'INFO': "\033[92m",     # Verde
-        'WARNING': "\033[93m",  # Giallo
-        'ERROR': "\033[91m",    # Rosso
-        'CRITICAL': "\033[95m"  # Magenta
-    }
-    RESET_COLOR = "\033[0m"  # Reset colori ANSI
+    """
+    Enterprise-grade Console Adapter progettato per il logging strutturato e l'auditing.
+    Garantisce la conformità dei log per aggregatori esterni (Splunk, ELK, Datadog)
+    evitando formattazioni ANSI non standard in ambienti di produzione.
+    """
 
-    def __init__(self,**constants):
+    class AuditFormatter(logging.Formatter):
+        """Formatter enterprise per audit log conformi allo standard ISO 8601."""
         
-        #self.config = constants['config']
-        '''self.history = dict()
-        self.start_time = time.time()
-        # Creazione del logger
-        self.logger = logging.getLogger("self.config['project']['identifier']")
-        self.logger.propagate = False 
-        self.logger.setLevel(logging.DEBUG)
-        self.processable = ['log']
+        def format(self, record: logging.LogRecord) -> str:
+            # Generazione del timestamp standardizzato ISO 8601 con Timezone locale/UTC
+            record.asctime = datetime.datetime.fromtimestamp(
+                record.created, datetime.timezone.utc
+            ).isoformat(timespec='milliseconds')
+
+            # Iniezione sicura dei campi obbligatori per l'auditing aziendale
+            record.transaction_id = getattr(record, 'transaction_id', 'SYSTEM')
+            record.domain = getattr(record, 'domain', 'UNKNOWN')
+            record.user_id = getattr(record, 'user_id', 'ANONYMOUS')
+            record.action = getattr(record, 'action', 'NOT_SPECIFIED')
+
+            return super().format(record)
+
+    def __init__(self, **constants: Any) -> None:
+        """
+        Inizializza il sottosistema di logging aziendale verificando i parametri di runtime.
+        """
+        self.config = constants
+        self.project_meta: Dict[str, Any] = self.config.get('project', {})
         
-        # Handler per la console
-        ch = logging.StreamHandler()
-        if constants['config']['project'].get('mode') == 'production':
-            ch.setLevel(logging.INFO)  # In produzione, solo INFO e superiori (esclude DEBUG)
+        # Identificativi univoci dell'applicazione per la tracciabilità nei microservizi
+        self.project_id: str = self.project_meta.get('identifier', 'enterprise-service')
+        self.environment: str = self.project_meta.get('mode', 'production').lower()
+        
+        # History interna per il pattern Message Queue (Struttura: {dominio: [pointer, [messaggi]]})
+        self._history: Dict[str, List[Any]] = {}
+        self.processable: List[str] = ['log', 'audit']
+
+        # Configurazione del Logger Core dell'Adapter
+        self._logger = logging.getLogger(f"audit.{self.project_id}")
+        self._logger.propagate = False
+        
+        # Gestione dei Log Level in base all'ambiente (Principio del Least Privilege sui dati di log)
+        if self.environment == 'production':
+            self._logger.setLevel(logging.INFO)
         else:
-            ch.setLevel(logging.DEBUG)
+            self._logger.setLevel(logging.DEBUG)
 
-        # 2. Modifica il Formatter per includere il campo 'domain' e transaction_id
-        formatter = self.ColoredFormatter(
-            constants.get('format', "%(asctime)s.%(msecs)03d | [T+%(delta_ms)s]ms | [ΔT%(delta_inter_ms)s]ms | %(levelname)-16s | %(filename)s:%(lineno)d | %(funcName)-25s | %(process)d | [tx:%(transaction_id)s] | %(message)s"),
-            datefmt="%Y-%m-%d %H:%M:%S"
+        self._initialize_handler(constants.get('format'))
+
+    def _initialize_handler(self, custom_format: str = None) -> None:
+        """Configura lo stream di output standard per l'architettura a container (Twelve-Factor App)."""
+        # Utilizza stdout per convogliare correttamente i log nei collettori di container (Docker/Kubernetes)
+        stdout_handler = logging.StreamHandler(sys.stdout)
+        stdout_handler.setLevel(self._logger.level)
+
+        # Formato standard di Audit aziendale (Scannabile sia da umani che da regex/parser)
+        # Struttura: TIMESTAMP | ENV | ENV_ID | TX_ID | DOMAIN | USER | LEVEL | LOCATION | MSG
+        default_audit_format = (
+            "%(asctime)s | "
+            f"[{self.environment.upper()}] | "
+            f"[{self.project_id}] | "
+            "[TX:%(transaction_id)s] | "
+            "[DOM:%(domain)s] | "
+            "[USER:%(user_id)s] | "
+            "%(levelname)-8s | "
+            "%(filename)s:%(lineno)d | "
+            "%(message)s"
         )
 
-        ch.setFormatter(formatter)
-        self.logger.addFilter(self._TimerFilter(self.start_time)) 
-        self.logger.addHandler(ch)'''
+        log_format = custom_format if custom_format else default_audit_format
+        formatter = self.AuditFormatter(log_format)
+        stdout_handler.setFormatter(formatter)
+        
+        # Reset preventivo degli handler per evitare duplicazioni in caso di hot-reload
+        self._logger.handlers.clear()
+        self._logger.addHandler(stdout_handler)
 
-    '''class _TimerFilter(logging.Filter):
-        """Calcola e aggiunge il tempo trascorso (delta) dall'avvio del sistema."""
-        def __init__(self, start_time):
-            super().__init__()
-            self.start_time = start_time
+    async def can(self, *services: Any, **constants: Any) -> bool:
+        """Verifica se l'operazione richiesta rientra nelle capacità dell'interfaccia."""
+        return constants.get('name') in self.processable
 
-        def filter(self, record):
-            # Calcola il delta time in secondi
-            delta_seconds = record.created - self.start_time
-            # Lo formatta in millisecondi con 3 decimali (es. 000000123.456)
-            record.delta_ms = f"{delta_seconds * 1000:012.3f}"
-            return True'''
-    
+    async def post(self, *services: Any, **constants: Any) -> None:
+        """
+        Traccia e persiste un evento di Audit nel sistema loggandolo in formato standard.
+        
+        Metadati supportati in **constants:
+            - message (str): Il corpo del messaggio/evento
+            - level (str): Gravità (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+            - domain (str): Dominio logico dell'evento (es. "billing", "auth")
+            - transaction_id (str): Id di correlazione della richiesta
+            - user_id (str): Identificativo dell'operatore/sistema che esegue l'azione
+            - action (str): Tipo di operazione (es. "READ_RECORD", "UPDATE_PASSWORD")
+        """
+        message_text: str = constants.get('message', str(constants))
+        level: str = constants.get('level', 'INFO').upper()
+        domain: str = constants.get('domain', 'system')
 
-    async def can(self, *services, **constants):
-        return constants['name'] in self.processable
+        # Estrazione metadati di Audit con fallback difensivo
+        audit_context = {
+            'transaction_id': constants.get('transaction_id', 'SYSTEM'),
+            'domain': domain,
+            'user_id': constants.get('user_id', 'ANONYMOUS'),
+            'action': constants.get('action', 'NOT_SPECIFIED')
+        }
 
-    async def post(self, *services, **constants):
-        print(f"[console] {constants}")
+        # Mapping dinamico dei livelli di log nativi senza costrutti condizionali pesanti
+        log_level_map = {
+            'DEBUG': logging.DEBUG,
+            'INFO': logging.INFO,
+            'WARNING': logging.WARNING,
+            'ERROR': logging.ERROR,
+            'CRITICAL': logging.CRITICAL
+        }
+        
+        target_level = log_level_map.get(level, logging.INFO)
+        
+        # Scrittura nel flusso di log con iniezione del contesto di Audit
+        self._logger.log(target_level, message_text, extra=audit_context)
 
-    async def read(self, *services, **constants):
-        domain = constants.get('domain', 'info')
-        identity = constants.get('identity', '')
-        results = []
-        matching_domains = [d for d in self.history.keys() if language.wildcard_match(d, domain)]
-        for dom in matching_domains:
-            last, messages = self.history.get(dom, [0, []])
-            if last < len(messages):
-                self.history[dom][0] += 1
-                results.append({'domain': dom, 'message': messages[last:]})
-                #results.extend(messages[last:])
+        # Persistenza strutturata nella history interna per scopi di riconciliazione ordinaria
+        if domain not in self._history:
+            self._history[domain] = [0, []]
+        
+        # Archiviamo l'evento come dizionario strutturato per agevolare il filtraggio successivo
+        self._history[domain][1].append({
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'payload': message_text,
+            **audit_context
+        })
+
+    async def read(self, *services: Any, **constants: Any) -> List[Dict[str, Any]]:
+        """
+        Consente ai moduli interni la lettura degli audit log accumulati e non ancora processati.
+        Supporta il filtraggio per domini tramite pattern matching.
+        """
+        domain_pattern: str = constants.get('domain', '*')
+        results: List[Dict[str, Any]] = []
+
+        for registered_domain in self._history.keys():
+            if fnmatch.fnmatch(registered_domain, domain_pattern):
+                pointer, messages = self._history[registered_domain]
+                
+                if pointer < len(messages):
+                    # Avanzamento atomico dell'indice di lettura per evitare race condition logiche
+                    self._history[registered_domain][0] = len(messages)
+                    results.append({
+                        'domain': registered_domain,
+                        'events': messages[pointer:]
+                    })
+
         return results
-
-        '''if domain in self.history:
-            last,messages = self.history.get(domain,[0,[]])
-            #last = last.get(identity,0)
-            if last < len(messages):
-                self.history[domain][0] += 1
-                #self.history.get(domain,[{},[]])[0].get(identity) = len(messages)
-                return messages[last:]'''
-        return []
