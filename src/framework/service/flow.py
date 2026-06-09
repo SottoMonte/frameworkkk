@@ -179,8 +179,10 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
         async def nkwargs(kwargs):
             if isinstance(inputs, tuple |list):
                 return {k: v for k, v in kwargs.items() if k in keys_models}
-            return await scheme.normalize(kwargs, scheme.schemes[inputs]) if inputs in scheme.schemes else kwargs
-
+            ooo = await scheme.normalize(kwargs, scheme.schemes[inputs]) if inputs in scheme.schemes else kwargs
+            if ooo.get("errors"):
+                raise ValueError(f"Validation errors: {ooo['errors']}")
+            return ooo["data"]
         async def rett(ok):
             if not outputs or not ok:
                 return success(ok) | action
@@ -196,12 +198,11 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
 
             try:
                 #nargs, nkwargs = sig.bind_partial(*args, **kwargs)
-                s = await nkwargs(kwargs)
-                print(f"Normalized kwargs: {s}")
-                print(f"Received args: {args}, kwargs: {kwargs}")
-                res = await func(*args, **kwargs) if is_async else func(*args, **kwargs)
-                print(await rett(res))
-                return success(res, t0) | action
+                new_kwargs = await nkwargs(kwargs)
+                #print(f"Normalized kwargs: {s}")
+                #print(f"Received args: {args}, kwargs: {kwargs}")
+                res = await func(*args, **kwargs) if is_async else func(*args, **new_kwargs)
+                return await rett(res)
             except Exception:
                 print(f"❌ Exception in {func.__name__}: {traceback.format_exc()}")
                 return error(traceback.format_exc(), t0) | action

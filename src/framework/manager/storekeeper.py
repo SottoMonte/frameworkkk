@@ -16,7 +16,7 @@ class Manager:
         self.messenger = messenger
 
     async def start(self):
-        await self.messenger.post(domain="ready", message="ciao")
+        await self.messenger.post(message="ciao", domain="info.manager.start")
         '''for repository in self.repositories:
             self.maked[repository] = factory.repository(**self.repositories[repository])'''
 
