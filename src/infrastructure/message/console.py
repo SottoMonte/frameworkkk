@@ -6,7 +6,7 @@ import sys
 from typing import Any, Dict, List
 
 import framework.port.message as message
-
+import framework.manager.storekeeper as storekeeper
 
 class Adapter(message.Port):
     """
@@ -32,7 +32,7 @@ class Adapter(message.Port):
 
             return super().format(record)
 
-    def __init__(self, **constants: Any) -> None:
+    def __init__(self, storekeeper: storekeeper.Manager, **constants) -> None:
         """
         Inizializza il sottosistema di logging aziendale verificando i parametri di runtime.
         """

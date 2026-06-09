@@ -14,6 +14,7 @@ from graphlib import TopologicalSorter
 from jinja2 import Environment, BaseLoader
 import tomli
 from dependency_injector import containers, providers
+from collections import defaultdict
 
 # ─────────────────────────────────────────────
 # 3. CONTAINER DI (dependency-injector)
@@ -32,7 +33,7 @@ class ContainerWrapper:
     
     def __init__(self):
         self._di = self._DIContainer()
-        self._ports: dict[Type, list[Any]] = {}
+        self._ports: dict[Type, list[Any]] = defaultdict(list)
     
     def set(self, key: str | Type[T], obj: T) -> None:
         """Registra un singleton nel container."""
@@ -68,11 +69,8 @@ class ContainerWrapper:
         return hasattr(self._di, key)
     
     def append_to_port(self, interface: Type, obj: Any) -> None:
-        """Aggiunge un adapter a un Port."""
-        if interface not in self._ports:
-            self._ports[interface] = []
         self._ports[interface].append(obj)
-
+    
     def get_port(self, interface: Type[T]) -> list[T]:
         """Inietta tutti gli adapter su un Port."""
         return self._ports.get(interface, [])
@@ -314,6 +312,7 @@ class Loader:
                     code, path = module_codes[module_name]
                     qualified_name = f"framework.service.{module_name}" if module_name in self.services else f"framework.port.{module_name}"
                     await self.string_to_module(code, qualified_name, path)
+                    
 
     async def _load_level(self,name,config,key,path):
         adapter_path = path
@@ -323,18 +322,22 @@ class Loader:
             adapter_class = getattr(module, 'Manager' if key == 'Managers' else 'Adapter', None)
             signature = inspect.signature(adapter_class.__init__)
             ok = [param.annotation.__args__[0] if hasattr(param.annotation, "__origin__") and param.annotation.__origin__ is list else param.annotation for param_name, param in signature.parameters.items() if param_name != 'self' and param.annotation is not inspect._empty ]
+            print(key,ok)
             match key:
                 case 'Managers':
                     
                     #print("---->",name,key,ok)
-                    args = [self.container.get(param) for param in ok]
+                    #args = [self.container.get(param) for param in ok]
+                    args = [self.container.get(param) if self.container.get(param) else self.container.get_port(param) for param in ok]
+                    print(args)
                     instance = adapter_class(*args, **config)
                     self.container.set(adapter_class, instance)
                     print(f"[+] Manager '{name}' caricato e registrato come singleton")
                 case _:
-                    
+                    args = [self.container.get(param) if self.container.get(param) else self.container.get_port(param) for param in ok]
+                    print(args)
                     #print("---->",name,key,getattr(module, key).Port,dir(module))
-                    instance = adapter_class(**config)
+                    instance = adapter_class(*args,**config)
                     self.container.append_to_port(getattr(module, key).Port, instance)
                     print(f"[+] Adapter '{name}' in {key}s caricato e registrato per il Port '{key}'")
             return instance
@@ -352,6 +355,10 @@ class Loader:
         config_data = tomli.loads(config)
         #print(f"[+] Configurazione caricata da '{config_data}'")
 
+        ms = []
+        for name, path in self.managers.items():
+            ms.append(await self._load_level(f"framework.manager.{name}", {}, 'Managers', path))
+
         for key in self.ports.keys():
             if key in config_data:
                 adapters = config_data[key]
@@ -359,9 +366,5 @@ class Loader:
                     adapter_config = adapters[adapter_name]
                     adapter_path = f"src/infrastructure/{key}/{adapter_name}.py"
                     await self._load_level(f"framework.port.{adapter_name}",adapter_config[i],key,adapter_path)
-        
-        ms = []
-        for name, path in self.managers.items():
-            ms.append(await self._load_level(f"framework.manager.{name}", {}, 'Managers', path))
         
         return self.container.get('framework.service.factory').Application(self.container, ms)
