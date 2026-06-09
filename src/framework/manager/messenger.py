@@ -10,7 +10,7 @@ class Manager:
         self.executor = constants.get('executor')
         self.providers = messages
 
-    @flow.result(inputs=('messenger',))
+    @flow.result(inputs='messenger')
     async def post(self, **constants):
         '''session_id = constants['session']
         payload = constants.get('payload')

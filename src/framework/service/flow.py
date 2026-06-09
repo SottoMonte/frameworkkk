@@ -152,17 +152,10 @@ def action(custom_filename: str = __file__, app_context=None, **constants):
 
 import inspect, functools, time, asyncio
 
-def result(inputs=(), outputs=(), safe_kwargs=False):
+def result(inputs=None, outputs=None, safe_kwargs=False):
     def decorator(func):
         sig = inspect.signature(func)
         is_async = asyncio.iscoroutinefunction(func)
-
-        def load(names):
-            return {
-                name: model
-                for name in names
-                if name != "self" and (model := scheme.schemes[name]) is not None
-            }
 
         def collapse(d):
             return next(iter(d.values())) if isinstance(d, dict) and len(d) == 1 else d
@@ -179,91 +172,38 @@ def result(inputs=(), outputs=(), safe_kwargs=False):
             name for name, param in sig.parameters.items() 
             if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
         ]
-        #print("args_names", args_names)
-        in_models = load(inputs)
-        out_models = load(outputs)
+        print("args_names", args_names)
         action = {"action": func.__name__}
         #print(f"\n\nfunc: {action} | in_models: {list(in_models.keys())} | out_models: {list(out_models.keys())} | sig: {sig}")
+
+        async def nkwargs(kwargs):
+            if isinstance(inputs, tuple |list):
+                return {k: v for k, v in kwargs.items() if k in keys_models}
+            return await scheme.normalize(kwargs, scheme.schemes[inputs]) if inputs in scheme.schemes else kwargs
+
+        async def rett(ok):
+            if not outputs or not ok:
+                return success(ok) | action
+
+            if isinstance(outputs, tuple | list):
+                return {k: v for k, v in ok.items() if k in outputs}
+            else:
+                return await scheme.normalize(ok, scheme.schemes[outputs]) if outputs in scheme.schemes else ok
 
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             t0 = time.perf_counter()
-            
 
             try:
-                new_args = []
-                if safe_kwargs:
-                    new_kwargs= kwargs
-                else:
-                    new_kwargs = {}
-                
-                for i, key_arg in enumerate(args_names):
-                    #print(action,"################",i, key_arg, len(args),args[i])
-                    if i >= len(args):
-                        new_args.extend(args[i:])
-                        break
-                    if key_arg == "self":
-                        new_args.append(args[i])
-                        continue
-                    if key_arg in keys_models:
-                        
-                        model = loader.get_model(key_arg)
-                        
-                        # Fix: Se l'argomento è un dict che contiene già la chiave del modello (nesting), lo spacchettiamo
-                        raw_val = args[i]
-                        if isinstance(raw_val, dict) and len(raw_val) == 1 and key_arg in raw_val:
-                            payload = raw_val[key_arg]
-                        elif isinstance(raw_val, dict):
-                            payload = raw_val
-                        else:
-                            payload = {key_arg: raw_val}
-                            
-                        val, err = await normalize(payload, model, t0, action)
-                        if err:
-                            return err
-                        new_args.append(val)
-                    else:
-                        new_args.append(args[i])
-                
-                for name, value in kwargs.items():
-                    
-                    if name in keys_models:
-                        model = loader.get_model(name)
-                        
-                        # Fix: Gestione nesting anche per i kwargs
-                        if isinstance(value, dict) and len(value) == 1 and name in value:
-                            payload = value[name]
-                        elif isinstance(value, dict):
-                            payload = value
-                        else:
-                            payload = {name: value}
-                            
-                        new_kwargs[name], err = await normalize(payload, model, t0, action)
-                        if err:
-                            return err
-
-                #print("new_args", new_args)
-                #print(kwargs,"new_kwargs", new_kwargs)
-
-                res = await func(*new_args, **new_kwargs) if is_async else func(*new_args, **new_kwargs)
-
-                if not isinstance(res, dict) or not res.get("success"):
-                    err_msg = res.get("errors", "Invalid response") if isinstance(res, dict) else "Function returned None or non-dict"
-                    return error(err_msg, t0) | action
-
-                out = res["outputs"]
-
-                # normalize output
-                for name, model in out_models.items():
-                    payload = out if len(out_models) == 1 else {name: out}
-                    val, err = await normalize(payload, model, t0, action)
-                    if err:
-                        return err
-                    out = val if len(out_models) == 1 else {**out, name: val}
-
-                return success(out, t0) | action
-
+                #nargs, nkwargs = sig.bind_partial(*args, **kwargs)
+                s = await nkwargs(kwargs)
+                print(f"Normalized kwargs: {s}")
+                print(f"Received args: {args}, kwargs: {kwargs}")
+                res = await func(*args, **kwargs) if is_async else func(*args, **kwargs)
+                print(await rett(res))
+                return success(res, t0) | action
             except Exception:
+                print(f"❌ Exception in {func.__name__}: {traceback.format_exc()}")
                 return error(traceback.format_exc(), t0) | action
 
         return wrapper

@@ -157,6 +157,9 @@ async def normalize(value, schema, mode='full'):
                 processed_value[field_name] = await convert(val, convert_name)
             schema[field_name].pop("convert")
 
+        if isinstance(field_rules, dict) and "comment" in field_rules:
+            schema[field_name].pop("comment")
+
     v = Validator(schema, allow_unknown=False,purge_unknown=True)
     if not v.validate(processed_value):
         return {"data": None, "errors": _format_validation_errors(v.errors, schema, processed_value)}

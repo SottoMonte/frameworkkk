@@ -9,8 +9,7 @@
     "type": "string",
     "required": true,
     "empty": false,
-    "comment": "Topic o canale di destinazione (es. info.server.login).",
-    "regex": "^(info|error|debug|warning|event|alert|critical|fatal|success|notice)(\\..+)?$"
+    "comment": "Topic o canale di destinazione (es. info.server.login)."
   },
   "routing": {
     "type": "string",
