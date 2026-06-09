@@ -16,9 +16,12 @@ class Manager:
         self.messenger = messenger
 
     async def start(self):
-        await self.messenger.post(message="ciao", domain="console:info")
         '''for repository in self.repositories:
             self.maked[repository] = factory.repository(**self.repositories[repository])'''
+        await self.messenger.post(message="Storekeeper avviato.", domain="console:info")
+
+    async def stop(self):
+        await self.messenger.post(message="Storekeeper arrestato.", domain="console:info")
 
     #@flow.result(inputs=("session",))
     async def preparation(self, session, storekeeper):
