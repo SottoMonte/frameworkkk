@@ -334,8 +334,9 @@ class Loader:
                     self.container.set(adapter_class, instance)
                     print(f"[+] Manager '{name}' caricato e registrato come singleton")
                 case _:
-                    args = [self.container.get(param) if self.container.get(param) else self.container.get_port(param) for param in ok]
-                    print(args)
+                    #args = [self.container.get(param) if self.container.get(param) else self.container.get_port(param) for param in ok]
+                    args = [self.container.get(param) for param in ok]
+                    print(ok,"<----------")
                     #print("---->",name,key,getattr(module, key).Port,dir(module))
                     instance = adapter_class(*args,**config)
                     self.container.append_to_port(getattr(module, key).Port, instance)
@@ -367,4 +368,6 @@ class Loader:
                     adapter_path = f"src/infrastructure/{key}/{adapter_name}.py"
                     await self._load_level(f"framework.port.{adapter_name}",adapter_config[i],key,adapter_path)
         
+    
+
         return self.container.get('framework.service.factory').Application(self.container, ms)

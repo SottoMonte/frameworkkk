@@ -42,6 +42,9 @@ class Adapter(message.Port):
             self.name = __name__
         self.adapter = __name__.split('.')[-1]
         self.config = constants
+        self.storekeeper = storekeeper
+        print(storekeeper,"--------------------------")
+        self.persistence = constants.get('persistence')
         self.project_meta: Dict[str, Any] = self.config.get('project', {})
         
         # Identificativi univoci dell'applicazione per la tracciabilità nei microservizi
@@ -133,9 +136,11 @@ class Adapter(message.Port):
         
         # Scrittura nel flusso di log con iniezione del contesto di Audit
         self._logger.log(target_level, message_text, extra=audit_context)
-
+        if self.persistence:
+            #await self.storekeeper.store(payload=constants)
+            print(self.storekeeper)
         # Persistenza strutturata nella history interna per scopi di riconciliazione ordinaria
-        if domain not in self._history:
+        '''if domain not in self._history:
             self._history[domain] = [0, []]
         
         # Archiviamo l'evento come dizionario strutturato per agevolare il filtraggio successivo
@@ -143,7 +148,7 @@ class Adapter(message.Port):
             'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'payload': message_text,
             **audit_context
-        })
+        })'''
 
     async def read(self, *services: Any, **constants: Any) -> List[Dict[str, Any]]:
         """

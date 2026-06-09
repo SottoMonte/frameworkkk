@@ -85,8 +85,9 @@ class Manager:
     
     # store/create/put
     async def store(self, session, **constants):
-        repository,operations = await self.preparation(**constants|{'operation':'create'})
-        return await self.executor.first_completed(operations=operations,success=repository.results)
+        #repository,operations = await self.preparation(**constants|{'operation':'create'})
+        #return await self.executor.first_completed(operations=operations,success=repository.results)
+        print("OOOOOOOOOOOOOOOOOOOOO")
     
     # remove/delete/delete
     async def remove(self, session, **constants):

@@ -14,9 +14,8 @@ presentation = "demo.dsl"
 
 
 [[message.console]]
-name = "backend"
-host = "xxxx"
-port = "13976"
-database = "database-MJZMYZ6J"
-username = "default"
-password = "3LkESG6clHa2hJj1zF8CabQlqU50O6zL"
+persistence = "log"
+name = "terminal"
+
+[[persistence.filesystem]]
+name = "log"

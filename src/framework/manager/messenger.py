@@ -41,8 +41,10 @@ class Manager:
         for provider in self.providers:
             #print(controller,provider.adapter == controller, provider.config.get('name') == controller)
             if controller:
-                if  provider.config.get('name') == controller: await provider.post(**constants|{'domain': domain})
-                elif  provider.adapter == controller: await provider.post(**constants|{'domain': domain})
+                if  provider.config.get('name') == controller:
+                    await provider.post(**constants|{'domain': domain})
+                elif  provider.adapter == controller: 
+                    await provider.post(**constants|{'domain': domain})
                 else: await self.post(message=f"Provider {provider} non è adatto per il dominio '{domain}' (controller '{controller}')", domain="console:warning")
             else:
                 await provider.post(**constants|{'domain': domain})
