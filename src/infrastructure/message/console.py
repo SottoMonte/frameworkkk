@@ -36,6 +36,11 @@ class Adapter(message.Port):
         """
         Inizializza il sottosistema di logging aziendale verificando i parametri di runtime.
         """
+        if constants.get('name'):
+            self.name = __name__ + "." + constants['name'].lower()
+        else:
+            self.name = __name__
+        self.adapter = __name__.split('.')[-1]
         self.config = constants
         self.project_meta: Dict[str, Any] = self.config.get('project', {})
         

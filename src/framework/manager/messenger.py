@@ -39,7 +39,8 @@ class Manager:
             domain = domain.split(':')[1]
 
         for provider in self.providers:
-            if controller and provider.config.get('name') != controller:
+            
+            if controller and not (provider.config.get('name') != controller or provider.adapter != controller):
                 continue
             await provider.post(**constants|{'domain': domain})
 
