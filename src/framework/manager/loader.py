@@ -40,6 +40,7 @@ class Loader:
     managers = {
         'messenger':   'src/framework/manager/messenger.py',
         'storekeeper': 'src/framework/manager/storekeeper.py',
+        'orchestrator': 'src/framework/manager/orchestrator.py',
     }
 
     def __init__(self):

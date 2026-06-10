@@ -12,7 +12,6 @@ presentation = "demo.dsl"
 #persistence = "redis.toml"
 #message = "log.toml"
 
-
 [[message.console]]
 persistence = "log"
 name = "terminal"

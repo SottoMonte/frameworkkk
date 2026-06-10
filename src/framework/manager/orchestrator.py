@@ -3,13 +3,16 @@ from typing import List, Dict, Any, Callable
 import re
 import traceback
 
-class executor:
-    def __init__(self, **constants):
+import framework.service.language as language
+import framework.service.flow as flow
+import framework.service.scheme as scheme
+import framework.manager.messenger as messenger
+
+class Manager:
+    def __init__(self, messenger: messenger.Manager,**constants):
         self.defender = constants.get('defender')
-        self.language = constants.get('language')
         self.messenger = constants.get('messenger')
-        self.models = constants.get('models')
-        self.interpreter = self.language.Interpreter(custom_types=self.models)
+        self.interpreter = language.Interpreter(custom_types=scheme.schemes)
 
     # ── INTERPRETER ────────────────────────────────────────────────────────────────
 
@@ -17,6 +20,7 @@ class executor:
         await self.interpreter.stop()
     
     async def start(self):
+        print("ssad")
         await self.interpreter.start()
 
     async def add_file(self, name, source):

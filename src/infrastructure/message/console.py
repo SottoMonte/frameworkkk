@@ -43,7 +43,6 @@ class Adapter(message.Port):
         self.adapter = __name__.split('.')[-1]
         self.config = constants
         self.storekeeper = storekeeper
-        print(storekeeper,"--------------------------")
         self.persistence = constants.get('persistence')
         self.project_meta: Dict[str, Any] = self.config.get('project', {})
         
@@ -137,8 +136,7 @@ class Adapter(message.Port):
         # Scrittura nel flusso di log con iniezione del contesto di Audit
         self._logger.log(target_level, message_text, extra=audit_context)
         if self.persistence:
-            #await self.storekeeper.store(payload=constants)
-            print(self.storekeeper)
+            await self.storekeeper.store("ok",payload=constants)
         # Persistenza strutturata nella history interna per scopi di riconciliazione ordinaria
         '''if domain not in self._history:
             self._history[domain] = [0, []]
