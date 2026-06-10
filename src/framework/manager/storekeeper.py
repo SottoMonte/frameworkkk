@@ -16,6 +16,7 @@ class Manager:
         self.messenger = messenger
 
     async def start(self):
+        print("stookeeper - START providers messager",self.messenger.providers)
         '''for repository in self.repositories:
             self.maked[repository] = factory.repository(**self.repositories[repository])'''
         await self.messenger.post(message="Storekeeper avviato.", domain="console:info")
