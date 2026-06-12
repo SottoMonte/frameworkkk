@@ -27,8 +27,6 @@ class Manager:
     
     async def start(self):
         await self.interpreter.start()
-        print("aaaaaaaaaaaaaaaaaa",self.config)
-        await self.interpreter.start()
         TARGET_PORTS = {'presentation', 'persistence', 'message'}
 
         # Genera la lista filtrata
@@ -37,17 +35,16 @@ class Manager:
             filename = self.config[policy]
             path = f"src/application/policy/{policy}/{filename}"
             code = await self.loader.resource(path)
-            print(code)
             await self.interpreter.load_file(path, code)
-            aaaa = await self.interpreter.run_once(path,code)
-            print(aaaa)
+            self.policies[policy] = await self.interpreter.run_once(path,code)
+            print(f"[+] Policy: {policy}/{filename}")
             # sessione utente A
             '''async with self.interpreter.open_session(env={"input": "dati_A"}) as s:
                 risultati = await s.run(path)
                 print(risultati)
 
                 #self.policies[policy] = await self.run_session('demo', path)
-                #print(f"[+] Policy: {policy}/{filename}")'''
+                '''
         return
 
     async def add_file(self, name, source):

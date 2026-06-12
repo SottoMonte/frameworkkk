@@ -355,6 +355,8 @@ class SessionHandle:
     def update(self, path: str, value: Any) -> None:
         """Aggiorna una variabile nel contesto senza triggerare nodi."""
         self._interp._runner.update_state(self._sid, path, value)
+        #def update(self, file: str, path: str, value: Any) -> None:
+        #self._interp._runner.update_state(self._sid, file, path, value)
 
     async def emit(self, file: str, node: str, value: Any = None) -> None:
         """Triggera manualmente un nodo specifico."""
@@ -548,7 +550,7 @@ class Interpreter:
     # Tutto ciò che segue è API privata (prefisso _).
     # Non fare affidamento su questi metodi dall'esterno.
 
-    async def _run_session(self, sid: str, file: str, env: Dict) -> Dict[str, Any]:
+    async def _run_session2(self, sid: str, file: str, env: Dict) -> Dict[str, Any]:
         """Esegue un file su una sessione esistente (usato da SessionHandle.run)."""
         if file not in self._ast_cache:
             raise DSLRuntimeError(f"File '{file}' non caricato. Usa load_file() prima.")
@@ -556,6 +558,33 @@ class Interpreter:
         ctx = self._runner.context(sid) | env
         ast_result, _ = await self.visit(self._ast_cache[file], ctx, path="")
         return await self._runner.run_file(sid, file, ast_result)
+
+    async def _run_session3(self, sid: str, file: str, env: Dict) -> Dict[str, Any]:
+        """Esegue un file su una sessione esistente (usato da SessionHandle.run)."""
+        if file not in self._ast_cache:
+            raise DSLRuntimeError(f"File '{file}' non caricato. Usa load_file() prima.")
+
+        ctx = self._runner.context(sid) | env
+        ast_result, _ = await self.visit(self._ast_cache[file], ctx, path="")
+        # ast_result ora contiene {'a': 1}. Dobbiamo passarlo come aggiornamento di contesto pulito
+        return await self._runner.run_file(sid, file, ast_result)
+    
+    async def _run_session(self, sid: str, file: str, env: Dict) -> Dict[str, Any]:
+        if file not in self._ast_cache:
+            raise DSLRuntimeError(f"File '{file}' non caricato. Usa load_file() prima.")
+
+        ctx = self._runner.context(sid) | env
+        ast_result, _ = await self.visit(self._ast_cache[file], ctx, path="")
+        
+        # Esegui il motore per i nodi reattivi/task
+        dag_results = await self._runner.run_file(sid, file, ast_result)
+        
+        # Unisci i risultati statici dell'AST (es. 'a': 1) con quelli del DAG
+        # Estraiamo i valori reali dai Result del DAG se presenti
+        unwrapped_dag = {k: v["outputs"] if isinstance(v, dict) and "outputs" in v else v 
+                         for k, v in dag_results.items()}
+        
+        return ast_result | unwrapped_dag
 
     async def _invoke(self, fn: Any, args: tuple, kwargs: Dict, path: str = "") -> Dict:
         """Esegue fn e restituisce sempre un dict Result."""
