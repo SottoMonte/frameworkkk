@@ -38,14 +38,6 @@ class Manager:
             await self.interpreter.load_file(path, code)
             self.policies[policy] = await self.interpreter.run_once(path,code)
             print(f"[+] Policy: {policy}/{filename}")
-            # sessione utente A
-            '''async with self.interpreter.open_session(env={"input": "dati_A"}) as s:
-                risultati = await s.run(path)
-                print(risultati)
-
-                #self.policies[policy] = await self.run_session('demo', path)
-                '''
-        return
 
     async def add_file(self, name, source):
         return await self.interpreter.add_file(name, source)
