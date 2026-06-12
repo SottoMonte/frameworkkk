@@ -21,7 +21,7 @@ class Manager:
     
     async def start(self):
         
-        await self.interpreter.start()
+        '''await self.interpreter.start()
         codice_dsl = """
         moltiplicatore: 2;
 
@@ -74,7 +74,7 @@ class Manager:
 
 
         except Exception as e:
-            print(f"Errore durante l'esecuzione: {e}")
+            print(f"Errore durante l'esecuzione: {e}")'''
 
     async def add_file(self, name, source):
         return await self.interpreter.add_file(name, source)

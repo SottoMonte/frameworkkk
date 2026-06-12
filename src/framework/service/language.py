@@ -38,6 +38,7 @@ Invarianti mantenuti
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import inspect
 import operator
 import random
@@ -45,6 +46,13 @@ import uuid
 from collections import ChainMap
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+# Stack di traceback isolato per task asyncio — ogni coroutine ha il proprio.
+# Senza questo, sessioni concorrenti condividevano self._stack e si corrompevano
+# a vicenda durante il traceback degli errori.
+_visit_stack: contextvars.ContextVar[List[dict]] = contextvars.ContextVar(
+    "_visit_stack", default=None
+)
 
 from lark import Lark, Token, Transformer, v_args
 
@@ -396,11 +404,10 @@ class Interpreter:
     """
 
     def __init__(self, custom_types: Optional[Dict] = None):
-        self._stack:        List[dict]        = []
         self._runner:       flow.DagRunner    = flow.DagRunner()
         self._parser:       Lark              = create_parser()
-        self._ast_cache:    Dict[str, dict]   = {}   # name -> AST
-        self._file_tasks:   Dict[str, List]   = {}   # name -> task list (per file)
+        self._ast_cache:    Dict[str, dict]   = {}
+        self._file_tasks:   Dict[str, List]   = {}
         self.custom_types:  Dict[str, Any]    = custom_types or {}
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
@@ -571,30 +578,84 @@ class Interpreter:
         method = getattr(self, f"visit_{t}", None)
         if not method:
             raise DSLRuntimeError(f"Tipo AST sconosciuto: '{t}'", node.get("meta"))
-        self._stack.append(node)
+
+        # Ogni task asyncio (= ogni sessione concorrente) ha il proprio stack.
+        # Se questo è il primo visit della coroutine corrente, inizializziamo
+        # la lista; token ci permette di ripristinare lo stato precedente.
+        stack = _visit_stack.get()
+        if stack is None:
+            stack = []
+            token = _visit_stack.set(stack)
+        else:
+            token = None
+
+        stack.append(node)
         try:
             return await method(node, env, path)
         except DSLRuntimeError as e:
             trace = " -> ".join(
                 f"{n['type']}({n.get('meta',{}).get('line','?')}:{n.get('meta',{}).get('column','?')})"
-                for n in self._stack)
+                for n in stack)
             e.args = (f"{e.args[0]} | Stack: {trace}",); raise
         finally:
-            self._stack.pop()
+            stack.pop()
+            if token is not None:
+                _visit_stack.reset(token)
 
-    def _resolve_scope(self, path, name, available):
-        parts = path.split(".")
-        for i in range(len(parts), 0, -1):
-            candidate_name = ".".join(parts[:i])
-            path_parts = path.split(".") if path else []
+    # ── scope resolution ─────────────────────────────────────────────────────
+    #
+    # Versione originale: O(n²) — per ogni candidato iterava su tutti gli
+    # `available` con sorted() + endswith(). Su file con molti task annidati
+    # (es. 50+) questo diventava un collo di bottiglia in _build_flow_nodes_from.
+    #
+    # Versione nuova: costruiamo una volta sola un indice
+    #   suffix_index: suffisso -> [path completo, ...]
+    # La lookup diventa O(1) per il caso esatto e O(k) per le ambiguità,
+    # dove k è il numero di path con lo stesso suffisso (raramente > 2).
+    # L'indice viene invalidato solo quando `available` cambia (nuovo load_file).
+
+    @staticmethod
+    def _build_scope_index(available: frozenset) -> Dict[str, List[str]]:
+        """Costruisce l'indice suffisso -> [path] usato da _resolve_scope."""
+        index: Dict[str, List[str]] = {}
+        for path in available:
+            parts = path.split(".")
+            # Registra tutti i suffissi: "a.b.c", "b.c", "c"
+            for i in range(len(parts)):
+                suffix = ".".join(parts[i:])
+                index.setdefault(suffix, []).append(path)
+        return index
+
+    def _resolve_scope(self, path: str, name: str, available: frozenset) -> str:
+        # Cache dell'indice: ricalcolato solo se `available` cambia.
+        cache_key = available if isinstance(available, frozenset) else frozenset(available)
+        if not hasattr(self, "_scope_cache") or self._scope_cache[0] != cache_key:
+            self._scope_cache = (cache_key, self._build_scope_index(cache_key))
+        index = self._scope_cache[1]
+
+        path_parts = path.split(".") if path else []
+
+        # Strategia: prova i suffissi di `name` dal più lungo al più corto.
+        # Per ciascun suffisso candidato, risale lo scope locale (path) prima
+        # di cadere sul match globale — preserva la semantica originale.
+        name_parts = name.split(".")
+        for i in range(len(name_parts)):
+            candidate = ".".join(name_parts[i:])
+            candidates = index.get(candidate)
+            if not candidates:
+                continue
+
+            # Risalita scope locale: prova path.candidate, parent.candidate, ...
             for j in range(len(path_parts), -1, -1):
                 prefix = ".".join(path_parts[:j])
-                full_candidate = f"{prefix}.{candidate_name}" if prefix else candidate_name
-                if full_candidate in available:
-                    return full_candidate
-            for avail in sorted(available, key=len, reverse=True):
-                if avail == candidate_name or avail.endswith(f".{candidate_name}"):
-                    return avail
+                full = f"{prefix}.{candidate}" if prefix else candidate
+                if full in cache_key:
+                    return full
+
+            # Fallback globale: il path più lungo che finisce con il suffisso
+            # (più specifico = più lungo, coerente con l'originale)
+            return max(candidates, key=len)
+
         return name
 
     def _find_vars(self, node, _seen=None):
@@ -686,6 +747,12 @@ class Interpreter:
         return (tuple(keys), tuple(values)), env
 
     async def visit_dict(self, node, env, path=""):
+        # Valutazione sequenziale: ogni item vede i valori definiti prima di lui
+        # tramite `env | result`. L'ordine di dichiarazione è l'ordine di
+        # valutazione — comportamento intenzionale del framework, coerente con
+        # il fatto che le dipendenze tra dichiarazioni `:=` sono già risolte
+        # dall'ordine di scrittura nel sorgente DSL.
+        # Le dipendenze tra *task* `->` sono invece gestite dal DagRunner.
         result = {}
         for it in node["items"]:
             (key, val), _ = await self.visit(it, env | result, path=path)
@@ -789,7 +856,7 @@ class Interpreter:
     async def _build_flow_nodes_from(self, tasks: List[dict]) -> List[dict]:
         """Costruisce la lista di flow.node() a partire dai task raccolti."""
         flow_nodes = []
-        available = {t["path"] for t in tasks}
+        available = frozenset(t["path"] for t in tasks)  # frozenset: hashable per _scope_cache
 
         for task in tasks:
             name     = task["name"]

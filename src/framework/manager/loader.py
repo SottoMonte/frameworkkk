@@ -41,10 +41,13 @@ class Loader:
         'messenger':   'src/framework/manager/messenger.py',
         'storekeeper': 'src/framework/manager/storekeeper.py',
         'orchestrator': 'src/framework/manager/orchestrator.py',
+        'defender': 'src/framework/manager/defender.py',
     }
 
     def __init__(self):
         self.container = Container()
+        self.container.put(Loader, self)
+        sys.modules['framework.loader'] = sys.modules[__name__]
         self._managers: dict[Type, dict] = {}   # cls → {deps, config, _port_lists}
         self._adapters: dict[Type, dict] = {}   # cls → {deps, config, port_interface}
 
@@ -262,6 +265,10 @@ class Loader:
         except ImportError: pass
         return final
 
+    async def resource(self,path):
+        return open(path, 'rb').read().decode()
+
+
     # ── bootstrap ─────────────────────────────────────────────────────────────
 
     async def bootstrap(self, config_toml_path: str) -> Any:
@@ -276,10 +283,11 @@ class Loader:
         await self._load_framework()
 
         config = tomli.loads(open(config_toml_path, 'rb').read().decode())
+        managers_config = config.get('manager', {})
 
         print('\n[*] Discover...')
         for short, path in self.managers.items():
-            await self._discover(f'framework.manager.{short}', path, {})
+            await self._discover(f'framework.manager.{short}', path, managers_config.get(short, {}))
 
         for port_key in self.ports:
             for adapter_name, raw_cfg in config.get(port_key, {}).items():

@@ -2,19 +2,24 @@ from secrets import token_urlsafe
 from typing import Dict, Any
 from urllib.parse import urlparse, parse_qs, urljoin
 
-class defender:
-    def __init__(self, **constants):
+
+import framework.service.language as language
+import framework.service.scheme as scheme
+import framework.service.flow as flow
+import framework.manager.loader as loader
+
+class Manager:
+    def __init__(self, loader: loader.Loader, **constants):
         """
         Inizializza la classe Defender con i provider specificati.
 
         :param constants: Configurazioni iniziali, deve includere 'providers'.
         """
-        self.language = constants.get('language')
-        self.loader = constants.get('loader')
-        self.config = constants.get('project', dict())
-        self.authentications = constants.get('authentications', [])
-        self.models = constants.get('models')
-        self.interpreter = self.language.Interpreter(custom_types=self.models)
+        self.interpreter = language.Interpreter(scheme.schemes)
+        self.loader = loader
+        self.config = constants
+        #self.authentications = constants.get('authentications', [])
+        #self.models = constants.get('models')
         self.policies = {}
 
     async def stop(self):
@@ -22,15 +27,28 @@ class defender:
     
     async def start(self):
         await self.interpreter.start()
-        policies = self.config.get('policy', dict())
-        await self.create_session('demo', {})
-        for policy in policies:
-            filename = policies.get(policy)
+        print("aaaaaaaaaaaaaaaaaa",self.config)
+        await self.interpreter.start()
+        TARGET_PORTS = {'presentation', 'persistence', 'message'}
+
+        # Genera la lista filtrata
+        filtered_keys = [x for x in self.config if x in TARGET_PORTS]
+        for policy in filtered_keys:
+            filename = self.config[policy]
             path = f"src/application/policy/{policy}/{filename}"
             code = await self.loader.resource(path)
-            await self.add_file(path, code)
-            self.policies[policy] = await self.run_session('demo', path)
-            print(f"[+] Policy: {policy}/{filename}")
+            print(code)
+            await self.interpreter.load_file(path, code)
+            aaaa = await self.interpreter.run_once(path,code)
+            print(aaaa)
+            # sessione utente A
+            '''async with self.interpreter.open_session(env={"input": "dati_A"}) as s:
+                risultati = await s.run(path)
+                print(risultati)
+
+                #self.policies[policy] = await self.run_session('demo', path)
+                #print(f"[+] Policy: {policy}/{filename}")'''
+        return
 
     async def add_file(self, name, source):
         return await self.interpreter.add_file(name, source)

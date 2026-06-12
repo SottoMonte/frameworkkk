@@ -7,10 +7,15 @@ requires-python = ">=3.9"
 key = "rSc4ExXBDvtKF03pHd8W3Kz5VfSW7z0ITQsAR46nELg"
 mode = "development"
 
-[project.policy]
+[manager.defender]
+soglia_tentativi = 5
+timeout_blocchi = 3600
 presentation = "demo.dsl"
 #persistence = "redis.toml"
 #message = "log.toml"
+
+[manager.messenger]
+debug_mode = true
 
 [[message.console]]
 persistence = "log"
