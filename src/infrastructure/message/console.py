@@ -138,7 +138,7 @@ class Adapter(message.Port):
         if self.persistence:
             from datetime import datetime
 
-            adesso = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            adesso = datetime.now().strftime("%Y-%m-%d")
             await self.storekeeper.store("id",repository="logging",payload=constants,filter={'eq':{'filename':f'{adesso}.txt'}})
         # Persistenza strutturata nella history interna per scopi di riconciliazione ordinaria
         '''if domain not in self._history:

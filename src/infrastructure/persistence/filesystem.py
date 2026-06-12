@@ -24,6 +24,9 @@ class Adapter(persistence.Port):
         #    url += '?' + urlencode(payload)
         
         return await backend(method,url,headers,payload)'''
+        filename = constants.get('filter',{}).get('eq',{}).get('filename')
+        with open(filename, "a", encoding="utf-8") as file:
+            file.write(str(constants)+"\n")  # '\n' serve p
         print(constants)
         return flow.success(None)
         
