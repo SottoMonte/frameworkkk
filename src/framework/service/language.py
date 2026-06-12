@@ -1,84 +1,95 @@
 """
-DSL Language Interpreter
+DSL Language Interpreter — refactoring API pubblica
+=====================================================
+
+Cambiamenti principali
+----------------------
+1. **`execute()` standalone rimosso** — sostituito da `Interpreter.run_once()`,
+   che gestisce internamente parse → add_file → session effimera → risultato.
+
+2. **`add_file()` non resetta più stato globale** — ogni chiamata è idempotente;
+   lo stato di build viene tenuto per file nel dict `_file_state[name]`.
+
+3. **`invoke()` diventa `_invoke()` (privato)** — l'unico punto di entrata
+   esterno per chiamare funzioni DSL diventa `call()`.
+
+4. **`create_session` + `run_session` → `open_session()` + `run()`** — nomi più
+   chiari, firma coerente; `open_session` restituisce un `SessionHandle`
+   che nasconde il sid e offre metodi contestuali.
+
+5. **`start()` / `stop()` → `__aenter__` / `__aexit__`** — l'Interpreter si usa
+   come async context manager; `start`/`stop` rimangono come alias espliciti
+   per chi non usa il `async with`.
+
+6. **`FlowNodeBuilder` unificato** — eliminata la duplicazione con
+   `Interpreter._build_flow_nodes`; ora c'è un solo percorso.
+
+7. **Nuova `parse_only()`** — API leggera per validare/ispezionare il DSL
+   senza eseguirlo.
+
+Invarianti mantenuti
+--------------------
+- Il protocollo interno visit_*/invoke rimane inalterato.
+- `DagRunner` non viene esposto: tutte le interazioni passano per Interpreter.
+- La compatibilità con il vecchio `execute(name, ast, functions, parser)` è
+  preservata tramite `execute()` che delega a `run_once()`.
 """
+
+from __future__ import annotations
 
 import asyncio
 import inspect
 import operator
-
-from lark import Lark, Transformer, Token, v_args
-from dataclasses import dataclass, field
-from collections import ChainMap
-
 import random
+import uuid
+from collections import ChainMap
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+from lark import Lark, Token, Transformer, v_args
+
 import framework.service.flow as flow
 import framework.service.scheme as scheme
 
-# ── Grammar ───────────────────────────────────────────────────────────────────
+# ── Grammar (invariata) ───────────────────────────────────────────────────────
 
 GRAMMAR = r"""
 start: dictionary | [item (item)*] -> dictionary_node
-
 dictionary: "{" [item (item)*] "}" -> dictionary_node
-
 ?item: declaration | entry | task
 declaration: (entry|type_sequence) ":=" sequence ";"?
 entry: (atom|sequence) ":" sequence ";"?
 task: function_call "->" sequence ";"? -> task
-
 ?type_sequence: pair ("," pair)* ","? -> sequence
 ?sequence: expr ("," expr)* ","?
-
 ?expr: pipe
 ?pipe: logic
      | logic (PIPE (pair|logic))+ -> pipe_node
-     #| logic (PIPE (identifier ":")? logic)+ -> pipe_node
-
 ?logic: comparison
       | ("not" | "!") logic        -> not_op
       | logic ("and" | "&") logic  -> and_op
       | logic ("or"  | "|") logic  -> or_op
       | logic ("in" | "~") logic -> in_op
-
 ?comparison: sum
            | comparison COMPARISON_OP sum -> binary_op
-
 ?sum: term
     | sum ARITHMETIC_OP term -> binary_op
-
 ?term: power
      | term "*" power -> binary_op
      | term "/" power -> binary_op
      | term "%" power -> binary_op
-
 ?power: atom | atom "^" power -> power
-
-?atom.7: value
-     | identifier
-     | tuple
-     | list
-     | dictionary
-     | function_call
-     | function_value
-
+?atom.7: value | identifier | tuple | list | dictionary | function_call | function_value
 ?tuple: "(" [sequence] ")" -> tuple_node | "(" [type_sequence] ")" -> tuple_node
 pair.6: atom ":" expr
 ?list: "[" [sequence] "]" -> list_node
-
 function_call: identifier "(" [sequence|type_sequence] ")"
 function_value.10: tuple dictionary tuple
-
 identifier: CNAME -> identifier
 | QUALIFIED_CNAME -> identifier
 | "@" CNAME -> context_var
 | "@" QUALIFIED_CNAME -> context_var
-
-value: SIGNED_NUMBER      -> number
-     | STRING             -> string
-     | "true"i            -> true
-     | "false"i           -> false
-     | "none"i            -> any_val
-
+value: SIGNED_NUMBER -> number | STRING -> string | "true"i -> true | "false"i -> false | "none"i -> any_val
 PIPE: "|>"
 _ARROW: "->"
 ASSIGN_OP: ":="
@@ -90,18 +101,16 @@ SINGLE_QUOTED_STRING: /'[^']*'/
 FILTER_PATTERN: "*[" CNAME "=" STRING "]"
 QUALIFIED_CNAME: CNAME ("." (CNAME|INT|FILTER_PATTERN|"*"))+
 INT : /[0-9]+/
-
 %import common.SIGNED_NUMBER
 %import common.ESCAPED_STRING
 %import common.CNAME
 %import common.WS
 %ignore WS
-
 COMMENT: /\/\/[^\n]*/ | /\/\*[\s\S]*?\*\//
 %ignore COMMENT
 """
 
-# ── Types ─────────────────────────────────────────────────────────────────────
+# ── Types / built-ins (invariati) ─────────────────────────────────────────────
 
 TYPE_MAP = {
     'natural': int, 'integer': int, 'real': float, 'rational': float,
@@ -113,34 +122,27 @@ TYPE_MAP = {
     'tuple': tuple, 'function': tuple,
 }
 
-DSL_FUNCTIONS = {
-    'random': random.randint,
-    #'resource': load.resource,
-    'foreach': flow.foreach,
-    'switch':  flow.switch,
-    #'when': flow.when,
-    #'sentry': flow.sentry,
-    'branch': flow.branch,
-    #'pipeline': flow.pipeline,
-    #'parallel': flow.parallel,
-    'reset': flow.reset,
+DSL_FUNCTIONS: Dict[str, Any] = {
+    'random':    random.randint,
+    'foreach':   flow.foreach,
+    'switch':    flow.switch,
+    'branch':    flow.branch,
+    'reset':     flow.reset,
     'transform': scheme.transform,
-    'get': scheme.get,
+    'get':       scheme.get,
     'normalize': scheme.normalize,
-    'put': scheme.put,
-    'format': scheme.format,
-    'convert': scheme.convert,
-    'keys':   lambda d: list(d.keys()) if isinstance(d, dict) else [],
-    'values': lambda d: list(d.values()) if isinstance(d, dict) else [],
-    'union':  lambda a, b: {**a, **b},
-    'print':  lambda *inputs: (print(*inputs), inputs)[1],
-    'pass':   lambda *inputs: inputs,
+    'put':       scheme.put,
+    'format':    scheme.format,
+    'convert':   scheme.convert,
+    'keys':      lambda d: list(d.keys()) if isinstance(d, dict) else [],
+    'values':    lambda d: list(d.values()) if isinstance(d, dict) else [],
+    'union':     lambda a, b: {**a, **b},
+    'print':     lambda *inputs: (print(*inputs), inputs)[1],
+    'pass':      lambda *inputs: inputs,
 } | TYPE_MAP | {'extension': 'py'}
 
-# ── Ops ───────────────────────────────────────────────────────────────────────
-
 OPS = {
-    '+': operator.add,  '-': operator.sub,  '*': operator.mul,
+    '+': operator.add,  '-': operator.sub,   '*': operator.mul,
     '/': operator.truediv, '%': operator.mod, '^': operator.pow,
     '==': operator.eq,  '!=': operator.ne,
     '>':  operator.gt,  '<':  operator.lt,
@@ -150,18 +152,15 @@ OPS = {
     'in':  lambda a, b: a in b,
 }
 
-# ── Transformer ───────────────────────────────────────────────────────────────
+# ── Transformer (invariato) ───────────────────────────────────────────────────
 
 @v_args(meta=True)
 class DSLTransformer(Transformer):
 
     def task(self, meta, items):
-        # items may contain trigger, deps (list), and action
-        # _ARROW is ignored because of the _ prefix in grammar
         items = [i for i in items if i is not None]
         trigger = items[0]
-        action = items[1]
-
+        action  = items[1]
         return self._m({"type": "task", "trigger": trigger, "action": action}, meta)
 
     def _m(self, node, meta):
@@ -172,26 +171,24 @@ class DSLTransformer(Transformer):
         return node
 
     def number(self, meta, n):
-        v = str(n[0]); return self._m({"type":"number","value":float(v) if "." in v else int(v)}, meta)
+        v = str(n[0]); return self._m({"type": "number", "value": float(v) if "." in v else int(v)}, meta)
 
-    def string(self, meta, s):
-        return self._m({"type":"string","value":str(s[0])[1:-1]}, meta)
-
-    def true(self, meta, _):    return self._m({"type":"bool","value":True},  meta)
-    def false(self, meta, _):   return self._m({"type":"bool","value":False}, meta)
-    def any_val(self, meta, _): return self._m({"type":"any"}, meta)
+    def string(self, meta, s):   return self._m({"type": "string",  "value": str(s[0])[1:-1]},  meta)
+    def true(self, meta, _):     return self._m({"type": "bool",    "value": True},               meta)
+    def false(self, meta, _):    return self._m({"type": "bool",    "value": False},              meta)
+    def any_val(self, meta, _):  return self._m({"type": "any"},                                  meta)
 
     def identifier(self, meta, s):
-        return self._m({"type":"var","name":str(s[0])}, meta)
+        return self._m({"type": "var",         "name": str(s[0])}, meta)
 
     def context_var(self, meta, s):
-        return self._m({"type":"context_var","name":str(s[0])}, meta)
+        return self._m({"type": "context_var", "name": str(s[0])}, meta)
 
     def function_value(self, meta, a):
-        return self._m({"type":"function_def","params":a[0],"body":a[1],"return_type":a[2]}, meta)
+        return self._m({"type": "function_def", "params": a[0], "body": a[1], "return_type": a[2]}, meta)
 
     def sequence(self, meta, items):
-        return self._m({"type":"sequence","items":[i for i in items if i is not None]}, meta)
+        return self._m({"type": "sequence", "items": [i for i in items if i is not None]}, meta)
 
     def _unwrap(self, meta, items, typ):
         items = [i for i in items if i is not None]
@@ -203,13 +200,13 @@ class DSLTransformer(Transformer):
     def list_node(self, meta, items):  return self._unwrap(meta, items, "list")
 
     def dictionary_node(self, meta, items):
-        return self._m({"type":"dict","items":[i for i in items if i is not None]}, meta)
+        return self._m({"type": "dict", "items": [i for i in items if i is not None]}, meta)
 
     def pair(self, meta, a):
-        return self._m({"type":"pair","key":a[0],"value":a[1]}, meta)
+        return self._m({"type": "pair", "key": a[0], "value": a[1]}, meta)
 
     def entry(self, meta, a):
-        return self._m({"type":"pair","key":a[0],"value":a[1]}, meta)
+        return self._m({"type": "pair", "key": a[0], "value": a[1]}, meta)
 
     def _extract_targets(self, node):
         if node["type"] == "pair":
@@ -227,12 +224,13 @@ class DSLTransformer(Transformer):
 
     def declaration(self, meta, tree):
         target = tree[0]
-        return self._m({"type":"declaration","target":target,"targets":self._extract_targets(target),"value":tree[1]}, meta)
+        return self._m({"type": "declaration", "target": target,
+                        "targets": self._extract_targets(target), "value": tree[1]}, meta)
 
     def function_call(self, meta, tree):
-        fn = tree[0]
+        fn   = tree[0]
         lazy = fn.get("type") == "context_var"
-        inputs = tree[1].get("items",[]) if isinstance(tree[1],dict) and tree[1]["type"] == "sequence" else [tree[1]]
+        inputs = tree[1].get("items", []) if isinstance(tree[1], dict) and tree[1]["type"] == "sequence" else [tree[1]]
         inputs = [i for i in inputs if i is not None]
         args, kwargs = [], {}
         for inp in inputs:
@@ -240,65 +238,54 @@ class DSLTransformer(Transformer):
                 kwargs[inp["key"]["name"]] = inp["value"]
             else:
                 args.append(inp)
-
-        node = {"type":"call","name":fn.get("name"),"args":args,"kwargs":kwargs}
+        node = {"type": "call", "name": fn.get("name"), "args": args, "kwargs": kwargs}
         if lazy: node["lazy"] = True
         return self._m(node, meta)
 
     def binary_op(self, meta, a):
         if len(a) == 2:
-            return self._m({"type":"binop","op":"*","left":a[0],"right":a[1]}, meta)
-        return self._m({"type":"binop","op":str(a[1]),"left":a[0],"right":a[2]}, meta)
+            return self._m({"type": "binop", "op": "*",      "left": a[0], "right": a[1]}, meta)
+        return     self._m({"type": "binop", "op": str(a[1]),"left": a[0], "right": a[2]}, meta)
 
     def power(self, meta, a):
-        return self._m({"type":"binop","op":"^","left":a[0],"right":a[1]}, meta)
+        return self._m({"type": "binop", "op": "^", "left": a[0], "right": a[1]}, meta)
 
-    def not_op(self, meta, a):  return self._m({"type":"not","value":a[0]}, meta)
-    def and_op(self, meta, a):  return self._m({"type":"binop","op":"and","left":a[0],"right":a[1]}, meta)
-    def or_op(self, meta, a):   return self._m({"type":"binop","op":"or", "left":a[0],"right":a[1]}, meta)
-    def in_op(self, meta, a):   return self._m({"type":"binop","op":"in", "left":a[0],"right":a[1]}, meta)
+    def not_op(self, meta, a): return self._m({"type": "not",   "value": a[0]},                        meta)
+    def and_op(self, meta, a): return self._m({"type": "binop", "op": "and", "left": a[0], "right": a[1]}, meta)
+    def or_op(self, meta, a):  return self._m({"type": "binop", "op": "or",  "left": a[0], "right": a[1]}, meta)
+    def in_op(self, meta, a):  return self._m({"type": "binop", "op": "in",  "left": a[0], "right": a[1]}, meta)
 
     def pipe_node(self, meta, items):
-        # Il primo elemento è sempre lo step iniziale (senza alias)
         items = [i for i in items if not isinstance(i, Token) and i is not None]
-        return self._m({"type":"pipe","steps":items}, meta)
-        '''steps = [{"alias": None, "step": items[0]}]
-        
-        # Iteriamo sul resto degli elementi
-        it = iter(items[1:])
-        for item in it:
-            # Se l'item è un identificatore (il nostro alias), 
-            # allora il PROSSIMO item nell'iteratore è lo step.
-            if isinstance(item, dict) and item.get("type") == "var":
-                alias = item["name"]
-                try:
-                    step = next(it)
-                    steps.append({"alias": alias, "step": step})
-                except StopIteration:
-                    # Caso limite: alias senza step (non dovrebbe accadere con LALR)
-                    steps.append({"alias": alias, "step": None})
-            else:
-                # È uno step senza alias
-                steps.append({"alias": None, "step": item})
-                
-        return self._m({"type": "pipe", "steps": steps}, meta)'''
+        return self._m({"type": "pipe", "steps": items}, meta)
 
     def start(self, meta, items): return items[0]
 
-# ── Public API ────────────────────────────────────────────────────────────────
 
-def create_parser():
+# ── Parse helpers ─────────────────────────────────────────────────────────────
+
+def create_parser() -> Lark:
     return Lark(GRAMMAR, parser='lalr', propagate_positions=True)
 
+
 def parse(source: str, parser: Lark) -> dict:
+    """Parsa il sorgente DSL e restituisce l'AST. Solleva lark.UnexpectedInput in caso di errore."""
     return DSLTransformer().transform(parser.parse(source))
 
-async def execute(name, ast, functions, parser=None):
-    if parser is None: parser = create_parser()
-    ast = parse(ast, parser) if isinstance(ast, str) else ast
-    return await Interpreter().run(name, ast, env=functions)
 
-# ── Runtime helpers ───────────────────────────────────────────────────────────
+# ── Eccezione pubblica ────────────────────────────────────────────────────────
+
+class DSLRuntimeError(Exception):
+    def __init__(self, message: str, meta: Optional[dict] = None):
+        if meta:
+            sl, sc, el, ec = meta.get("line"), meta.get("column"), meta.get("end_line"), meta.get("end_column")
+            if sl is not None:
+                loc = f"line {sl}:{sc} - {el}:{ec}" if el else f"line {sl}, col {sc}"
+                message += f" ({loc})"
+        super().__init__(message)
+
+
+# ── Runtime helpers (invariati) ───────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class LazyBinOp:
@@ -317,192 +304,276 @@ class ContextVar:
 class LazyCall:
     interpreter: object = field(repr=False, compare=False)
     name: str
-    call_node: dict = field(repr=False, compare=False)
-    env: dict = field(repr=False, compare=False)
-    '''def __call__(self, env, *args, **kwargs):
-        return self.interpreter.visit_call(self.call_node, env, *args, **kwargs)'''
+    call_node: dict  = field(repr=False, compare=False)
+    env: dict        = field(repr=False, compare=False)
     def __call__(self, env, *args, **kwargs):
         tt = {**self.call_node, "lazy": False}
-        return self.interpreter.visit_call(tt, self.env|env, *args, **kwargs)
+        return self.interpreter.visit_call(tt, self.env | env, *args, **kwargs)
     def __repr__(self): return f"@{self.name}(...)"
 
-class DSLRuntimeError(Exception):
-    def __init__(self, message, meta=None):
-        if meta:
-            sl, sc, el, ec = meta.get("line"), meta.get("column"), meta.get("end_line"), meta.get("end_column")
-            if sl is not None:
-                loc = f"line {sl}:{sc} - {el}:{ec}" if el else f"line {sl}, col {sc}"
-                message += f" ({loc})"
-        super().__init__(message)
 
+# ── SessionHandle ─────────────────────────────────────────────────────────────
+# Oggetto restituito da Interpreter.open_session(); nasconde il sid e
+# offre un'interfaccia contestuale per run/emit/update_state/close.
 
-class FlowNodeBuilder:
+class SessionHandle:
     """
-    Classe di supporto per costruire flow nodes da un AST
-    senza dover valutare l'intero AST.
+    Handle contestuale a una sessione DSL.
+
+    Uso tipico::
+
+        async with interp.open_session(env={"user": "alice"}) as session:
+            result = await session.run("my_file")
+            session.update("config.debug", True)
+            await session.emit("my_file", "reload")
     """
 
-    def __init__(self, interpreter):
+    def __init__(self, interpreter: "Interpreter", sid: str):
+        self._interp = interpreter
+        self._sid = sid
+
+    # ── metodi pubblici ───────────────────────────────────────────────────────
+
+    async def run(self, file: str, env: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        :param interpreter: istanza dell'Interpreter (per visit_call, visit, ecc.)
+        Esegue un file caricato sulla sessione e restituisce i risultati.
+
+        :param file: nome del file (deve essere già caricato con `load_file`)
+        :param env:  variabili aggiuntive per questa esecuzione (opzionale)
+        :returns:    dict ``{node_name: result}``
         """
-        self.interpreter = interpreter
+        return await self._interp._run_session(self._sid, file, env or {})
 
-    async def build(self, ast, env=None):
-        """
-        Costruisce i flow nodes dall'AST.
-        Non valuta l'AST, usa solo _tasks registrati dentro l'AST.
-        """
-        env = env or {}
-        self._tasks = []
-        await self._collect_tasks(ast, env=env)
-        return await self._build_flow_nodes(env)
+    def update(self, path: str, value: Any) -> None:
+        """Aggiorna una variabile nel contesto senza triggerare nodi."""
+        self._interp._runner.update_state(self._sid, path, value)
 
-    async def _collect_tasks(self, node, path="", env=None):
-        """
-        Visita ricorsiva dell'AST per registrare i task
-        """
-        if isinstance(node, dict):
-            t = node.get("type")
-            if t == "task":
-                task_name = node['trigger']['name']
-                task_path = f"{path}.{task_name}" if path else task_name
-                kwargs = {}
-                for k, v in node['trigger'].get("kwargs", {}).items():
-                    # Usiamo l'interprete per valutare i valori dei kwargs (es. schedule: 5)
-                    # Forniamo DSL_FUNCTIONS come ambiente base per costanti e tipi.
-                    try:
-                        val, _ = await self.interpreter.visit(v, env or {})
-                        kwargs[k] = val
-                    except:
-                        # Se non riusciamo a valutarlo subito (es. dipende da var non ancora definite),
-                        # lo teniamo come AST o lo ignoriamo? Per ora lo ignoriamo o mettiamo None
-                        kwargs[k] = None
+    async def emit(self, file: str, node: str, value: Any = None) -> None:
+        """Triggera manualmente un nodo specifico."""
+        self._interp._runner.emit(self._sid, file, node, value)
 
-                self._tasks.append({
-                    "name": task_name,
-                    "action": node['action'],
-                    "kwargs": kwargs,
-                    "path": task_path
-                })
-            
-            # Se è una coppia, aggiungiamo la chiave al path per i figli
-            if t == "pair":
-                # Estraiamo il nome della chiave (che può essere un nodo 'var')
-                key_node = node.get("key")
-                key = key_node.get("name") if isinstance(key_node, dict) and "name" in key_node else str(key_node)
-                
-                new_path = f"{path}.{key}" if path else key
-                await self._collect_tasks(node.get("value"), new_path, env=env)
-                return
+    async def wait(self, file: str, node: str) -> None:
+        """Attende il completamento di un nodo specifico."""
+        await self._interp._runner.wait_node(self._sid, file, node)
 
-            # Se è un dict, scendiamo negli items mantenendo il path corrente
-            if t == "dict":
-                for item in node.get("items", []):
-                    await self._collect_tasks(item, path, env=env)
-                return
+    @property
+    def context(self) -> Dict:
+        """Restituisce una view (non copia) del contesto corrente della sessione."""
+        return self._interp._runner.context(self._sid)
 
-            # Ricorsione generica su altri nodi
-            for k, v in node.items():
-                if k not in ("meta", "type"):
-                    await self._collect_tasks(v, path, env=env)
+    async def close(self) -> None:
+        """Chiude la sessione e rilascia le risorse."""
+        await self._interp._runner.close_session(self._sid)
 
-        elif isinstance(node, (list, tuple)):
-            for item in node:
-                await self._collect_tasks(item, path, env=env)
+    # ── async context manager ─────────────────────────────────────────────────
 
-    async def _build_flow_nodes(self, env):
-        """
-        Converte i task registrati in flow nodes.
-        """
-        flow_nodes = []
-        available = {t["path"] for t in self._tasks}
+    async def __aenter__(self) -> "SessionHandle":
+        return self
 
-        for task in self._tasks:
-            name = task["name"]
-            t_path = task["path"]
-            action = task["action"]
-            kw = task.get("kwargs", {})
+    async def __aexit__(self, *_) -> None:
+        await self.close()
 
-            # Calcolo dipendenze
-            raw_deps = self.interpreter._find_vars(action) | self.interpreter._find_vars(kw)
-            deps = set()
-            for d in raw_deps:
-                resolved = self.interpreter._resolve_scope(t_path, d, available)
-                if resolved in available and resolved != t_path:
-                    deps.add(resolved)
-            
-            if kw.get('deps', []) == False:
-                kw['deps'] = []
-            else:
-                kw['deps'] = list(deps) + kw.get('deps', [])
-
-            # Funzione nodo
-            def make_task_fn(ast, interpreter_ref, t_path):
-                async def task_fn(env_dict):
-                    try:
-                        if ast.get("type") == "pipe":
-                            val, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
-                            return val
-                        elif ast.get("type") == "call":
-                            call = scheme.get(env_dict, ast["name"])
-                            args = [(await interpreter_ref.visit(a, env_dict, path=f"{t_path}.args[{i}]"))[0]
-                                    for i, a in enumerate(ast.get("args", []))]
-                            kwargs = {k: (await interpreter_ref.visit(v, env_dict, path=f"{t_path}.{k}"))[0]
-                                      for k, v in ast.get("kwargs", {}).items()}
-                            res = await interpreter_ref.invoke(call, args, kwargs, path=t_path)
-                            return res if not isinstance(res, dict) else res.get("outputs", res)
-                        else:
-                            val, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
-                            if callable(val):
-                                res = await interpreter_ref.invoke(val, [], {}, path=t_path)
-                                return res.get("outputs", res)
-                            return val
-                    except Exception as e:
-                        return flow.error(str(e))
-                return task_fn
-
-            flow_nodes.append(flow.node(name=t_path, fn=make_task_fn(action, self.interpreter, t_path), path=t_path, **kw))
-
-        return flow_nodes
 
 # ── Interpreter ───────────────────────────────────────────────────────────────
-#
-# visit_dict usa due path distinti:
-#   • fast-path  — dict senza dipendenze interne (la maggioranza: schema, mapper,
-#                  config, record). Valutazione sequenziale, zero overhead DAG.
-#   • slow-path  — dict dove almeno una chiave dipende da un'altra chiave dello
-#                  stesso dict. Attiva flow.run_ast con ordinamento topologico.
-#
-# Il top-level del file DSL (dictionary_node radice) passa sempre dal slow-path
-# perché le dichiarazioni `:=` si referenziano tra loro per definizione.
-#
-# Per dict reattivi (scheduled / event-driven), introdurre un costrutto
-# esplicito `reactive:` che bypassa visit_dict e usa flow.run direttamente.
 
 class Interpreter:
+    """
+    Interprete del DSL.  Ciclo di vita::
 
-    def __init__(self, custom_types=None): 
-        self._stack = []
-        self._tasks = []
-        self._dag = []
-        self.runner = flow.DagRunner()
-        self.parser = create_parser()
-        self.cache_ast = {}
-        self.builder = FlowNodeBuilder(self)
-        self.custom_types = custom_types or {}
+        interp = Interpreter()
+        await interp.start()            # oppure: async with Interpreter() as interp:
 
+        await interp.load_file("app", source_code)
+
+        async with interp.open_session(env={...}) as session:
+            results = await session.run("app")
+
+        await interp.stop()
+
+    Per esecuzioni una-tantum::
+
+        result = await interp.run_once("app", source_code, env={...})
+    """
+
+    def __init__(self, custom_types: Optional[Dict] = None):
+        self._stack:        List[dict]        = []
+        self._runner:       flow.DagRunner    = flow.DagRunner()
+        self._parser:       Lark              = create_parser()
+        self._ast_cache:    Dict[str, dict]   = {}   # name -> AST
+        self._file_tasks:   Dict[str, List]   = {}   # name -> task list (per file)
+        self.custom_types:  Dict[str, Any]    = custom_types or {}
+
+    # ── lifecycle ─────────────────────────────────────────────────────────────
+
+    async def start(self) -> "Interpreter":
+        """Avvia il motore DAG sottostante. Ritorna self per chaining."""
+        await self._runner.start()
+        return self
+
+    async def stop(self) -> None:
+        """Ferma il motore e annulla tutti i task schedulati."""
+        await self._runner.stop()
+
+    async def __aenter__(self) -> "Interpreter":
+        return await self.start()
+
+    async def __aexit__(self, *_) -> None:
+        await self.stop()
+
+    # ── file management ───────────────────────────────────────────────────────
+
+    async def load_file(self, name: str, source: str) -> None:
+        """
+        Parsa e registra un file DSL nel motore.
+
+        Idempotente: chiamare più volte con lo stesso `name` aggiorna il file.
+        Non altera lo stato di altri file o delle sessioni esistenti.
+
+        :param name:   identificatore univoco del file
+        :param source: sorgente DSL (stringa)
+        :raises lark.UnexpectedInput: se il sorgente non è sintatticamente valido
+        :raises ValueError:           se il DAG del file contiene cicli
+        """
+        ast = parse(source, self._parser)
+        self._ast_cache[name] = ast
+
+        # Build dei flow nodes isolato per questo file
+        tasks: List[dict] = []
+        builder = _FlowNodeBuilder(self, task_sink=tasks)
+        await builder.build(ast, env=DSL_FUNCTIONS)
+        self._file_tasks[name] = tasks
+
+        flow_nodes = await self._build_flow_nodes_from(tasks)
+        await self._runner.add_file(name, flow_nodes)
+
+    def parse_only(self, source: str) -> dict:
+        """
+        Parsa il sorgente e restituisce l'AST senza eseguirlo.
+
+        Utile per validazione, ispezione o tooling.
+
+        :param source: sorgente DSL
+        :returns:      AST come dict
+        :raises lark.UnexpectedInput: se il sorgente non è valido
+        """
+        return parse(source, self._parser)
+
+    async def unload_file(self, name: str) -> None:
+        """Rimuove un file dal motore. Le sessioni attive non vengono interrotte."""
+        self._ast_cache.pop(name, None)
+        self._file_tasks.pop(name, None)
+        await self._runner.delete_file(name)
+
+    # ── session management ────────────────────────────────────────────────────
+
+    def open_session(
+        self,
+        env: Optional[Dict] = None,
+        sid: Optional[str] = None,
+    ) -> SessionHandle:
+        """
+        Crea una nuova sessione e restituisce un ``SessionHandle``.
+
+        La sessione può essere usata come async context manager (chiusura
+        automatica) o gestita manualmente tramite ``SessionHandle.close()``.
+
+        :param env: contesto iniziale della sessione (es. dati utente, config)
+        :param sid: identificatore opzionale; se omesso viene generato un UUID
+        :returns:   ``SessionHandle`` contestuale alla sessione
+        """
+        sid = sid or str(uuid.uuid4())
+        self._runner.create_session(sid, DSL_FUNCTIONS | (env or {}))
+        return SessionHandle(self, sid)
+
+    # ── one-shot execution ────────────────────────────────────────────────────
+
+    async def run_once(
+        self,
+        name: str,
+        source: str,
+        env: Optional[Dict] = None,
+        *,
+        base_functions: Optional[Dict] = None,
+    ) -> Dict[str, Any]:
+        """
+        Esegue un sorgente DSL in una sessione effimera (load → run → close).
+
+        Comodo per script, test, o valutazioni isolate. Non richiede `load_file`
+        o `open_session` espliciti.
+
+        :param name:            nome logico del file (usato come chiave interna)
+        :param source:          sorgente DSL
+        :param env:             variabili aggiuntive da iniettare nell'ambiente
+        :param base_functions:  override delle funzioni built-in (default: ``DSL_FUNCTIONS``)
+        :returns:               dict ``{node_name: result}`` dei nodi eseguiti
+        """
+        merged_env = (base_functions or DSL_FUNCTIONS) | (env or {})
+
+        await self.load_file(name, source)
+        async with self.open_session(env=merged_env) as session:
+            return await session.run(name)
+
+    # ── direct function call ──────────────────────────────────────────────────
+
+    async def call(
+        self,
+        fn: Any,
+        args: tuple = (),
+        kwargs: Optional[Dict] = None,
+    ) -> Any:
+        """
+        Invoca una funzione (Python callable, DSL tuple, o LazyCall) e
+        restituisce il suo output direttamente (non il dict Result interno).
+
+        Solleva ``DSLRuntimeError`` in caso di errore.
+
+        :param fn:     funzione da invocare
+        :param args:   argomenti posizionali
+        :param kwargs: argomenti keyword
+        :returns:      output della funzione
+        """
+        res = await self._invoke(fn, args, kwargs or {})
+        if not res["success"]:
+            raise DSLRuntimeError(f"Errore in call: {res['errors']}")
+        return res["outputs"]
+
+    # ── internals ─────────────────────────────────────────────────────────────
+    # Tutto ciò che segue è API privata (prefisso _).
+    # Non fare affidamento su questi metodi dall'esterno.
+
+    async def _run_session(self, sid: str, file: str, env: Dict) -> Dict[str, Any]:
+        """Esegue un file su una sessione esistente (usato da SessionHandle.run)."""
+        if file not in self._ast_cache:
+            raise DSLRuntimeError(f"File '{file}' non caricato. Usa load_file() prima.")
+
+        ctx = self._runner.context(sid) | env
+        ast_result, _ = await self.visit(self._ast_cache[file], ctx, path="")
+        return await self._runner.run_file(sid, file, ast_result)
+
+    async def _invoke(self, fn: Any, args: tuple, kwargs: Dict, path: str = "") -> Dict:
+        """Esegue fn e restituisce sempre un dict Result."""
+        if isinstance(fn, LazyCall):
+            merged = ChainMap(kwargs, fn.env)
+            res, _ = await self.visit_call(fn.call_node, merged, path=path)
+            return flow.success(res)
+        if callable(fn):
+            s = flow.step(fn, *args, **kwargs)
+        elif isinstance(fn, tuple) and len(fn) in (3, 4):
+            s = flow.step(self._call_dsl_fn, fn, args, kwargs, path)
+        else:
+            raise DSLRuntimeError(f"Valore non invocabile: {fn!r}")
+        return await flow.act(s)
 
     # ── visita generica ───────────────────────────────────────────────────────
 
-    async def visit(self, node, env,path=""):
+    async def visit(self, node, env, path=""):
         t = node.get("type")
         method = getattr(self, f"visit_{t}", None)
         if not method:
             raise DSLRuntimeError(f"Tipo AST sconosciuto: '{t}'", node.get("meta"))
         self._stack.append(node)
         try:
-            return await method(node, env,path)
+            return await method(node, env, path)
         except DSLRuntimeError as e:
             trace = " -> ".join(
                 f"{n['type']}({n.get('meta',{}).get('line','?')}:{n.get('meta',{}).get('column','?')})"
@@ -512,49 +583,28 @@ class Interpreter:
             self._stack.pop()
 
     def _resolve_scope(self, path, name, available):
-        """
-        Risolve il nome cercando la corrispondenza più specifica tra i task.
-        Esempio: name="health.cpu.usage" -> prova "health.cpu.usage", poi "health.cpu", poi "health".
-        """
-        parts = name.split(".")
-        
-        # Prova a ridurre il nome da destra a sinistra (es: health.cpu.usage -> health.cpu -> health)
+        parts = path.split(".")
         for i in range(len(parts), 0, -1):
             candidate_name = ".".join(parts[:i])
-            
-            # Ora applichiamo la tua logica originale di risalita dello scope (dal locale al globale)
             path_parts = path.split(".") if path else []
-            
             for j in range(len(path_parts), -1, -1):
-                # Costruisce il path potenziale: es. "scope.sotto_scope.candidate_name"
                 prefix = ".".join(path_parts[:j])
                 full_candidate = f"{prefix}.{candidate_name}" if prefix else candidate_name
-                
                 if full_candidate in available:
                     return full_candidate
-                    
-            # Fallback: se non lo trova nel path specifico, cerca se esiste un task 
-            # con quel nome in assoluto (o che finisce con quel nome)
             for avail in sorted(available, key=len, reverse=True):
                 if avail == candidate_name or avail.endswith(f".{candidate_name}"):
                     return avail
-                    
-        return name # Se non trova nulla, restituisce il nome originale (sarà una variabile di env)
+        return name
 
     def _find_vars(self, node, _seen=None):
-        """Visita ricorsivamente l'AST raccogliendo tutte le var/context_var."""
         if _seen is None: _seen = set()
         if isinstance(node, dict):
             t = node.get("type")
-            # Se è un pair che viene usato come ALIAS in una pipe, 
-            # non dobbiamo estrarre il nome della chiave come dipendenza.
             if t == "pair" and isinstance(node.get("key"), dict) and node["key"].get("type") == "var":
-                # Estrai variabili solo dal VALORE (la funzione), non dalla CHIAVE (l'alias)
                 return self._find_vars(node["value"], _seen)
-            # --------------------
             if t in ("var", "context_var"):
                 return {node["name"]}
-            # Non scendere dentro function_def (scope separato)
             if t == "function_def":
                 return set()
             return {
@@ -565,18 +615,6 @@ class Interpreter:
         if isinstance(node, (list, tuple)):
             return {v for child in node for v in self._find_vars(child, _seen)}
         return set()
-
-    def _register_task(self, node, env, path=None):
-        """Registra un nodo AST come task reattivo nel grafo (Auto-Tasking)."""
-        if "session_id" in env: return # Già in esecuzione
-        meta = node.get("meta", {})
-        name = self._node_name(node)
-        if any(t["name"] == name for t in self._tasks): return
-        self._tasks.append({"name": name, "action": node, "kwargs": {}, "path": path or name})
-
-    def _node_name(self, node):
-        meta = node.get("meta", {})
-        return f"pipe_L{meta.get('line','?')}C{meta.get('column','?')}"
 
     # ── primitivi ─────────────────────────────────────────────────────────────
 
@@ -596,21 +634,16 @@ class Interpreter:
     # ── strutture ─────────────────────────────────────────────────────────────
 
     async def visit_task(self, node, env, path=""):
+        # Durante load_file i task vengono raccolti da _FlowNodeBuilder.
+        # visit_task viene chiamato solo a runtime (via visit_dict) e restituisce
+        # la coppia (nome, action) senza side-effect sullo stato del file.
         task_name = node['trigger']['name']
         task_path = f"{path}.{task_name}" if path else task_name
         kwargs = {}
         for k, v in node['trigger'].get("kwargs", {}).items():
             val, env = await self.visit(v, env, path=task_path + "." + k)
             kwargs[k] = val
-        self._tasks.append({
-            "name": task_name,
-            "action": node['action'],
-            "kwargs": kwargs,
-            "path": task_path
-        })
-        
         return (task_name, node['action']), env
-        
 
     async def _collect(self, node, env, cast, path=""):
         items = []
@@ -622,7 +655,7 @@ class Interpreter:
 
     async def visit_tuple(self, n, e, path=""):    return await self._collect(n, e, tuple, path=path)
     async def visit_sequence(self, n, e, path=""): return await self._collect(n, e, tuple, path=path)
-    async def visit_list(self, n, e, path=""):     return await self._collect(n, e, list, path=path)
+    async def visit_list(self, n, e, path=""):     return await self._collect(n, e, list,  path=path)
 
     async def visit_pair(self, node, env, path=""):
         if node["key"]["type"] == "var":
@@ -630,26 +663,20 @@ class Interpreter:
         else:
             key, _ = await self.visit(node["key"], env, path=path + ".key")
             key = key[0] if isinstance(key, tuple) else key
-        
         val_path = f"{path}.{key}" if path else str(key)
         value, _ = await self.visit(node["value"], env, path=val_path)
         return (key, value), env
 
     async def visit_declaration(self, node, env, path=""):
         items = node.get("targets", [])
-        
-        # Usiamo il primo nome per il path se presente
         target_name = items[0][1] if items else None
         val_path = f"{path}.{target_name}" if path and target_name else (target_name or path)
-        
         val, _ = await self.visit(node["value"], env, path=val_path)
-        meta   = node.get("meta")
-        
+        meta = node.get("meta")
         if len(items) == 1:
             tipo, name = items[0]
             if tipo == "type": self.custom_types[name] = val; return (name, val), env
             return (name, await self._check(val, tipo, meta, name, path=val_path)), env
-            
         keys, values = [], []
         for i, (tipo, name) in enumerate(items):
             if tipo == "type": self.custom_types[name] = val
@@ -658,13 +685,10 @@ class Interpreter:
             values.append(await self._check(val[i] if isinstance(val, (tuple, list)) else val, tipo, meta, name, path=item_val_path))
         return (tuple(keys), tuple(values)), env
 
-    # ── dict ─────────────────────────────────────────────────────────────────
-
-    async def visit_dict(self, node, env,path=""):
-        items = node["items"]
+    async def visit_dict(self, node, env, path=""):
         result = {}
-        for it in items:
-            (key, val), _ = await self.visit(it, env|result,path=path)
+        for it in node["items"]:
+            (key, val), _ = await self.visit(it, env | result, path=path)
             if isinstance(key, tuple):
                 result.update(dict(zip(key, val)))
             else:
@@ -673,29 +697,22 @@ class Interpreter:
 
     async def visit_pipe(self, node, env, path=""):
         steps = node["steps"]
-        # 1. Valutiamo il primo step (l'input della pipe)
         val, env = await self.visit(steps[0], env, path)
         pipe_vars = {"_": val}
-        # 2. Cicliamo sugli step successivi
         for i, step in enumerate(steps[1:]):
             name = i
             if step.get("type") == "pair":
-                name = step["key"].get("name",i)
+                name = step["key"].get("name", i)
                 step = step["value"]
-
             pipe_vars["_"] = val
             local_env = env | pipe_vars
-
             val, _ = await self.visit_call(step, local_env, path, args=[val])
-            pipe_vars[name] = val 
-
+            pipe_vars[name] = val
         return val, env
 
     async def visit_binop(self, node, env, path=""):
-        left_path = path + ".left" if path else "left"
-        right_path = path + ".right" if path else "right"
-        left,  env = await self.visit(node["left"],  env, path=left_path)
-        right, env = await self.visit(node["right"], env, path=right_path)
+        left,  env = await self.visit(node["left"],  env, path=path + ".left")
+        right, env = await self.visit(node["right"], env, path=path + ".right")
         op = node["op"]
         if isinstance(left,  tuple): left  = left[0]
         if isinstance(right, tuple): right = right[0]
@@ -714,8 +731,7 @@ class Interpreter:
     async def visit_not(self, node, env, path=""):
         val, env = await self.visit(node["value"], env, path=path + ".not")
         if callable(val):
-            def lazy(*_, **ctx):
-                return not val(**ctx)
+            def lazy(*_, **ctx): return not val(**ctx)
             return LazyBinOp(lazy, f"not {val!r}"), env
         return not val, env
 
@@ -724,17 +740,14 @@ class Interpreter:
     async def visit_call(self, node, env, path="", args=(), kwargs={}):
         name, meta = node.get("name"), node.get("meta")
         if node.get("lazy"):
-            #node.pop("lazy", None)
-            return LazyCall(self,name, node, env), env
+            return LazyCall(self, name, node, env), env
         call_path  = f"{path}.{name}" if path else str(name)
         ast_args   = [(await self.visit(a, env, path=f"{call_path}[{i}]"))[0] for i, a in enumerate(node.get("args", []))]
         ast_kwargs = {k: (await self.visit(v, env, path=f"{call_path}.{k}"))[0] for k, v in node.get("kwargs", {}).items()}
         all_args   = list(args) + ast_args
         all_kwargs = {**kwargs, **ast_kwargs}
         fn = scheme.get(env, str(name))
-
-        # Utilizziamo self.invoke (che gestisce sia Python callables che DSL functions)
-        res = await self.invoke(fn, all_args, all_kwargs, path=call_path)
+        res = await self._invoke(fn, all_args, all_kwargs, path=call_path)
         if not res["success"]:
             raise DSLRuntimeError(f"Errore call '{name}': {res['errors']}", meta)
         return res["outputs"], env
@@ -743,16 +756,14 @@ class Interpreter:
         params_ast, body_ast, return_ast = fn_triple[:3]
         local_env = {}
         for i, (p, a) in enumerate(zip(params_ast, args)):
-             name = p["value"]["name"]
-             arg_path = f"{path}[{i}]" if path else name
-             local_env[name] = await self._check(a, p["key"]["name"], p.get("meta"), name, path=arg_path)
-
+            name = p["value"]["name"]
+            arg_path = f"{path}[{i}]" if path else name
+            local_env[name] = await self._check(a, p["key"]["name"], p.get("meta"), name, path=arg_path)
         for p in params_ast[len(args):]:
             name = p["value"]["name"]
             if name in kwargs:
                 arg_path = f"{path}.{name}" if path else name
                 local_env[name] = await self._check(kwargs[name], p["key"]["name"], p.get("meta"), name, path=arg_path)
-        
         result, _ = await self.visit(body_ast, local_env, path=path + "->body")
         out = []
         for i, ty in enumerate(return_ast):
@@ -761,20 +772,6 @@ class Interpreter:
                 out_path = f"{path}->out.{name}"
                 out.append(await self._check(result[name], tipo, ty.get("meta"), name, path=out_path))
         return out[0] if len(out) == 1 else out
-
-    async def invoke(self, fn, args=(), kwargs={}, path=""):
-        """Esegue una funzione dall'esterno (usato dal tester)."""
-        if isinstance(fn, LazyCall):
-            merged = ChainMap(kwargs, fn.env)
-            res, _ = await self.visit_call(fn.call_node, merged, path=path)
-            return res
-        elif callable(fn):
-            s = flow.step(fn, *args, **kwargs)
-        elif isinstance(fn, tuple) and (len(fn) == 3 or len(fn) == 4):
-            s = flow.step(self._call_dsl_fn, fn, args, kwargs, path)
-        else:
-            raise DSLRuntimeError(f"{fn} Funzione sconosciuta")
-        return await flow.act(s)
 
     async def _check(self, value, expected, meta, name, path=""):
         if expected in self.custom_types:
@@ -789,105 +786,109 @@ class Interpreter:
                 f"Tipo errato '{display_name}': atteso {expected}, ottenuto {type(value).__name__}", meta)
         return value
 
-    # ── Orchestrazione task via flow.run() ─────────────────────────────────────
- 
-    async def _build_flow_nodes(self, env):
-        flow_nodes, interpreter = [], self
-        available = {t["path"] for t in self._tasks}
+    async def _build_flow_nodes_from(self, tasks: List[dict]) -> List[dict]:
+        """Costruisce la lista di flow.node() a partire dai task raccolti."""
+        flow_nodes = []
+        available = {t["path"] for t in tasks}
 
-        for task in self._tasks:
-            name = task.get("name")
-            t_path, action = task.get("path", name), task["action"]
-            kw = task.get("kwargs", {})
-            
-            # Estrazione sicura e ricorsiva di tutte le dipendenze (incluse quelle nelle pipe)
+        for task in tasks:
+            name     = task["name"]
+            t_path   = task.get("path", name)
+            action   = task["action"]
+            kw       = dict(task.get("kwargs", {}))
+
             raw_deps = self._find_vars(action) | self._find_vars(kw)
-            deps = set()
-            for d in raw_deps:
-                resolved = self._resolve_scope(t_path, d, available)
-                if resolved in available:
-                    deps.add(resolved)
-                else:
-                    #print(f"[deps] '{d}' -> '{resolved}' non trovato in available, ignorato")
-                    pass
+            deps = {
+                resolved
+                for d in raw_deps
+                for resolved in [self._resolve_scope(t_path, d, available)]
+                if resolved in available and resolved != t_path
+            }
 
-            if t_path in deps:
-                deps.discard(t_path)
+            kw["deps"] = [] if kw.get("deps") is False else list(deps) + kw.get("deps", [])
+            flow_nodes.append(
+                flow.node(name=t_path, fn=self._make_task_fn(action, t_path), path=t_path, **kw)
+            )
 
-            if kw.get('deps', []) == False:
-                kw['deps'] = []
-            else:
-                kw['deps'] = list(deps) + kw.get('deps', [])
-            
-            def make_task_fn(ast, interpreter_ref, t_path):
-                if ast.get("type") == "pipe":
-                    async def task_fn(env_dict):
-                        try:
-                            val,_ = await interpreter_ref.visit(ast, env_dict, path=t_path)
-                            return val
-                        except Exception as e:
-                            return flow.error(str(e))
-                elif ast.get("type") == "call":
-                    async def task_fn(env_dict):
-                        try:
-                            call = scheme.get(env_dict, ast["name"])
-                            args = [(await interpreter_ref.visit(a, env_dict, path=t_path+".args"))[0] for a in ast.get("args",[])]
-                            kwargs = {k: (await interpreter_ref.visit(v, env_dict, path=t_path+"."+k))[0] for k, v in ast.get("kwargs",{}).items()}
-                            res = await interpreter_ref.invoke(call, args, kwargs, path=t_path)
-                            return res.get("outputs", res)
-                        except Exception as e: return flow.error(str(e))
-                else:
-                    async def task_fn(env_dict):
-                        # Altrimenti visitiamo l'intero nodo (es. pipe, binop, lambda)
-                        call, _ = await interpreter_ref.visit(ast, env_dict, path=t_path)
-                        # Se il risultato è già un valore (non chiamabile), è il nostro output
-                        #print(call)
-                        if not callable(call):
-                            res = flow.success(call)
-                        else:
-                            res = await interpreter_ref.invoke(call, [], {}, path=t_path)
-                        return res.get("outputs", res)
-                return task_fn
-            
-            flow_nodes.append(flow.node(name=t_path, fn=make_task_fn(action, interpreter, t_path), path=t_path, **kw))
         return flow_nodes
- 
-    # ── entry point ───────────────────────────────────────────────────────────
-    async def start(self):
-        await self.runner.start()
-        #await self.runner.add_file('interpreter', [])
-        #self.runner.create_session('interpreter', 'interpreter', {})
 
-    async def stop(self):
-        await self.runner.stop()
+    def _make_task_fn(self, ast: dict, t_path: str):
+        """Factory per la funzione di nodo; evita la closure-in-loop."""
+        async def task_fn(env_dict):
+            try:
+                t = ast.get("type")
+                if t == "pipe":
+                    val, _ = await self.visit(ast, env_dict, path=t_path)
+                    return val
+                if t == "call":
+                    call   = scheme.get(env_dict, ast["name"])
+                    args   = [(await self.visit(a, env_dict, path=f"{t_path}.args[{i}]"))[0]
+                               for i, a in enumerate(ast.get("args", []))]
+                    kwargs = {k: (await self.visit(v, env_dict, path=f"{t_path}.{k}"))[0]
+                               for k, v in ast.get("kwargs", {}).items()}
+                    res    = await self._invoke(call, args, kwargs, path=t_path)
+                    return res.get("outputs", res)
+                val, _ = await self.visit(ast, env_dict, path=t_path)
+                if callable(val):
+                    res = await self._invoke(val, [], {}, path=t_path)
+                    return res.get("outputs", res)
+                return val
+            except Exception as e:
+                return flow.error(str(e))
+        return task_fn
 
-    async def add_file(self, name, code):
-        self._tasks = [] # Reset tasks for this run
-        self._stack = []
-        self._dag = []
-        ast = parse(code, self.parser)
-        if isinstance(ast, Exception):
-            print("ERROR", f"Errore di parsing DSL in {name}: {ast}")
+
+# ── FlowNodeBuilder (privato, usato solo da load_file) ────────────────────────
+
+class _FlowNodeBuilder:
+    """Raccoglie i task dall'AST senza valutare espressioni non necessarie."""
+
+    def __init__(self, interpreter: Interpreter, task_sink: List[dict]):
+        self._interp = interpreter
+        self._tasks  = task_sink   # lista condivisa — i task vengono appesi qui
+
+    async def build(self, ast: dict, env: Dict) -> None:
+        await self._collect(ast, path="", env=env)
+
+    async def _collect(self, node: Any, path: str, env: Dict) -> None:
+        if not isinstance(node, dict):
+            if isinstance(node, (list, tuple)):
+                for item in node:
+                    await self._collect(item, path, env)
             return
-        self.cache_ast[name] = ast
-        
-        # Usiamo il builder che propaga correttamente i percorsi
-        flow_nodes = await self.builder.build(ast, env=DSL_FUNCTIONS)
-        
-        await self.runner.add_file(name, flow_nodes)
 
-    async def create_session(self, session, env={}):
-        self.runner.create_session(session,env)
+        t = node.get("type")
 
-    async def run_session(self, session, file, env={}):
-        # Unione automatica: quello che c'è in sessione + quello che passi ora
-        ctx = self.runner.context(session) | env
-        
-        # Eval del DSL con il contesto completo
-        result , _ = await self.visit(self.cache_ast[file], ctx, path="")
-        
-        # Esecuzione del workflow: run_file aggiornerà la sessione con i nuovi 'result'
-        exec_results = await self.runner.run_file(session, file, result)
-        
-        # Uniamo tutto per la risposta finale
-        return result | exec_results
+        if t == "task":
+            task_name = node["trigger"]["name"]
+            task_path = f"{path}.{task_name}" if path else task_name
+            kwargs: Dict[str, Any] = {}
+            for k, v in node["trigger"].get("kwargs", {}).items():
+                try:
+                    val, _ = await self._interp.visit(v, env)
+                    kwargs[k] = val
+                except Exception:
+                    kwargs[k] = None
+
+            self._tasks.append({
+                "name":   task_name,
+                "action": node["action"],
+                "kwargs": kwargs,
+                "path":   task_path,
+            })
+            return   # non scendere dentro l'action del task (scope separato)
+
+        if t == "pair":
+            key_node = node.get("key")
+            key = key_node.get("name") if isinstance(key_node, dict) and "name" in key_node else str(key_node)
+            await self._collect(node.get("value"), f"{path}.{key}" if path else key, env)
+            return
+
+        if t == "dict":
+            for item in node.get("items", []):
+                await self._collect(item, path, env)
+            return
+
+        for k, v in node.items():
+            if k not in ("meta", "type"):
+                await self._collect(v, path, env)

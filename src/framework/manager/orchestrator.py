@@ -12,7 +12,7 @@ class Manager:
     def __init__(self, messenger: messenger.Manager,**constants):
         self.defender = constants.get('defender')
         self.messenger = constants.get('messenger')
-        self.interpreter = language.Interpreter(custom_types=scheme.schemes)
+        self.interpreter = language.Interpreter(scheme.schemes)
 
     # ── INTERPRETER ────────────────────────────────────────────────────────────────
 
@@ -20,8 +20,61 @@ class Manager:
         await self.interpreter.stop()
     
     async def start(self):
-        print("ssad")
+        
         await self.interpreter.start()
+        codice_dsl = """
+        moltiplicatore: 2;
+
+        // Task 1: Genera un numero casuale tra 1 e 10 ogni secondo
+        //genera_numero(schedule: 1) -> print("sds");
+
+        // Task 2: Dipende automaticamente da 'genera_numero' tramite il costrutto @
+        // Prende il valore, lo passa alla funzione 'print' tramite la pipe |>
+        stampa_valore(schedule: 1) -> print(10) ;
+        """
+
+        filename = "mio_workflow.dsl"
+        session_id = "sessione_utente_42"
+
+        try:
+            # 4. Registra il file DSL
+            
+            # L'interprete esegue il parsing dell'AST e istruisce il DAG sulle dipendenze e i timer
+            await self.interpreter.load_file(filename, codice_dsl)
+            async with self.interpreter.open_session(env={"input": "dati_A"}) as s:
+                risultati = await s.run(filename)
+                print(risultati)
+            # self.interpreter.open_session({},session_id)
+            # 5. Crea una sessione persistente per l'utente
+            # Puoi passare un dizionario 'env' con variabili di stato iniziali
+
+            session = self.interpreter.open_session(
+                env={"user_id": "asds"},
+                sid="sadsad"          # sid esplicito per ritrovare la sessione
+            )
+
+            # prima richiesta
+            r1 = await session.run(filename, env={"step": "login"})
+
+            # aggiorna il contesto senza rieseguire tutto
+            session.update("user.authenticated", True)
+            session.update("user.role", "admin")
+
+            # seconda richiesta — il contesto aggiornato è già disponibile
+            r2 = await session.run(filename, env={"step": "dashboard"})
+
+            # triggera un nodo specifico manualmente
+            await session.emit(filename, "notifica", value={"msg": "Benvenuto"})
+
+            # aspetta che un nodo specifico finisca
+            await session.wait(filename, "notifica")
+
+            # leggi il contesto corrente
+            print(session.context)
+
+
+        except Exception as e:
+            print(f"Errore durante l'esecuzione: {e}")
 
     async def add_file(self, name, source):
         return await self.interpreter.add_file(name, source)
