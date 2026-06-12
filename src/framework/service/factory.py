@@ -4,6 +4,8 @@ from jinja2 import Environment, meta, nodes
 import asyncio 
 import signal
 
+import framework.service.scheme as scheme
+
 class Application:
     """Manager del Ciclo di Vita Globale dell'App."""
     def __init__(self, container , manager_names: list[str]):
@@ -45,9 +47,9 @@ class Application:
                 
         print("[*] Framework spento correttamente.")
 
-class repository:
+class Repository:
     def __init__(self, **constants):
-        self.location = constants.get('location', {})
+        self.location = {k.lower(): v for k, v in constants.get('location', {}).items()}
         self.actions = constants.get('actions', {})
         self.schema = constants.get('model')
 
@@ -157,7 +159,9 @@ class repository:
         # 2. Selezione dinamica del Template
         combined = {**inputs, **payload, **process}
         templates = self.location.get(profile, [])
+        
         template = self.select(templates, combined)
+
         
         if not template:
             raise ValueError(f"Nessun template compatibile trovato per {profile}. Dati: {list(combined.keys())}")

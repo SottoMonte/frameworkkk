@@ -1,13 +1,15 @@
 import sys
 import framework.port.persistence as persistence
+import framework.service.flow as flow
 
 class Adapter(persistence.Port):
     
     def __init__(self, **constants):
         self.config = constants
 
+    @flow.result()
     async def request(self, **constants):
-        print('request:',constants)
+        '''print('request:',constants)
         headers = {
             "Authorization": f"{self.authorization} {self.token}",
             "Accept": self.accept,
@@ -21,7 +23,8 @@ class Adapter(persistence.Port):
         #if payload and method == 'GET':
         #    url += '?' + urlencode(payload)
         
-        return await backend(method,url,headers,payload)
+        return await backend(method,url,headers,payload)'''
+        return flow.success(None)
         
     async def create(self, **constants):
         return await self.request(**{'method':'POST'}|constants)

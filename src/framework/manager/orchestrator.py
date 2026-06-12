@@ -137,7 +137,6 @@ class Manager:
                     # framework_log("DEBUG", f"Transazione completata: {type(transaction)}", emoji="💼")
                     if 'success' in constants:
                         transaction = await constants['success'](transaction=transaction,profile=operation.get_name())
-                    
                     for task in unfinished:
                         task.cancel()
                     return flow.success(flow.output(transaction))

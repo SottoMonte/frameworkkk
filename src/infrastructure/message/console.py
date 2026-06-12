@@ -136,7 +136,7 @@ class Adapter(message.Port):
         # Scrittura nel flusso di log con iniezione del contesto di Audit
         self._logger.log(target_level, message_text, extra=audit_context)
         if self.persistence:
-            await self.storekeeper.store("ok",payload=constants)
+            await self.storekeeper.store("sad",repository="logging",payload=constants)
         # Persistenza strutturata nella history interna per scopi di riconciliazione ordinaria
         '''if domain not in self._history:
             self._history[domain] = [0, []]
