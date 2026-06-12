@@ -61,8 +61,8 @@ class Repository:
         try:
             if not template_str or not isinstance(template_str, str) or '{' not in template_str:
                 return []
-            
-            ast = jinja.parse(template_str)
+            jinja_env = Environment()
+            ast = jinja_env.parse(template_str)
             valid_roots = meta.find_undeclared_variables(ast)
             paths = set()
             
@@ -168,7 +168,6 @@ class Repository:
 
         # 3. Formattazione e Encoding
         path = await scheme.format(template, **combined)
-        
         if '?' in path:
             base, query = path.split('?', 1)
             path = f"{base}?{quote(query, safe='=&%')}"

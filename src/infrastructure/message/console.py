@@ -136,7 +136,10 @@ class Adapter(message.Port):
         # Scrittura nel flusso di log con iniezione del contesto di Audit
         self._logger.log(target_level, message_text, extra=audit_context)
         if self.persistence:
-            await self.storekeeper.store("sad",repository="logging",payload=constants)
+            from datetime import datetime
+
+            adesso = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            await self.storekeeper.store("id",repository="logging",payload=constants,filter={'eq':{'filename':f'{adesso}.txt'}})
         # Persistenza strutturata nella history interna per scopi di riconciliazione ordinaria
         '''if domain not in self._history:
             self._history[domain] = [0, []]

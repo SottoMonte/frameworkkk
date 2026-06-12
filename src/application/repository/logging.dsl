@@ -2,6 +2,7 @@
 factory:repository := {
     location: {
         "LOG": [
+            "/tmp/{{filter.eq.filename}}",
             "/tmp",
         ]
     };

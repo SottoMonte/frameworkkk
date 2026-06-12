@@ -24,6 +24,7 @@ class Adapter(persistence.Port):
         #    url += '?' + urlencode(payload)
         
         return await backend(method,url,headers,payload)'''
+        print(constants)
         return flow.success(None)
         
     async def create(self, **constants):

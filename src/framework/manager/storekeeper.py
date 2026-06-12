@@ -100,7 +100,7 @@ class Manager:
     @flow.result(inputs='storekeeper')
     async def store(self, session, **constants):
 
-        state = await self.preparation(session,constants|{'operation':'read'})
+        state = await self.preparation(session,constants|{'operation':'create'})
         repository,operations = flow.output(state)
         #print(repository,operations)
         return await self.orchestrator.first_completed(operations=operations,success=repository.results)

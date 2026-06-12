@@ -39,6 +39,8 @@ async def convert(target, output,input=''):
     except Exception as e:
         raise ValueError(f"Errore conversione: {e}")
 
+jinja = Environment()
+
 async def format(target, **constants):
     """Formatta una stringa usando Jinja2 e l'environment condiviso (jinja)."""
     try:
