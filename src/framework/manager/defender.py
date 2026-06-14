@@ -26,6 +26,7 @@ class Manager:
         await self.interpreter.stop()
     
     async def start(self):
+        self.managers = self.loader.get_managers()
         await self.interpreter.start()
         TARGET_PORTS = {'presentation', 'persistence', 'message'}
 
@@ -39,15 +40,29 @@ class Manager:
             self.policies[policy] = await self.interpreter.run_once(path,code)
             print(f"[+] Policy: {policy}/{filename}")
 
+        from pathlib import Path
+        cartella = Path("src/application/controller")
+        for file in cartella.glob("*.dsl"):
+            code = await self.loader.resource(file)
+            await self.add_file(file.name[:-4],code)
+
     async def add_file(self, name, source):
-        return await self.interpreter.add_file(name, source)
+        return await self.interpreter.load_file(name, source)
 
-    async def create_session(self, session, env={}):
-        return await self.interpreter.create_session(session, env|self.language.DSL_FUNCTIONS)
+    async def create_session(self, sid, env={}):
+        return self.interpreter.open_session(env=env|{**self.managers,'sid':sid},sid=sid)
 
-    async def run_session(self, session, file, env={}):
-        return await self.interpreter.run_session(session, file, env|self.language.DSL_FUNCTIONS)
+    def get_session(self, sid) -> language.SessionHandle | None:
+        # ricostruisce l'handle senza duplicare stato
+        if sid not in self.interpreter._runner.sessions:
+            return None
+        return language.SessionHandle(self.interpreter, sid)
 
+    async def close_session(self, sid):
+        await self.interpreter._runner.close_session(sid)
+        
+
+    
     def get_policy(self, policy):
         return self.policies.get(policy)
 
@@ -174,36 +189,6 @@ class Manager:
                 all_resutl.append(False)
         return any(all_resutl) if len(all_resutl) > 0 else False
 
-    async def authenticated(self, **constants) -> bool:
-        """
-        Verifica se una sessione è autenticata.
-
-        :param constants: Deve includere 'session'.
-        :return: True se la sessione è valida, altrimenti False.
-        """
-        session_token = constants.get('session', '')
-        return session_token in {session['token'] for session in self.sessions.values()}
-
-    async def authorize(self, **constants) -> bool:
-        """
-        Controlla se un'azione è autorizzata in base all'indirizzo IP.
-
-        :param constants: Deve includere 'ip'.
-        :return: True se l'IP è autorizzato, altrimenti False.
-        """
-        ip = constants.get('ip', '')
-        return any(session.get('ip') == ip for session in self.sessions.values())
-    
-    async def whoami(self, ip=None, session_id=None) -> Any:
-        
-        '''for backend in self.providers:
-            identity = await backend.whoami(token=constants.get('token', ''))
-            return identity'''
-        if False:
-            pass
-        else:
-            return {"role":"guest","name":"guest","id":"guest","ip":ip}
-
     def resolve(self, risorse, request_url, request_method, base_url=None,**kargs):
         
         try:
@@ -262,89 +247,3 @@ class Manager:
         except Exception as e:
             print(f"[!] Resolve Error: {e}")
             return None
-
-    async def detection(self, **constants) -> bool:
-        """
-        Placeholder per il rilevamento di minacce.
-
-        :param constants: Parametri opzionali per il rilevamento.
-        :return: True come comportamento predefinito.
-        """
-        return True
-
-    async def protection(self, **constants) -> bool:
-        """
-        Placeholder per la protezione attiva.
-
-        :param constants: Parametri opzionali per la protezione.
-        :return: True come comportamento predefinito.
-        """
-        return True
-
-    def revoke_session(self, **constants) -> None:
-        """
-        Placeholder per rimuovere sessioni scadute o non più valide.
-
-        Questo metodo potrebbe essere implementato con controlli di scadenza basati su timestamp.
-
-        :param constants: Parametri opzionali per la pulizia.
-        """
-        pass
-
-    def refresh_token(self, **constants) -> None:
-        """
-        Placeholder per rimuovere sessioni scadute o non più valide.
-
-        Questo metodo potrebbe essere implementato con controlli di scadenza basati su timestamp.
-
-        :param constants: Parametri opzionali per la pulizia.
-        """
-        pass
-
-    def validate_token(self, **constants) -> None:
-        """
-        Placeholder per rimuovere sessioni scadute o non più valide.
-
-        Questo metodo potrebbe essere implementato con controlli di scadenza basati su timestamp.
-
-        :param constants: Parametri opzionali per la pulizia.
-        """
-        pass
-
-    async def check_permission(self, **constants) -> bool:
-        """
-        Verifica se il contesto corrente ha i permessi per eseguire l'azione richiesta.
-        
-        :param constants: Il contesto dell'esecuzione (deve contenere informazioni scure sull'utente/token/task).
-        :return: True se permesso, False altrimenti.
-        """
-        # Logica di base: se non ci sono regole restrittive, permetti.
-        # Qui potresti integrare controlli su ruoli, liste di controllo accessi (ACL), ecc.
-        
-        # Esempio: Controlla se l'utente è autenticato (se richiesto)
-        # if not await self.authenticated(**constants):
-        #    return False
-        
-        # Esempio: Implementazione minima che ritorna True per ora, 
-        # ma predisposta per estensioni future.
-        return True
-
-    def has_role(self, **constants) -> bool:
-        """
-        Verifica se l'utente ha uno specifico ruolo.
-        """
-        user_roles = constants.get('roles', [])
-        required_role = constants.get('required_role')
-        if required_role and required_role not in user_roles:
-            return False
-        return True
-
-    def has_permission(self, **constants) -> bool:
-        """
-        Verifica se l'utente ha uno specifico permesso.
-        """
-        user_permissions = constants.get('permissions', [])
-        required_permission = constants.get('required_permission')
-        if required_permission and required_permission not in user_permissions:
-            return False
-        return True

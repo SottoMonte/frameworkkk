@@ -268,6 +268,17 @@ class Loader:
     async def resource(self,path):
         return open(path, 'rb').read().decode()
 
+    def get_managers(self) -> dict[str, Any]:
+        """Restituisce un dizionario con 'nome_manager' -> Istanza."""
+        result = {}
+        for cls in self._managers:
+            instance = self.container.get(cls)
+            if instance is not None:
+                # Prende il nome del modulo (es. 'framework.manager.messenger') e isola l'ultima parte
+                module_name = cls.__module__.split('.')[-1]
+                result[module_name] = instance
+        return result
+
 
     # ── bootstrap ─────────────────────────────────────────────────────────────
 
