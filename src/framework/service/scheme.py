@@ -152,6 +152,7 @@ async def normalize(value, schema, mode='full'):
                     pass
             elif func_name == 'time_now_utc':
                 if field_name not in processed_value:
+                    processed_value[field_name] = await convert(val, convert_name)
                     pass
         if isinstance(field_rules, dict) and "convert" in field_rules:
             convert_name = field_rules["convert"]

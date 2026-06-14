@@ -139,7 +139,7 @@ class Adapter(message.Port):
             from datetime import datetime
 
             adesso = datetime.now().strftime("%Y-%m-%d")
-            await self.storekeeper.store("id",repository="logging",payload=constants,filter={'eq':{'filename':f'{adesso}.txt'}})
+            await self.storekeeper.store("id",repository="logging",payload=constants,filter={'eq':{'filename':f'{adesso}.log'}})
         # Persistenza strutturata nella history interna per scopi di riconciliazione ordinaria
         '''if domain not in self._history:
             self._history[domain] = [0, []]

@@ -1,5 +1,6 @@
 # key
 *.pem
+*.log
 
 
 # Byte-compiled / optimized / DLL files

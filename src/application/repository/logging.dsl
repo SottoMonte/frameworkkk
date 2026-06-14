@@ -7,7 +7,7 @@ factory:repository := {
         ]
     };
     
-    model: messager;
+    model: storekeeper;
     
     values: {
         //"tree": { "MODEL": build_tree_dict };
