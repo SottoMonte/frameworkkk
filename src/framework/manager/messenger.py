@@ -4,10 +4,12 @@ import asyncio
 import framework.port.message as message
 import framework.service.flow as flow
 
+from framework.manager.defender import Manager as Defender
+
 class Manager:
 
-    def __init__(self, messages: list[message.Port], **constants):
-        self.executor = constants.get('executor')
+    def __init__(self, messages: list[message.Port], defender:Defender, **constants):
+        self.defender = defender
         self.providers = messages
 
     @flow.result(inputs='messenger')

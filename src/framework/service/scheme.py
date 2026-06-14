@@ -145,14 +145,20 @@ async def normalize(value, schema, mode='full'):
 
     for field_name, field_rules in schema.copy().items():
         val = processed_value.get(field_name)
+        if 'default' in field_rules:
+            func_name = field_rules['default']
+            if 'time.now.utc()' == func_name:
+                from datetime import datetime
+                processed_value[field_name] = str(datetime.now())
         if isinstance(field_rules, dict) and 'function' in field_rules:
             func_name = field_rules['function']
             if func_name == 'generate_identifier':
                 if field_name not in processed_value:
                     pass
             elif func_name == 'time_now_utc':
+                processed_value[field_name] = "ciao"
                 if field_name not in processed_value:
-                    processed_value[field_name] = await convert(val, convert_name)
+                    processed_value[field_name] = "ciao"
                     pass
         if isinstance(field_rules, dict) and "convert" in field_rules:
             convert_name = field_rules["convert"]

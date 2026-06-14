@@ -39,7 +39,7 @@
   "timestamp": {
     "type": "string",
     "required": false,
-    "default": "now",
+    "default": "time.now.utc()",
     "comment": "Data e ora di invio del messaggio (se non specificato, sarà 'now')."
   },
   "identifier": {
