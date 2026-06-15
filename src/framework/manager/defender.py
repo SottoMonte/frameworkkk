@@ -45,6 +45,7 @@ class Manager:
         for file in cartella.glob("*.dsl"):
             code = await self.loader.resource(file)
             await self.add_file(file.name[:-4],code)
+            print("[+]",file.name)
 
     async def add_file(self, name, source):
         return await self.interpreter.load_file(name, source)

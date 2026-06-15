@@ -1,8 +1,11 @@
+import framework.port.presentation as presentation
+from framework.manager.loader import Loader
 
-class PresenterManager:
-    def __init__(self, presentations: list["PresentationPort"] = None, **constants):
-        self.presentations = presentations or constants.get('presentations', [])
-        self.executor = constants.get('executor')
+class Manager:
+    def __init__(self, presentations: list[presentation.Port], loader:Loader, **constants):
+        self.presentations = presentations
+        self.loader = loader
+        #self.executor = constants.get('executor')
 
     async def start(self):
         loops = []
@@ -17,6 +20,9 @@ class PresenterManager:
         for presentation in self.presentations:
             if hasattr(presentation, 'stop'):
                 await presentation.stop()
+
+    async def get_view(self,path):
+        return await self.loader.resource(path)
 
     def _get_driver(self):
         return self.presentations[-1] if self.presentations else None

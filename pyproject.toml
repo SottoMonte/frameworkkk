@@ -21,5 +21,8 @@ debug_mode = true
 persistence = "log"
 name = "terminal"
 
+[[presentation.console]]
+name = "terminal"
+
 [[persistence.filesystem]]
 name = "log"

@@ -39,6 +39,7 @@ class Loader:
     }
     managers = {
         'messenger':   'src/framework/manager/messenger.py',
+        'presenter':   'src/framework/manager/presenter.py',
         'storekeeper': 'src/framework/manager/storekeeper.py',
         'orchestrator': 'src/framework/manager/orchestrator.py',
         'defender': 'src/framework/manager/defender.py',
@@ -266,6 +267,8 @@ class Loader:
         return final
 
     async def resource(self,path):
+        if str(path).startswith('application/'):
+            path = 'src/'+path
         return open(path, 'rb').read().decode()
 
     def get_managers(self) -> dict[str, Any]:

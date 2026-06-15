@@ -5,13 +5,17 @@ import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
-
 from textual.app import App, ComposeResult
 from textual.containers import Container, HorizontalGroup, Vertical
 from textual.widgets import Link, Checkbox, Static, Button, Input, Select, TextArea, Header, Footer, Label, Markdown
 from rich.text import Text
 from textual.screen import Screen
 from textual.binding import Binding
+
+
+import framework.port.presentation as presentation
+from framework.manager.defender import Manager as Defender
+from framework.manager.presenter import Manager as Presenter
 
 def attrs(widget,attrs):
     '''for k,v in attrs.items():
@@ -70,7 +74,7 @@ class AppDinamica(App):
         
         print(f"Button {event.button.id} premuto!")
 
-class Adapter(presentation.port):
+class Adapter(presentation.Port):
     """
     Adapter Textual nativo per il Framework
     
@@ -122,7 +126,7 @@ class Adapter(presentation.port):
     }
 
 
-    def __init__(self, **constants):
+    def __init__(self, defender:Defender, presenter:Presenter, **constants):
         """
         Inizializza l'adapter Textual
         
@@ -135,9 +139,8 @@ class Adapter(presentation.port):
         """
         self.config = constants
         self.messenger = constants.get('messenger')
-        self.defender = constants.get('defender')
-        self.executor = constants.get('executor')
-        self.presenter = constants.get('presenter')
+        self.defender = defender
+        self.presenter = presenter
         self.initialize()
         # Stato TUI
         self.sessions: Dict[str, Dict[str, Any]] = {}
@@ -167,7 +170,7 @@ class Adapter(presentation.port):
             self.app.parse_stylesheet(css_content)
 
     async def mount_view(self,url):
-        xml_view = await presentation.loader.resource(self.routes['/']['GET']['view'])
+        xml_view = await self.presenter.get_view(self.routes['/']['GET']['view'])
         return await self.render_template(text=xml_view)
 
     async def render_view(self,url):
@@ -219,7 +222,7 @@ class Adapter(presentation.port):
 
     async def render_reactive(self, session, view: Any, context) -> Any:
         file_path = f"src/application/controller/{dsl_alias}.dsl"
-        content = await presentation.loader.resource(file_path)
+        content = await self.presenter.get_view(file_path)
         await self.executor.add_file(file_path, content)
         self.executor.interpreter.runner.emit(sid, file_path, event_name)
     
