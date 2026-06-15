@@ -16,6 +16,7 @@ from textual.binding import Binding
 import framework.port.presentation as presentation
 from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
+from framework.manager.messenger import Manager as Messenger
 
 def attrs(widget,attrs):
     '''for k,v in attrs.items():
@@ -51,6 +52,15 @@ class XmlScreen(Screen):
         yield Footer()
 
 class AppDinamica(App):
+    DEFAULT_CSS = """
+    Grid {
+        grid-size: 3; /* Griglia a 3 colonne */
+        grid-gutter: 1 2;
+        padding: 1;
+    }
+    
+    """
+
     BINDINGS = [
         ("d", "toggle_dark", "Cambia Tema"),
         ("q", "quit", "Esci")
@@ -64,11 +74,12 @@ class AppDinamica(App):
         await self.adapter.render_view(url="/")
 
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id:
-            return None
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
 
-        widget = self.DOM[event.button.id]
+        if event.button.id in self.adapter.DOM:
+            widget = self.adapter.DOM[event.button.id]
+            aaa = self.adapter.presenter.estrai_attributi_tag(widget)
+            await self.adapter.messenger.post(domain=aaa['click'],message="fdsfdsf")
 
 
         
@@ -93,7 +104,7 @@ class Adapter(presentation.Port):
             "row": lambda x: HorizontalGroup(*x.get('inner',[])),
         },
         presentation.Tag.ACTION.value: { 
-            "action": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]),),
+            "action": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]),id=x.get('attrs', {}).get('id')),
             "link": lambda x: Link(str(x.get('inner',[''])[0]),url=x.get('attrs', {}).get('href', '#')),
             "button": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]), id="button"),
         },
@@ -134,7 +145,7 @@ class Adapter(presentation.Port):
     }
 
 
-    def __init__(self, defender:Defender, presenter:Presenter, **constants):
+    def __init__(self, defender:Defender, presenter:Presenter, messenger:Messenger, **constants):
         """
         Inizializza l'adapter Textual
         
@@ -146,7 +157,7 @@ class Adapter(presentation.Port):
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
         self.config = constants
-        self.messenger = constants.get('messenger')
+        self.messenger = messenger
         self.defender = defender
         self.presenter = presenter
         self.initialize()

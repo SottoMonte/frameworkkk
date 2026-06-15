@@ -13,25 +13,7 @@ class Manager:
         self.providers = messages
 
     @flow.result(inputs='messenger')
-    async def post(self, **constants):
-        '''session_id = constants['session']
-        payload = constants.get('payload')
-        domain = constants.get('domain')
-        node_id = constants.get('node')  # opzionale: id del nodo DOM da aggiornare
-
-        file_path = None
-        event_name = None
-
-        if ':' in domain:
-            controller = domain.split(':')[0]
-            event_name = domain.split(':')[1]
-            file_path = f"src/application/controller/{controller}.dsl"
-
-        # 1. Aggiorna lo stato nella sessione
-        if file_path and event_name:
-            #print(f"[messenger] update_state: {event_name} = {payload} (session: {session_id})")
-            #self.executor.interpreter.runner.update_state(session_id, file_path, event_name, payload)
-            self.executor.interpreter.runner.emit(session_id, file_path, event_name, payload)'''
+    async def post(self, session, **constants):
         
         payload = constants.get('payload')
         domain = constants.get('domain')
@@ -47,7 +29,10 @@ class Manager:
                     await provider.post(**constants|{'domain': domain})
                 elif  provider.adapter == controller: 
                     await provider.post(**constants|{'domain': domain})
-                else: await self.post(message=f"Provider {provider} non è adatto per il dominio '{domain}' (controller '{controller}')", domain="console:warning")
+                elif controller in self.defender.controllers:
+                    exit(1)
+                else: 
+                    await self.post(message=f"Provider {provider} non è adatto per il dominio '{domain}' (controller '{controller}')", domain="console:warning")
             else:
                 await provider.post(**constants|{'domain': domain})
 

@@ -1,6 +1,8 @@
 import framework.port.presentation as presentation
 from framework.manager.loader import Loader
 
+import re
+
 class Manager:
     def __init__(self, presentations: list[presentation.Port], loader:Loader, **constants):
         self.presentations = presentations
@@ -26,6 +28,20 @@ class Manager:
 
     def _get_driver(self):
         return self.presentations[-1] if self.presentations else None
+
+    def estrai_attributi_tag(self, tag_string: str):
+        """
+        Riceve una stringa del tag XML/DSL ed estrae tutti gli attributi in un dizionario.
+        Gestisce sia virgolette singole che doppie.
+        """
+        # Questa regex cerca pattern tipo: chiave="valore" oppure chiave='valore'
+        pattern = r'(\w+)=["\']([^"\']*)["\']'
+        
+        # Trova tutte le corrispondenze nella stringa
+        matches = re.findall(pattern, tag_string)
+        
+        # Converte la lista di tuple (chiave, valore) in un dizionario
+        return dict(matches)
 
     async def selector(self,**constants):
         driver = self._get_driver()

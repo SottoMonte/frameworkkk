@@ -58,7 +58,7 @@
             <Divider background="rgba(255,255,255,0.05)" margin="16px,0" width="100%" />
 
             <Action click="tris:tris_logic.reset_btn" id="btn_reset" background="#38bdf8" color="#0f172a" padding="12px,32px" radius="12px" font="bold" pointer="pointer">
-                Ricomincia Partita
+                <Text>Ricomincia Partita</Text>
             </Action>
 
         </Column>

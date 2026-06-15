@@ -41,11 +41,14 @@ class Manager:
             print(f"[+] Policy: {policy}/{filename}")
 
         from pathlib import Path
+        self.controllers = []
         cartella = Path("src/application/controller")
         for file in cartella.glob("*.dsl"):
             code = await self.loader.resource(file)
+            self.controllers.append(file.name[:-4])
             await self.add_file(file.name[:-4],code)
-            print("[+]",file.name)
+        
+        print("[+] Controllers: ",self.controllers)
 
     async def add_file(self, name, source):
         return await self.interpreter.load_file(name, source)
