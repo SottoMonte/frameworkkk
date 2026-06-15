@@ -480,8 +480,10 @@ class Port(Protocol):
             text = await loader.resource(file)
 
         template = self.env.from_string(text)
+        session = await self.defender.create_session(sid="5346346546")
+        data = await session.run('tris')
         try:
-            content = template.render(constants)
+            content = template.render(constants|{'tris':data})
             xml = ET.fromstring(content)
             view = await self.render_node(text,xml,constants)
             return view

@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, HorizontalGroup, Vertical
-from textual.widgets import Link, Checkbox, Static, Button, Input, Select, TextArea, Header, Footer, Label, Markdown
+from textual.containers import Container, HorizontalGroup, Vertical, Grid
+from textual.widgets import Rule, Link, Checkbox, Static, Button, Input, Select, TextArea, Header, Footer, Label, Markdown
 from rich.text import Text
 from textual.screen import Screen
 from textual.binding import Binding
@@ -84,7 +84,7 @@ class Adapter(presentation.Port):
     
     tags = {
         presentation.Tag.ICON.value: { 
-            "icon": lambda x: Static(*x.get('inner',[]), id="ciao"),
+            "icon": lambda x: Static(*x.get('inner',[]), ),
         },
         presentation.Tag.COLUMN.value: { 
             "column": lambda x: Vertical(*x.get('inner',[])),
@@ -93,6 +93,7 @@ class Adapter(presentation.Port):
             "row": lambda x: HorizontalGroup(*x.get('inner',[])),
         },
         presentation.Tag.ACTION.value: { 
+            "action": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]),),
             "link": lambda x: Link(str(x.get('inner',[''])[0]),url=x.get('attrs', {}).get('href', '#')),
             "button": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]), id="button"),
         },
@@ -121,7 +122,14 @@ class Adapter(presentation.Port):
             "tab": lambda x: Tabs(*[Tab(f, title=f.get('attrs', {}).get('title', 'Tab')) for f in x.get('inner',[])])
         },
         presentation.Tag.DIVIDER.value: {
+            "divider": lambda x: Rule(),
             "horizontal": lambda x: Rule(),
+        },
+        presentation.Tag.GRID.value: {
+            "grid": lambda x: Grid(*x.get('inner',[])),
+        },
+        presentation.Tag.CONTAINER.value: {
+            "container": lambda x: Container(*x.get('inner',[])),
         }
     }
 

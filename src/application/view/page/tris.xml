@@ -13,11 +13,11 @@
                 </Row>
 
                 <Text id="winner_display" bind="tris:tris_logic.winner" size="30px" color="#10b981" font="bold">
-                    {{ 'Vincitore: ' + tris.tris_logic.winner|default('') }}
+                    {{ True or 'Vincitore: ' + tris.tris_logic.winner|default('') }}
                 </Text>
 
                 <Text >
-                    {{ session.user.email }}
+                    {{ True or session.user.email }}
                 </Text>
 
             </Column>
