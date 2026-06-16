@@ -80,7 +80,7 @@ class Manager:
         return await self.interpreter.add_file(name, source)
 
     async def create_session(self, session, env={}):
-        return await self.interpreter.create_session(session, env|self.language.DSL_FUNCTIONS)
+        return await self.interpreter.session_create(session, env|self.language.DSL_FUNCTIONS)
 
     async def run_session(self, session, file, env={}):
         return await self.interpreter.run_session(session, file, env|self.language.DSL_FUNCTIONS)

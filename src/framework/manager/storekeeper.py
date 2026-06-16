@@ -34,7 +34,9 @@ class Manager:
             path = f'src/application/repository/{repository_name}.dsl'
             code = await self.defender.loader.resource(path)
             await self.defender.interpreter.load_file(path, code)
-            self.repositories[repository_name] = await self.defender.interpreter.run_once(path,code)
+            async with await self.defender.session_create() as session:
+                 self.repositories[repository_name] = await session.run(name)
+            #self.repositories[repository_name] = await self.defender.interpreter.run_once(path,code)
             self.maked[repository_name] = Repository(**self.repositories[repository_name]['repository'])
         
         repository = self.maked.get(repository_name)

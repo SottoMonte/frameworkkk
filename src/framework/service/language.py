@@ -476,58 +476,12 @@ class Interpreter:
 
     # ── session management ────────────────────────────────────────────────────
 
-    #@flow.result(inputs="session")
-    def open_session(
-        self,
-        env: Optional[Dict] = None,
-        **session
-        #session: Optional[Dict] = {},
-    ) -> SessionHandle:
-        """
-        Crea una nuova sessione e restituisce un ``SessionHandle``.
+    def session_create(self, sid: str, env: dict = {}) -> None:
+        """Inizializza la struttura interna. Chiamato solo dal Defender."""
+        self._runner.create_session(sid, DSL_FUNCTIONS | env)
 
-        La sessione può essere usata come async context manager (chiusura
-        automatica) o gestita manualmente tramite ``SessionHandle.close()``.
-
-        :param env: contesto iniziale della sessione (es. dati utente, config)
-        :param sid: identificatore opzionale; se omesso viene generato un UUID
-        :returns:   ``SessionHandle`` contestuale alla sessione
-        """
-        if 'session' in session:
-            sid = session['session'].get('id',str(uuid.uuid4()))
-            session = session['session']
-        else:
-            sid = session.get('id',str(uuid.uuid4()))
-        self._runner.create_session(sid, DSL_FUNCTIONS | (env or {}))
-        return SessionHandle(self, session|{'id':sid})
-
-    # ── one-shot execution ────────────────────────────────────────────────────
-
-    async def run_once(
-        self,
-        name: str,
-        source: str,
-        env: Optional[Dict] = None,
-        *,
-        base_functions: Optional[Dict] = None,
-    ) -> Dict[str, Any]:
-        """
-        Esegue un sorgente DSL in una sessione effimera (load → run → close).
-
-        Comodo per script, test, o valutazioni isolate. Non richiede `load_file`
-        o `open_session` espliciti.
-
-        :param name:            nome logico del file (usato come chiave interna)
-        :param source:          sorgente DSL
-        :param env:             variabili aggiuntive da iniettare nell'ambiente
-        :param base_functions:  override delle funzioni built-in (default: ``DSL_FUNCTIONS``)
-        :returns:               dict ``{node_name: result}`` dei nodi eseguiti
-        """
-        merged_env = (base_functions or DSL_FUNCTIONS) | (env or {})
-
-        await self.load_file(name, source)
-        async with self.open_session(env=merged_env) as session:
-            return await session.run(name)
+    def session_exists(self, sid: str) -> bool:
+        return sid in self._runner.sessions 
 
     # ── direct function call ──────────────────────────────────────────────────
 

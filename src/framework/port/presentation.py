@@ -480,7 +480,7 @@ class Port(Protocol):
             text = await loader.resource(file)
 
         template = self.env.from_string(text)
-        session = await self.defender.create_session()
+        session = await self.defender.session_create()
         
         data = await session.run('tris')
         try:

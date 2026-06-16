@@ -37,7 +37,11 @@ class Manager:
             path = f"src/application/policy/{policy}/{filename}"
             code = await self.loader.resource(path)
             await self.interpreter.load_file(path, code)
-            self.policies[policy] = await self.interpreter.run_once(path,code)
+            #await self.load_file(name, source)
+            async with await self.session_create() as session:
+                self.policies[policy] = await session.run(path)
+
+            #self.policies[policy] = await self.interpreter.run_once(path,code)
             print(f"[+] Policy: {policy}/{filename}")
 
         from pathlib import Path
@@ -54,8 +58,11 @@ class Manager:
         return await self.interpreter.load_file(name, source)
 
     @flow.result(inputs='session')
-    async def create_session(self, env={},**session):
-        return self.interpreter.open_session(env=env|{**self.managers},session=session)
+    async def session_create(self, env={},**session):
+        env = env | {**self.managers}
+        print(session)
+        self.interpreter.session_create(sid=session.get('id'),env=env)
+        return language.SessionHandle(self.interpreter, session=session)
 
     def get_session(self, sid) -> language.SessionHandle | None:
         # ricostruisce l'handle senza duplicare stato

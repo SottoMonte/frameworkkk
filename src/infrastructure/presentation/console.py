@@ -174,7 +174,7 @@ class Adapter(presentation.Port):
         Returns:
             Coroutine per esecuzione async
         """
-        self.session = await self.defender.create_session()
+        self.session = await self.defender.session_create()
 
         # Restituisci il coroutine di esecuzione (come fa Starlette)
         await self.parse_route()
