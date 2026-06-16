@@ -1,8 +1,7 @@
 {
   "message": {
-    "type": "string",
     "required": true,
-    "empty": false,
+    "empty": true,
     "comment": "Testo del messaggio da inviare."
   },
   "domain": {

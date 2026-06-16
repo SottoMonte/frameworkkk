@@ -383,7 +383,7 @@ class DagRunner:
         Ritorna: dict {node_name -> Result} dei nodi del file eseguito.
         """
         if sid not in self.sessions:
-            raise ValueError(f"Sessione '{sid}' non trovata.")
+            raise ValueError(f"FLOW -> Sessione '{sid}' non trovata.")
         if fname not in self.graphs:
             raise ValueError(f"File '{fname}' non registrato.")
 

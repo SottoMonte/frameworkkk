@@ -480,7 +480,8 @@ class Port(Protocol):
             text = await loader.resource(file)
 
         template = self.env.from_string(text)
-        session = await self.defender.create_session(sid="5346346546")
+        session = await self.defender.create_session()
+        
         data = await session.run('tris')
         try:
             content = template.render(constants|{'tris':data})

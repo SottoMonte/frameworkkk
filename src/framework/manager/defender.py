@@ -53,8 +53,9 @@ class Manager:
     async def add_file(self, name, source):
         return await self.interpreter.load_file(name, source)
 
-    async def create_session(self, sid, env={}):
-        return self.interpreter.open_session(env=env|{**self.managers,'sid':sid},sid=sid)
+    @flow.result(inputs='session')
+    async def create_session(self, env={},**session):
+        return self.interpreter.open_session(env=env|{**self.managers},session=session)
 
     def get_session(self, sid) -> language.SessionHandle | None:
         # ricostruisce l'handle senza duplicare stato

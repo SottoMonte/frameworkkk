@@ -79,7 +79,7 @@ class AppDinamica(App):
         if event.button.id in self.adapter.DOM:
             widget = self.adapter.DOM[event.button.id]
             aaa = self.adapter.presenter.estrai_attributi_tag(widget)
-            await self.adapter.messenger.post(domain=aaa['click'],message="fdsfdsf")
+            await self.adapter.messenger.post(self.adapter.session,domain=aaa['click'],message="fdsfdsf")
 
 
         
@@ -174,6 +174,7 @@ class Adapter(presentation.Port):
         Returns:
             Coroutine per esecuzione async
         """
+        self.session = await self.defender.create_session()
 
         # Restituisci il coroutine di esecuzione (come fa Starlette)
         await self.parse_route()

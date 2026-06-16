@@ -3,7 +3,7 @@
         "type": "string",
         "regex": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$",
         "required": true,
-        "default": "{{ uuid4() }}"
+        "default": "uuid.uuid4()"
     },
     "errors": {
         "type": "list",

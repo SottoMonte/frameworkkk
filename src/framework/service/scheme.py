@@ -39,14 +39,12 @@ async def convert(target, output,input=''):
     except Exception as e:
         raise ValueError(f"Errore conversione: {e}")
 
-jinja = Environment()
-
 async def format(target, **constants):
     """Formatta una stringa usando Jinja2 e l'environment condiviso (jinja)."""
     try:
         if not target or not isinstance(target, str) or '{' not in target:
             return target
-        template = jinja.from_string(target)
+        template = jinja_env.from_string(target)
         return template.render(constants)
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
@@ -150,6 +148,9 @@ async def normalize(value, schema, mode='full'):
             if 'time.now.utc()' == func_name:
                 from datetime import datetime
                 processed_value[field_name] = str(datetime.now())
+            if 'uuid.uuid4()' == func_name:
+                import uuid
+                processed_value[field_name] = str(uuid.uuid4())
         if isinstance(field_rules, dict) and 'function' in field_rules:
             func_name = field_rules['function']
             if func_name == 'generate_identifier':

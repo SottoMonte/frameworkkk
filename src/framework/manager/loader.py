@@ -49,6 +49,9 @@ class Loader:
         self.container = Container()
         self.container.put(Loader, self)
         sys.modules['framework.loader'] = sys.modules[__name__]
+        self.env_jinja = Environment(loader=BaseLoader())
+        self.env_jinja.filters.setdefault('tojson', json.dumps)
+        self.env_jinja.globals['uuid4'] = lambda: str(uuid.uuid4())
         self._managers: dict[Type, dict] = {}   # cls → {deps, config, _port_lists}
         self._adapters: dict[Type, dict] = {}   # cls → {deps, config, port_interface}
 
@@ -102,7 +105,7 @@ class Loader:
         for name in TopologicalSorter(deps).static_order():
             if name not in codes: continue
             code, path, ns = codes[name]
-            extra = {'schemes': self._schemes} if ns == 'framework.service.scheme' else {}
+            extra = {'schemes': self._schemes,'jinja_env':self.env_jinja } if ns == 'framework.service.scheme' else {}
             await self._load(ns, path, extra)
 
     @staticmethod
@@ -231,9 +234,7 @@ class Loader:
                 except json.JSONDecodeError as e:
                     print(f"[!] JSON {f}: {e}")
 
-        env = Environment(loader=BaseLoader())
-        env.filters.setdefault('tojson', json.dumps)
-        env.globals['uuid4'] = lambda: str(uuid.uuid4())
+        #self.env_jinja = Environment(loader=BaseLoader())
         cache: dict[str, Any] = {}
 
         def resolve(name: str) -> Any:
@@ -250,8 +251,8 @@ class Loader:
                     if s.startswith('{{') and s.endswith('}}') and '|' not in s:
                         ref = s[2:-2].strip()
                         if ref in raw: return resolve(ref)
-                        g = env.globals.get(ref); return g() if callable(g) else g
-                    return env.from_string(v).render(**{**env.globals, **raw, **cache})
+                        g = self.env_jinja.globals.get(ref); return g() if callable(g) else g
+                    return self.env_jinja.from_string(v).render(**{**self.env_jinja.globals, **raw, **cache})
                 return v
 
             cache[name] = _r(obj); return cache[name]

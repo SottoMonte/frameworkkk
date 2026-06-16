@@ -30,9 +30,11 @@ class Manager:
                 elif  provider.adapter == controller: 
                     await provider.post(**constants|{'domain': domain})
                 elif controller in self.defender.controllers:
-                    exit(1)
+                    await session.emit(controller,domain,"X")
+                    a = str(session.context)
+                    await self.post(session,message=f"{controller}:{domain}"+a, domain="console:info")
                 else: 
-                    await self.post(message=f"Provider {provider} non è adatto per il dominio '{domain}' (controller '{controller}')", domain="console:warning")
+                    await self.post(session,message=f"Provider {provider} non è adatto per il dominio '{domain}' (controller '{controller}')", domain="console:warning")
             else:
                 await provider.post(**constants|{'domain': domain})
 

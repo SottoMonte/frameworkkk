@@ -336,9 +336,10 @@ class SessionHandle:
             await session.emit("my_file", "reload")
     """
 
-    def __init__(self, interpreter: "Interpreter", sid: str):
+    def __init__(self, interpreter: "Interpreter", session: dict):
+        self.session = session
         self._interp = interpreter
-        self._sid = sid
+        self._sid = self.session.get('id')
 
     # ── metodi pubblici ───────────────────────────────────────────────────────
 
@@ -475,10 +476,12 @@ class Interpreter:
 
     # ── session management ────────────────────────────────────────────────────
 
+    #@flow.result(inputs="session")
     def open_session(
         self,
         env: Optional[Dict] = None,
-        sid: Optional[str] = None,
+        **session
+        #session: Optional[Dict] = {},
     ) -> SessionHandle:
         """
         Crea una nuova sessione e restituisce un ``SessionHandle``.
@@ -490,9 +493,13 @@ class Interpreter:
         :param sid: identificatore opzionale; se omesso viene generato un UUID
         :returns:   ``SessionHandle`` contestuale alla sessione
         """
-        sid = sid or str(uuid.uuid4())
+        if 'session' in session:
+            sid = session['session'].get('id',str(uuid.uuid4()))
+            session = session['session']
+        else:
+            sid = session.get('id',str(uuid.uuid4()))
         self._runner.create_session(sid, DSL_FUNCTIONS | (env or {}))
-        return SessionHandle(self, sid)
+        return SessionHandle(self, session|{'id':sid})
 
     # ── one-shot execution ────────────────────────────────────────────────────
 
@@ -549,25 +556,6 @@ class Interpreter:
     # ── internals ─────────────────────────────────────────────────────────────
     # Tutto ciò che segue è API privata (prefisso _).
     # Non fare affidamento su questi metodi dall'esterno.
-
-    async def _run_session2(self, sid: str, file: str, env: Dict) -> Dict[str, Any]:
-        """Esegue un file su una sessione esistente (usato da SessionHandle.run)."""
-        if file not in self._ast_cache:
-            raise DSLRuntimeError(f"File '{file}' non caricato. Usa load_file() prima.")
-
-        ctx = self._runner.context(sid) | env
-        ast_result, _ = await self.visit(self._ast_cache[file], ctx, path="")
-        return await self._runner.run_file(sid, file, ast_result)
-
-    async def _run_session3(self, sid: str, file: str, env: Dict) -> Dict[str, Any]:
-        """Esegue un file su una sessione esistente (usato da SessionHandle.run)."""
-        if file not in self._ast_cache:
-            raise DSLRuntimeError(f"File '{file}' non caricato. Usa load_file() prima.")
-
-        ctx = self._runner.context(sid) | env
-        ast_result, _ = await self.visit(self._ast_cache[file], ctx, path="")
-        # ast_result ora contiene {'a': 1}. Dobbiamo passarlo come aggiornamento di contesto pulito
-        return await self._runner.run_file(sid, file, ast_result)
     
     async def _run_session(self, sid: str, file: str, env: Dict) -> Dict[str, Any]:
         if file not in self._ast_cache:
