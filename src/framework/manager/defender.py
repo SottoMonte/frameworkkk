@@ -40,8 +40,6 @@ class Manager:
             #await self.load_file(name, source)
             async with await self.session_create() as session:
                 self.policies[policy] = await session.run(path)
-
-            #self.policies[policy] = await self.interpreter.run_once(path,code)
             print(f"[+] Policy: {policy}/{filename}")
 
         from pathlib import Path
@@ -64,15 +62,11 @@ class Manager:
         self.interpreter.session_create(sid=session.get('id'),env=env)
         return language.SessionHandle(self.interpreter, session=session)
 
-    def get_session(self, sid) -> language.SessionHandle | None:
+    def session_get(self, sid) -> language.SessionHandle | None:
         # ricostruisce l'handle senza duplicare stato
         if sid not in self.interpreter._runner.sessions:
             return None
         return language.SessionHandle(self.interpreter, sid)
-
-    async def close_session(self, sid):
-        await self.interpreter._runner.close_session(sid)
-        
 
     
     def get_policy(self, policy):
