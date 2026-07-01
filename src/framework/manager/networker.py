@@ -1,7 +1,8 @@
+import framework.port.network as network
+
 class Manager:
-    def __init__(self, **constants):
-        self.executor = constants.get('executor')
-        self.networks = constants.get('networks', [])
+    def __init__(self, networks: list[network.Port], **constants):
+        self.networks = networks
 
     def _select_provider(self, requirements: dict) -> object | None:
         best = None
@@ -47,6 +48,14 @@ class Manager:
         if provider is None:
             return flow.error(f"Nessun provider SD-WAN selezionato per i requisiti: {requirements}")
         return await provider.route(application=application, requirements=requirements)
+
+    async def compute(self):
+        results = []
+        for provider in self.networks:
+            result = await provider.compute()
+            results.append(result)
+        print("Results from all providers:", results)
+        return results
 
     async def monitor(self):
         statuses = []

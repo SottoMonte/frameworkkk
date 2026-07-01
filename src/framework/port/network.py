@@ -16,7 +16,7 @@ class Port(Protocol):
                 original = cls.__dict__[method_name]
                 setattr(cls, method_name, decorator(original))'''
 
-    def deploy(self, *args):
+    def compute(self, *args):
         pass
 
     '''@abstractmethod
