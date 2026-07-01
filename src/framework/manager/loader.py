@@ -36,6 +36,7 @@ class Loader:
         'message':      'src/framework/port/message.py',
         'presentation': 'src/framework/port/presentation.py',
         'persistence':  'src/framework/port/persistence.py',
+        'network':      'src/framework/port/network.py',
     }
     managers = {
         'messenger':   'src/framework/manager/messenger.py',
@@ -43,6 +44,7 @@ class Loader:
         'storekeeper': 'src/framework/manager/storekeeper.py',
         'orchestrator': 'src/framework/manager/orchestrator.py',
         'defender': 'src/framework/manager/defender.py',
+        'networker': 'src/framework/manager/networker.py',
     }
 
     def __init__(self):

@@ -1,4 +1,4 @@
-class networker:
+class Manager:
     def __init__(self, **constants):
         self.executor = constants.get('executor')
         self.networks = constants.get('networks', [])

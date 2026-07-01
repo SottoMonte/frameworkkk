@@ -1,7 +1,8 @@
-from abc import ABC, abstractmethod
+from typing import Protocol, Any, runtime_checkable
 
-class port(ABC):
-    _method_decorators = {
+@runtime_checkable
+class Port(Protocol):
+    '''_method_decorators = {
         "provision": flow.result(inputs=("intent",), outputs=("deployment",)),
         "monitor": flow.result(outputs=("status",)),
         "status": flow.result(outputs=("status",)),
@@ -13,9 +14,12 @@ class port(ABC):
         for method_name, decorator in port._method_decorators.items():
             if method_name in cls.__dict__:
                 original = cls.__dict__[method_name]
-                setattr(cls, method_name, decorator(original))
+                setattr(cls, method_name, decorator(original))'''
 
-    @abstractmethod
+    def deploy(self, *args):
+        pass
+
+    '''@abstractmethod
     async def provision(self, intent: dict):
         pass
 
@@ -74,6 +78,6 @@ class port(ABC):
     @abstractmethod
     def add_layer(self, layer_spec: Dict[str, Any]) -> Dict[str, Any]:
         """Aggiunge un nuovo layer alla rete."""
-        pass
+        pass'''
 
     

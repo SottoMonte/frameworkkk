@@ -26,3 +26,9 @@ name = "terminal"
 
 [[persistence.filesystem]]
 name = "log"
+
+[[network.neural]]
+name = "decoder"
+input = 40
+midst = 2048
+output = 2048
