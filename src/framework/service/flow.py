@@ -209,8 +209,9 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
                 #print(f"Received args: {args}, kwargs: {kwargs}")
                 res = await func(*args, **new_kwargs) if is_async else func(*args, **new_kwargs)
                 return await rett(res)
-            except Exception:
+            except Exception as e:
                 print(f"❌ Exception in {func.__name__}: {traceback.format_exc()}")
+                raise e
                 return error(traceback.format_exc(), t0) | action
 
         return wrapper

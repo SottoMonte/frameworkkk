@@ -26,6 +26,8 @@ class Manager:
         await self.interpreter.stop()
     
     async def start(self, session=None):
+        if session is not None:
+            return None
         self.managers = self.loader.get_managers()
         await self.interpreter.start()
         TARGET_PORTS = {'presentation', 'persistence', 'message'}

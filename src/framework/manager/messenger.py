@@ -14,7 +14,6 @@ class Manager:
 
     @flow.result(inputs='messenger')
     async def post(self, session, **constants):
-        
         payload = constants.get('payload')
         domain = constants.get('domain')
         controller = None
@@ -22,8 +21,12 @@ class Manager:
             controller = domain.split(':')[0]
             domain = domain.split(':')[1]
 
+        
         for provider in self.providers:
             #print(controller,provider.adapter == controller, provider.config.get('name') == controller)
+            #if controller == 'terminal':
+            #    raise Exception(f"messenger.post: provider={provider} controller={controller}, domain={domain}, payload={payload} provider.config.get('name')={provider.config.get('name')}, provider.adapter={provider.adapter}")
+
             if controller:
                 if  provider.config.get('name') == controller:
                     await provider.post(**constants|{'domain': domain})
@@ -32,11 +35,15 @@ class Manager:
                 elif controller in self.defender.controllers:
                     await session.emit(controller,domain,"X")
                     a = str(session.context)
+                    raise Exception(f"messenger.post: provider={provider} controller={controller}, domain={domain}, payload={payload} session.context={a}")
                     await self.post(session,message=f"{controller}:{domain}"+a, domain="console:info")
                 else: 
                     await self.post(session,message=f"Provider {provider} non è adatto per il dominio '{domain}' (controller '{controller}')", domain="console:warning")
             else:
                 await provider.post(**constants|{'domain': domain})
+
+async def test(self):
+    exit(1)
 
     async def read(self, **constants):
         prohibited = constants['prohibited'] if 'prohibited' in constants else []

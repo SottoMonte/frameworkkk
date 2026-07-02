@@ -91,7 +91,9 @@ task: function_call "->" sequence ";"? -> task
 ?tuple: "(" [sequence] ")" -> tuple_node | "(" [type_sequence] ")" -> tuple_node
 pair.6: atom ":" expr
 ?list: "[" [sequence] "]" -> list_node
-function_call: identifier "(" [sequence|type_sequence] ")"
+call_arg: expr | pair
+call_arg_list: call_arg ("," call_arg)* ","? -> sequence
+function_call: identifier "(" [call_arg_list] ")"
 function_value.10: tuple dictionary tuple
 identifier: CNAME -> identifier
 | QUALIFIED_CNAME -> identifier
@@ -197,6 +199,9 @@ class DSLTransformer(Transformer):
 
     def sequence(self, meta, items):
         return self._m({"type": "sequence", "items": [i for i in items if i is not None]}, meta)
+
+    def call_arg(self, meta, items):
+        return items[0]
 
     def _unwrap(self, meta, items, typ):
         items = [i for i in items if i is not None]

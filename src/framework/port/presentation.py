@@ -482,9 +482,10 @@ class Port(Protocol):
         template = self.env.from_string(text)
         session = await self.defender.session_create()
         
-        data = await session.run('tris')
+        #data = await session.run('tris')
         try:
-            content = template.render(constants|{'tris':data})
+            #content = template.render(constants|{'tris':data})
+            content = template.render(constants)
             xml = ET.fromstring(content)
             view = await self.render_node(text,xml,constants)
             return view
@@ -502,7 +503,7 @@ class Port(Protocol):
             in_svg = True
 
         ID = node.attrib.get('id')
-        if ID != None and ID not in self.DOM:
+        if isinstance(ID, str) and ID not in self.DOM:
             self.DOM[ID] = self.estrai_da_xml_string(parent,ID)
 
         # Controllo se il tag è un componente (custom tag)

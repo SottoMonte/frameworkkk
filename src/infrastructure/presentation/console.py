@@ -77,9 +77,13 @@ class AppDinamica(App):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
 
         if event.button.id in self.adapter.DOM:
+            print(f"Button {event.button.id} premuto! Attributi: {self.adapter.DOM[event.button.id]}")
+            
             widget = self.adapter.DOM[event.button.id]
             aaa = self.adapter.presenter.estrai_attributi_tag(widget)
-            await self.adapter.messenger.post(self.adapter.session,domain=aaa['click'],message="fdsfdsf")
+            print(f"Button {event.button.id} premuto! Attributi: {aaa}")
+
+            await self.adapter.messenger.post(self.adapter.session,domain=aaa['click'],message=str(event.button.id))
 
 
         
@@ -106,7 +110,7 @@ class Adapter(presentation.Port):
         presentation.Tag.ACTION.value: { 
             "action": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]),id=x.get('attrs', {}).get('id')),
             "link": lambda x: Link(str(x.get('inner',[''])[0]),url=x.get('attrs', {}).get('href', '#')),
-            "button": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]), id="button"),
+            "button": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]), id=x.get('attrs', {}).get('id')),
         },
         presentation.Tag.INPUT.value: { 
             "select": lambda x: Select([(str(i.render()),0) if type(i) != str else (i,0) for i in x.get('inner',[])]),
