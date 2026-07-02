@@ -22,10 +22,10 @@ class Manager:
         #self.models = constants.get('models')
         self.policies = {}
 
-    async def stop(self):
+    async def stop(self, session):
         await self.interpreter.stop()
     
-    async def start(self):
+    async def start(self, session=None):
         self.managers = self.loader.get_managers()
         await self.interpreter.start()
         TARGET_PORTS = {'presentation', 'persistence', 'message'}

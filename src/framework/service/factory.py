@@ -8,11 +8,12 @@ import framework.service.scheme as scheme
 
 class Application:
     """Manager del Ciclo di Vita Globale dell'App."""
-    def __init__(self, container , manager_names: list[str]):
+    def __init__(self, container , manager_names: list[str], session=None):
         self._c = container
         self._managers = manager_names
         self._stop_event = asyncio.Event()
         self._running_tasks: list[asyncio.Task] = []
+        self._session = session
 
     async def start(self) -> None:
         print("[*] Avvio dei manager del framework...")
@@ -24,7 +25,7 @@ class Application:
 
         for manager in self._managers:
             if  hasattr(manager, "start"):
-                res = await manager.start()
+                res = await manager.start(self._session)
                 if res:
                     if isinstance(res, list):
                         for coro in res: self._running_tasks.append(asyncio.create_task(coro))
@@ -39,7 +40,7 @@ class Application:
         for manager in reversed(self._managers):
             
             if  hasattr(manager, "stop"):
-                await manager.stop()
+                await manager.stop(self._session)
 
         for task in self._running_tasks:
             if not task.done():

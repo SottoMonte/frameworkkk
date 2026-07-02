@@ -16,10 +16,10 @@ class Manager:
 
     # ── INTERPRETER ────────────────────────────────────────────────────────────────
 
-    async def stop(self):
+    async def stop(self, session):
         await self.interpreter.stop()
     
-    async def start(self):
+    async def start(self, session):
         
         '''await self.interpreter.start()
         codice_dsl = """

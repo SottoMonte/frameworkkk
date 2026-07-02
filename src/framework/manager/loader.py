@@ -39,11 +39,11 @@ class Loader:
         'network':      'src/framework/port/network.py',
     }
     managers = {
+        'defender': 'src/framework/manager/defender.py',
         'messenger':   'src/framework/manager/messenger.py',
         'presenter':   'src/framework/manager/presenter.py',
         'storekeeper': 'src/framework/manager/storekeeper.py',
         'orchestrator': 'src/framework/manager/orchestrator.py',
-        'defender': 'src/framework/manager/defender.py',
         'networker': 'src/framework/manager/networker.py',
     }
 
@@ -318,4 +318,8 @@ class Loader:
         self._build_adapters()
         self._inject_ports()
 
-        return sys.modules['framework.service.factory'].Application(self.container, instances)
+        defender = self.container.get(self._managers.keys().__iter__().__next__())
+        await defender.start()
+        session = await defender.session_create()
+        print(f"[*] Sessione creata: {session}")
+        return sys.modules['framework.service.factory'].Application(self.container, instances, session)
