@@ -1,7 +1,8 @@
 {
-    close(deps:false) -> messenger.test();
+    close(deps:false) -> exit();
+    submit(deps:false) -> messenger.post(sid, domain: "console:info", message: submit);
   
-  cmd:{
-    close(deps:false) -> messenger.post(sid, domain: "console:error", message: "ciao");
-  };
+    cmd:{
+        close(deps:false) -> messenger.post(sid, domain: "console:error", message: "ciao");
+    };
 }

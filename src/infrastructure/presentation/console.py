@@ -85,9 +85,39 @@ class AppDinamica(App):
 
             await self.adapter.messenger.post(self.adapter.session,domain=aaa['click'],message=str(event.button.id))
 
-
-        
         print(f"Button {event.button.id} premuto!")
+    
+    async def on_input_changed(self, event: Input.Changed) -> None:
+        """Scatta ogni volta che l'utente digita un carattere in un Input."""
+        if event.input.id and event.input.id in self.adapter.DOM:
+            # Recuperi il valore aggiornato inserito dall'utente
+            nuovo_valore = event.value  
+            print(f"Input {event.input.id} modificato: {nuovo_valore}")
+            
+            # (Opzionale) Invia il messaggio al framework se hai un attributo dsl associato
+            # attrs_tag = self.adapter.presenter.estrai_attributi_tag(self.adapter.DOM[event.input.id])
+            # if 'change' in attrs_tag:
+            #     await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['change'], message=nuovo_valore)
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Scatta quando l'utente preme 'Invio' dentro un Input."""
+        if event.input.id in self.adapter.DOM:
+            widget = self.adapter.DOM[event.input.id]
+            attrs_tag = self.adapter.presenter.estrai_attributi_tag(widget)
+            if 'submit' in attrs_tag:
+                await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['submit'], message=str(event.value))
+
+    async def on_select_changed(self, event: Select.Changed) -> None:
+        """Scatta quando l'utente cambia selezione in un Select."""
+        if event.select.id and event.select.id in self.adapter.DOM:
+            print(f"Select {event.select.id} cambiata a: {event.value}")
+            # Logica di notifica analoga...
+
+    async def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Scatta quando una checkbox viene attivata/disattivata."""
+        if event.checkbox.id and event.checkbox.id in self.adapter.DOM:
+            print(f"Checkbox {event.checkbox.id} impostata a: {event.value}")
+            # Logica di notifica analoga...
 
 class Adapter(presentation.Port):
     """
@@ -113,13 +143,13 @@ class Adapter(presentation.Port):
             "button": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]), id=x.get('attrs', {}).get('id')),
         },
         presentation.Tag.INPUT.value: { 
-            "select": lambda x: Select([(str(i.render()),0) if type(i) != str else (i,0) for i in x.get('inner',[])]),
-            "text":  lambda x: TextArea(),
-            "input": lambda x: Input(placeholder=x.get('attrs', {}).get('placeholder', '')),
-            "checkbox": lambda x: Checkbox(str(x.get('inner',[''])[0])),
-            "masked": lambda x: MaskedInput(template=x.get('attrs', {}).get('placeholder', '')),
-            "option": lambda x: OptionList(*x.get('inner',[])),
-            "switch": lambda x: Switch(str(x.get('inner',[''])[0])),
+            "select": lambda x: Select([(str(i.render()),0) if type(i) != str else (i,0) for i in x.get('inner',[])], id=x.get('attrs', {}).get('id')),
+            "text":  lambda x: TextArea(id=x.get('attrs', {}).get('id')),
+            "input": lambda x: Input(placeholder=x.get('attrs', {}).get('placeholder', ''), id=x.get('attrs', {}).get('id')),
+            "checkbox": lambda x: Checkbox(str(x.get('inner',[''])[0]), id=x.get('attrs', {}).get('id')),
+            "masked": lambda x: MaskedInput(template=x.get('attrs', {}).get('placeholder', ''), id=x.get('attrs', {}).get('id')),
+            "option": lambda x: OptionList(*x.get('inner',[]), id=x.get('attrs', {}).get('id')),
+            "switch": lambda x: Switch(str(x.get('inner',[''])[0]),id=x.get('attrs', {}).get('id')),
         },
         presentation.Tag.TEXT.value: {
             "text": lambda x: Label(Text(*x.get('inner',''))),

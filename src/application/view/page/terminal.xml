@@ -34,11 +34,11 @@
         <!-- <Action type="button">
             <Text color="#ffffff" font="bold">🎤VOCE</Text>
         </Action> -->
-        <Input placeholder="Scrivi qualcosa..." />
+        <Input id="msg" submit="terminal:submit" placeholder="Scrivi qualcosa..." />
     </Row>
     <Action id="close" type="button" click="terminal:close"></Action>
     <Action id="asd" type="button" click="terminal:cmd.close"></Action>
-    <Input placeholder="Scrivi qualcosa..." type="select" >
+    <Input id="select" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select" >
         <Text value="1">Opzione 1</Text>
         <Text value="1">Opzione 2</Text>
         <Text value="1">Opzione 3</Text>

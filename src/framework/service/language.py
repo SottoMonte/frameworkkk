@@ -149,6 +149,7 @@ DSL_FUNCTIONS: Dict[str, Any] = {
     'union':     lambda a, b: {**a, **b},
     'print':     lambda *inputs: (print(*inputs), inputs)[1],
     'pass':      lambda *inputs: inputs,
+    'exit':      lambda *inputs: exit(1),
 } | TYPE_MAP | {'extension': 'py'}
 
 OPS = {
