@@ -27,6 +27,11 @@ name = "tui"
 [[persistence.filesystem]]
 name = "log"
 
+[[persistence.filesystem]]
+name = "source"
+path = "public/"
+watch = true
+
 [[network.neural]]
 name = "decoder"
 input = 40

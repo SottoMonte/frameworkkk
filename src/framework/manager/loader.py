@@ -55,7 +55,7 @@ class Loader:
         self.env_jinja.filters.setdefault('tojson', json.dumps)
         self.env_jinja.globals['uuid4'] = lambda: str(uuid.uuid4())
         self._managers: dict[Type, dict] = {}   # cls → {deps, config, _port_lists}
-        self._adapters: dict[Type, dict] = {}   # cls → {deps, config, port_interface}
+        self._adapters: dict[Type, list[dict]] = {}   # cls → [{deps, config, port_interface}]
 
     # ── moduli ───────────────────────────────────────────────────────────────
 
@@ -158,8 +158,10 @@ class Loader:
         else:
             port_mod = sys.modules.get(f"framework.port.{port_key}")
             meta['port_interface'] = getattr(port_mod, 'Port', None) if port_mod else None
-            self._adapters[cls] = meta
-            print(f"[~] Adapter '{cls.__name__}' scoperto (port: {port_key})")
+            self._adapters.setdefault(cls, []).append(meta)
+            name = meta['config'].get('name') if isinstance(meta['config'], dict) else None
+            details = f" name='{name}'" if name else ''
+            print(f"[~] Adapter '{cls.__name__}' scoperto (port: {port_key}){details}")
 
     # ── build ─────────────────────────────────────────────────────────────────
 
@@ -208,12 +210,15 @@ class Loader:
         return instances
 
     def _build_adapters(self) -> None:
-        for cls, meta in self._adapters.items():
-            instance = cls(**self._kwargs(cls, meta, is_manager=False), **meta['config'])
-            self.container.put(cls, instance)
-            iface = meta['port_interface']
-            if iface: self.container.add_port(iface, instance)
-            print(f"[✓] Adapter '{cls.__name__}'" + (f" → {iface.__name__}" if iface else ""))
+        for cls, metas in self._adapters.items():
+            for meta in metas:
+                instance = cls(**self._kwargs(cls, meta, is_manager=False), **meta['config'])
+                self.container.put(cls, instance)
+                iface = meta['port_interface']
+                if iface: self.container.add_port(iface, instance)
+                name = meta['config'].get('name') if isinstance(meta['config'], dict) else None
+                extra = f" name='{name}'" if name else ''
+                print(f"[✓] Adapter '{cls.__name__}'{extra}" + (f" → {iface.__name__}" if iface else ""))
 
     def _inject_ports(self) -> None:
         """Popola le liste vuote dei manager con gli adapter ora costruiti."""
@@ -308,10 +313,11 @@ class Loader:
 
         for port_key in self.ports:
             for adapter_name, raw_cfg in config.get(port_key, {}).items():
-                cfg  = raw_cfg[0] if isinstance(raw_cfg, list) else raw_cfg
+                cfgs = raw_cfg if isinstance(raw_cfg, list) else [raw_cfg]
                 path = f'src/infrastructure/{port_key}/{adapter_name}.py'
-                await self._discover(
-                    f'framework.adapter.{port_key}.{adapter_name}', path, cfg, port_key)
+                for cfg in cfgs:
+                    await self._discover(
+                        f'framework.adapter.{port_key}.{adapter_name}', path, cfg, port_key)
 
         print('\n[*] Build...')
         instances = self._build_managers()
