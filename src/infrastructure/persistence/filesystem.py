@@ -42,7 +42,6 @@ class Adapter(persistence.Port):
 
     async def start(self, session=None):
         if self.watch:
-            # 🌟 Catturiamo il loop principale QUI, mentre siamo nel thread di asyncio
             main_loop = asyncio.get_running_loop()
             self._start_watcher(session, main_loop)
 

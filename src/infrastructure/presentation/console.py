@@ -144,7 +144,7 @@ class Adapter(presentation.Port):
         },
         presentation.Tag.INPUT.value: { 
             "select": lambda x: Select([(str(i.render()),0) if type(i) != str else (i,0) for i in x.get('inner',[])], id=x.get('attrs', {}).get('id')),
-            "text":  lambda x: TextArea(id=x.get('attrs', {}).get('id')),
+            "text":  lambda x: attrs(TextArea(id=x.get('attrs', {}).get('id'),language="python",), x.get('attrs', {})),
             "input": lambda x: Input(placeholder=x.get('attrs', {}).get('placeholder', ''), id=x.get('attrs', {}).get('id')),
             "checkbox": lambda x: Checkbox(str(x.get('inner',[''])[0]), id=x.get('attrs', {}).get('id')),
             "masked": lambda x: MaskedInput(template=x.get('attrs', {}).get('placeholder', ''), id=x.get('attrs', {}).get('id')),

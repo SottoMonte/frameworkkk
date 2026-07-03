@@ -29,7 +29,7 @@ name = "log"
 
 [[persistence.filesystem]]
 name = "source"
-path = "public/"
+path = "src/"
 watch = true
 message = "log"
 
