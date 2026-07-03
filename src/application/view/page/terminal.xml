@@ -22,7 +22,7 @@
             </Row>
         </Row>
     </Navigation>-->
-    <Text type="pre">
+    <!-- <Text type="pre" height="10%">
          ______ _   _ _____ 
         |  ____| \ | |  __ \
         | |__  |  \| | |  | |
@@ -31,9 +31,9 @@
         |______|_| \_|_____/ 
     </Text>
     <Row>
-        <!-- <Action type="button">
+        <Action type="button">
             <Text color="#ffffff" font="bold">🎤VOCE</Text>
-        </Action> -->
+        </Action>
         <Input id="msg" submit="terminal:submit" placeholder="Scrivi qualcosa..." />
     </Row>
     <Action id="close" type="button" click="terminal:close"></Action>
@@ -43,7 +43,16 @@
         <Text value="1">Opzione 2</Text>
         <Text value="1">Opzione 3</Text>
     </Input>
-    <Input id="code" type="text" height="100px"></Input>
-    <Text type="markdown">
-    </Text>
+    <Action id="close" type="button" click="terminal:close" height="10%"></Action>-->
+    <Group type="tab" height="50%">
+        <Text id="tab1">ciao</Text>
+        <Text id="tab2">tb2</Text>
+        
+    </Group>
+    <Navigation type="tabs" height="50%">
+        <Input id="code" type="text" height="100%">ciao</Input>
+        <Input id="code2" type="text" height="100%">ciao</Input>
+    </Navigation>
+    <Input id="code" type="text" height="100%"></Input>
+    
 </Window>

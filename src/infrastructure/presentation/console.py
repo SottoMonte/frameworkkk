@@ -3,11 +3,20 @@ import uuid
 import json
 import os
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple, Callable
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, HorizontalGroup, Vertical, Grid
-from textual.widgets import Rule, Link, Checkbox, Static, Button, Input, Select, TextArea, Header, Footer, Label, Markdown
+from textual.widgets import (
+    Rule, Link, Checkbox, Static, Button, Input, Select, TextArea,
+    Header, Footer, Label, Markdown,
+    MaskedInput, OptionList, Switch, Pretty,
+    ListView, ListItem, Tabs, Tab, TabbedContent, TabPane,
+    RadioButton, RadioSet, SelectionList,
+    ProgressBar, Sparkline, DataTable, Tree, DirectoryTree,
+    Collapsible, ContentSwitcher, LoadingIndicator,
+    Log, RichLog, Digits, Placeholder, MarkdownViewer,
+)
 from rich.text import Text
 from textual.screen import Screen
 from textual.binding import Binding
@@ -18,47 +27,165 @@ from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
 
-def attrs(widget,attrs):
-    '''for k,v in attrs.items():
-        setattr(widget, k, v)'''
-    widget.styles.overflow_y = "auto"
-    widget.styles.overflow_x = "hidden"
 
-    # 3. Se necessario, gli dai una dimensione bloccata o flessibile
-    widget.styles.height = "80%"  # oppure "1fr"
+# ==========================================================================
+# HELPER GENERICI
+#
+# Ogni nodo DSL arriva ai lambda come x = {"inner": [...], "attrs": {...}}.
+# Queste funzioni astraggono gli accessi ripetuti in ogni lambda, così i
+# widget dict sotto restano dichiarativi invece che pieni di boilerplate.
+# ==========================================================================
+
+def _attr(x: Dict[str, Any], key: str, default=None):
+    """Legge un attributo (già filtrato dallo schema di presentation.py)."""
+    return x.get("attrs", {}).get(key, default)
+
+
+def _children(x: Dict[str, Any]) -> List[Any]:
+    """Figli che sono widget già costruiti (esclude il testo grezzo)."""
+    return [f for f in x.get("inner", []) if not isinstance(f, str)]
+
+
+def _text(x: Dict[str, Any]) -> str:
+    """Testo del nodo: concatena stringhe e il render() dei figli non testuali."""
+    parts = []
+    for f in x.get("inner", []):
+        parts.append(f if isinstance(f, str) else str(getattr(f, "render", lambda: f)()))
+    return "".join(parts)
+
+
+def _bool_attr(x: Dict[str, Any], key: str, default: bool = False) -> bool:
+    v = _attr(x, key)
+    if v is None:
+        return default
+    return str(v).lower() in ("1", "true", "yes")
+
+
+def _options(x: Dict[str, Any]) -> List[Tuple[str, int]]:
+    """Coppie (etichetta, indice) per Select/SelectionList a partire dai figli."""
+    return [
+        (f if isinstance(f, str) else str(getattr(f, "render", lambda: f)()), idx)
+        for idx, f in enumerate(x.get("inner", []))
+    ]
+
+
+def _parse_data(raw) -> List[float]:
+    """Converte l'attributo 'data' (CSV o lista) in lista di float per Sparkline."""
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [float(v) for v in raw]
+    if isinstance(raw, str):
+        try:
+            return [float(v.strip()) for v in raw.split(",") if v.strip()]
+        except ValueError:
+            return []
+    return []
+
+
+# ==========================================================================
+# attrs(): applica gli attributi di STILE (già filtrati da mount_tag() /
+# _ATTRIBUTES_SCHEMA in presentation.py) alle proprietà .styles del widget.
+#
+# Invece di una tabella di alias esplicita per ogni proprietà, si usa una
+# blocklist di attributi "costruttivi" (usati direttamente dai widget:
+# id, title, path, label, data, ...) e per tutto il resto si tenta un
+# setattr generico su widget.styles, fallendo in modo silenzioso (con log)
+# se quella proprietà non esiste per quel widget. Questo evita di dover
+# mantenere una mappatura 1:1 manuale ogni volta che si aggiunge un nuovo
+# attributo di stile nello schema.
+# ==========================================================================
+_NON_STYLE_KEYS = {
+    "id", "class", "type", "name", "value", "placeholder",
+    "title", "path", "label", "data",
+    "required", "disabled", "readonly", "max", "min", "multiple",
+    "route", "act",
+    "click", "dblclick", "mouseover", "mouseout", "keydown", "keyup", "keypress",
+    "style",
+}
+
+
+def attrs(widget, attrs_dict: Dict[str, Any] = None):
+    """
+    Applica dinamicamente proprietà di stile Textual al widget.
+
+    Supporta sia un attributo 'style' in formato CSS-like
+    ("width: 80%; color: red; overflow: auto") sia attributi diretti
+    ({"width": "80%", "color": "red"}). Gli attributi diretti hanno
+    priorità sulla stringa 'style'. Default retrocompatibili se non
+    specificato altro: overflow-y=auto, overflow-x=hidden, height=80%.
+    """
+    attrs_dict = attrs_dict or {}
+
+    parsed: Dict[str, str] = {}
+    for rule in (attrs_dict.get("style") or "").split(";"):
+        rule = rule.strip()
+        if ":" in rule:
+            k, v = rule.split(":", 1)
+            parsed[k.strip().lower()] = v.strip()
+
+    merged = {**parsed, **{k: v for k, v in attrs_dict.items() if k != "style"}}
+
+    for key, value in merged.items():
+        key_norm = key.lower()
+        if key_norm in _NON_STYLE_KEYS:
+            continue
+        if key_norm == "overflow":
+            widget.styles.overflow_x = widget.styles.overflow_y = value
+            continue
+        try:
+            setattr(widget.styles, key_norm.replace("-", "_"), value)
+        except Exception as e:
+            print(f"[attrs] Impossibile impostare '{key_norm}' = '{value}' su {widget!r}: {e}")
+
+    if "overflow" not in merged and "overflow-y" not in merged:
+        widget.styles.overflow_y = "auto"
+    if "overflow" not in merged and "overflow-x" not in merged:
+        widget.styles.overflow_x = "hidden"
+    if "height" not in merged:
+        widget.styles.height = "80%"
+
     return widget
+
+
+# ==========================================================================
+# widget(): factory che genera un lambda pronto per il dizionario `tags`.
+#
+# `build(x)` restituisce (args, kwargs) per il costruttore del widget.
+# Se `build` è None: nessun arg posizionale, kwargs={'id': <id>}.
+# `style=False` salta l'applicazione di attrs() (per widget senza .styles
+# rilevanti da esporre, es. Rule, LoadingIndicator).
+# ==========================================================================
+def widget(cls, build: Callable[[Dict[str, Any]], Tuple[tuple, dict]] = None, style: bool = True):
+    def factory(x):
+        args, kwargs = build(x) if build else ((), {"id": _attr(x, "id")})
+        instance = cls(*args, **kwargs)
+        return attrs(instance, x.get("attrs", {})) if style else instance
+    return factory
+
 
 class XmlScreen(Screen):
     """Una schermata che si auto-costruisce leggendo un file XML."""
-    
+
     def __init__(self, inner: str, title: str, sub_title: str = "", **kwargs):
         super().__init__(**kwargs)
         self.inner = inner
         self.title = title
         self.sub_title = sub_title
 
-    def compose(self) -> ComposeResult:   
-
+    def compose(self) -> ComposeResult:
         yield Header()
-
-        # 3. Generiamo ricorsivamente i widget figli
-        #for child in root:
-        #    yield from self.renderizza_nodo(child)
-
-        print(self.inner)
-
         yield Container(*self.inner)
-
         yield Footer()
+
 
 class AppDinamica(App):
     DEFAULT_CSS = """
     Grid {
-        grid-size: 3; /* Griglia a 3 colonne */
+        grid-size: 3;
         grid-gutter: 1 2;
         padding: 1;
     }
-    
     """
 
     BINDINGS = [
@@ -70,119 +197,238 @@ class AppDinamica(App):
         super().__init__(**kwargs)
         self.adapter = adapter
 
+    def _dom_widget(self, widget_id: Optional[str]):
+        """Restituisce il widget DSL corrispondente a un id, se presente nel DOM."""
+        if widget_id and widget_id in self.adapter.DOM:
+            return self.adapter.DOM[widget_id]
+        return None
+
     async def on_mount(self) -> None:
         await self.adapter.render_view(url="/")
 
-
     async def on_button_pressed(self, event: Button.Pressed) -> None:
+        w = self._dom_widget(event.button.id)
+        if w is not None:
+            attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
+            await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['click'], message=str(event.button.id))
 
-        if event.button.id in self.adapter.DOM:
-            print(f"Button {event.button.id} premuto! Attributi: {self.adapter.DOM[event.button.id]}")
-            
-            widget = self.adapter.DOM[event.button.id]
-            aaa = self.adapter.presenter.estrai_attributi_tag(widget)
-            print(f"Button {event.button.id} premuto! Attributi: {aaa}")
-
-            await self.adapter.messenger.post(self.adapter.session,domain=aaa['click'],message=str(event.button.id))
-
-        print(f"Button {event.button.id} premuto!")
-    
     async def on_input_changed(self, event: Input.Changed) -> None:
-        """Scatta ogni volta che l'utente digita un carattere in un Input."""
-        if event.input.id and event.input.id in self.adapter.DOM:
-            # Recuperi il valore aggiornato inserito dall'utente
-            nuovo_valore = event.value  
-            print(f"Input {event.input.id} modificato: {nuovo_valore}")
-            
-            # (Opzionale) Invia il messaggio al framework se hai un attributo dsl associato
-            # attrs_tag = self.adapter.presenter.estrai_attributi_tag(self.adapter.DOM[event.input.id])
-            # if 'change' in attrs_tag:
-            #     await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['change'], message=nuovo_valore)
+        if self._dom_widget(event.input.id) is not None:
+            print(f"Input {event.input.id} modificato: {event.value}")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Scatta quando l'utente preme 'Invio' dentro un Input."""
-        if event.input.id in self.adapter.DOM:
-            widget = self.adapter.DOM[event.input.id]
-            attrs_tag = self.adapter.presenter.estrai_attributi_tag(widget)
+        w = self._dom_widget(event.input.id)
+        if w is not None:
+            attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
             if 'submit' in attrs_tag:
                 await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['submit'], message=str(event.value))
 
     async def on_select_changed(self, event: Select.Changed) -> None:
-        """Scatta quando l'utente cambia selezione in un Select."""
-        if event.select.id and event.select.id in self.adapter.DOM:
+        if self._dom_widget(event.select.id) is not None:
             print(f"Select {event.select.id} cambiata a: {event.value}")
-            # Logica di notifica analoga...
 
     async def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        """Scatta quando una checkbox viene attivata/disattivata."""
-        if event.checkbox.id and event.checkbox.id in self.adapter.DOM:
+        if self._dom_widget(event.checkbox.id) is not None:
             print(f"Checkbox {event.checkbox.id} impostata a: {event.value}")
-            # Logica di notifica analoga...
+
+    async def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if self._dom_widget(event.radio_set.id) is not None:
+            print(f"RadioSet {event.radio_set.id} cambiato: {event.pressed}")
+
+    async def on_switch_changed(self, event: Switch.Changed) -> None:
+        if self._dom_widget(event.switch.id) is not None:
+            print(f"Switch {event.switch.id} impostato a: {event.value}")
+
+    async def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        print(f"Tab attivata: {event.tab.id}")
+
+    async def on_list_view_selected(self, event: ListView.Selected) -> None:
+        print(f"ListView selezionata: {event.item}")
+
+
+# ==========================================================================
+# Casi speciali: non riducibili alla factory `widget()` per vincoli reali
+# dell'API Textual (non per pigrizia — vedi commenti).
+# ==========================================================================
+
+def _make_tabbed_content(x: Dict[str, Any]):
+    """
+    TabbedContent(*titles) accetta SOLO stringhe come titoli: passargli
+    un TabPane fa sì che Textual provi a renderizzarlo come testo e crasha
+    (AttributeError: 'TabPane' object has no attribute 'translate').
+    Il contenuto va aggiunto con compose_add_child(), il metodo pubblico
+    che Textual usa internamente per `with TabbedContent(): yield contenuto`.
+    """
+    children = _children(x)
+    titles = [(getattr(c, "id", None) or f"Tab {i + 1}") for i, c in enumerate(children)]
+    tabbed = TabbedContent(*titles, id=_attr(x, "id"))
+    for child in children:
+        tabbed.compose_add_child(child)
+    return attrs(tabbed, x.get("attrs", {}))
+
+
+def _make_card(x: Dict[str, Any]):
+    """Container con bordo titolato: border_title è una proprietà d'istanza,
+    non un parametro del costruttore, quindi va impostata dopo la creazione."""
+    card = widget(Container, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")}))(x)
+    title = _attr(x, "title")
+    if title:
+        card.border_title = title
+    return card
+
+
+class DomRegistry:
+    """
+    Registro dei widget Textual LIVE (già montati/costruiti), indicizzati
+    per id. È distinto da `Adapter.DOM`, che contiene invece lo XML grezzo
+    dei nodi (usato per rileggere attributi originali del DSL come
+    'click'/'submit' — un widget Textual costruito non li conserva).
+
+    Questo registro è ciò che permette a node_update()/dom_*() di trovare
+    e patchare un widget esistente senza dover ripercorrere l'albero XML.
+    """
+
+    def __init__(self):
+        self._widgets: Dict[str, Any] = {}
+
+    def register(self, widget_id: Optional[str], instance):
+        if widget_id:
+            self._widgets[widget_id] = instance
+        return instance
+
+    def get(self, widget_id: Optional[str]):
+        return self._widgets.get(widget_id) if widget_id else None
+
+    def forget(self, widget_id: Optional[str]):
+        if widget_id:
+            self._widgets.pop(widget_id, None)
+
+    def __contains__(self, widget_id) -> bool:
+        return widget_id in self._widgets
+
 
 class Adapter(presentation.Port):
     """
-    Adapter Textual nativo per il Framework
-    
-    Implementa la stessa interfaccia di presentation.port come starlette.server.Adapter
-    Riceve le dipendenze via injection dal container (defender, messenger, executor, presenter)
+    Adapter Textual nativo per il Framework.
+
+    Implementa presentation.Port. La chiave di ogni voce di `tags` deve
+    corrispondere a un valore di presentation.Tag; la sotto-chiave al
+    valore dell'attributo `type="..."` nel DSL (o al nome del tag stesso),
+    replicando la logica di mount_tag():
+
+        tipo = attrs.get("type") or tag
+        elemento = self.tags[tag].get(tipo) or self.tags[tag].get(tag)
     """
-    
+
     tags = {
-        presentation.Tag.ICON.value: { 
-            "icon": lambda x: Static(*x.get('inner',[]), ),
-        },
-        presentation.Tag.COLUMN.value: { 
-            "column": lambda x: Vertical(*x.get('inner',[])),
-        },
-        presentation.Tag.ROW.value: { 
-            "row": lambda x: HorizontalGroup(*x.get('inner',[])),
-        },
-        presentation.Tag.ACTION.value: { 
-            "action": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]),id=x.get('attrs', {}).get('id')),
-            "link": lambda x: Link(str(x.get('inner',[''])[0]),url=x.get('attrs', {}).get('href', '#')),
-            "button": lambda x: Button(str([ f.render() for f in x.get('inner',[]) if not isinstance(f, str)]), id=x.get('attrs', {}).get('id')),
-        },
-        presentation.Tag.INPUT.value: { 
-            "select": lambda x: Select([(str(i.render()),0) if type(i) != str else (i,0) for i in x.get('inner',[])], id=x.get('attrs', {}).get('id')),
-            "text":  lambda x: attrs(TextArea(id=x.get('attrs', {}).get('id'),language="python",), x.get('attrs', {})),
-            "input": lambda x: Input(placeholder=x.get('attrs', {}).get('placeholder', ''), id=x.get('attrs', {}).get('id')),
-            "checkbox": lambda x: Checkbox(str(x.get('inner',[''])[0]), id=x.get('attrs', {}).get('id')),
-            "masked": lambda x: MaskedInput(template=x.get('attrs', {}).get('placeholder', ''), id=x.get('attrs', {}).get('id')),
-            "option": lambda x: OptionList(*x.get('inner',[]), id=x.get('attrs', {}).get('id')),
-            "switch": lambda x: Switch(str(x.get('inner',[''])[0]),id=x.get('attrs', {}).get('id')),
-        },
-        presentation.Tag.TEXT.value: {
-            "text": lambda x: Label(Text(*x.get('inner',''))),
-            "markdown": lambda x: attrs(Markdown(*x.get('inner','')), x.get('attrs', {})),
-            "pretty": lambda x: Pretty(*x.get('inner',[])),
-        },
-        presentation.Tag.NAVIGATION.value: {
-            "navigation": lambda x: Static(*x.get('inner',[]), id="nav")
-        },
         presentation.Tag.WINDOW.value: {
-            "window": lambda x: XmlScreen([f for f in x.get('inner',[]) if not isinstance(f, str)], x.get('attrs', {}).get('title', 'App'), x.get('attrs', {}).get('subtitle', ''))
+            "window": lambda x: XmlScreen(_children(x), _attr(x, "title", "App"), _attr(x, "subtitle", "")),
         },
-        presentation.Tag.GROUP.value: {
-            "list": lambda x: ListView(*[ListItem(f) for f in x.get('inner',[])]),
-            "tab": lambda x: Tabs(*[Tab(f, title=f.get('attrs', {}).get('title', 'Tab')) for f in x.get('inner',[])])
+
+        presentation.Tag.NAVIGATION.value: {
+            "navigation": widget(Static, lambda x: (tuple(x.get("inner", [])), {"id": _attr(x, "id", "nav")})),
+            "tabs": widget(Tabs, lambda x: (
+                tuple(Tab(f if isinstance(f, str) else str(f)) for f in x.get("inner", [])),
+                {"id": _attr(x, "id")},
+            )),
         },
-        presentation.Tag.DIVIDER.value: {
-            "divider": lambda x: Rule(),
-            "horizontal": lambda x: Rule(),
+
+        presentation.Tag.TEXT.value: {
+            "text": widget(Label, lambda x: ((Text(_text(x)),), {})),
+            "markdown": widget(Markdown, lambda x: ((_text(x),), {})),
+            "markdownviewer": widget(MarkdownViewer, lambda x: ((_text(x),), {})),
+            "pretty": widget(Pretty, lambda x: (tuple(_children(x)), {})),
+            "digits": widget(Digits, lambda x: ((_text(x) or "0",), {"id": _attr(x, "id")})),
+            "log": widget(Log),
+            "richlog": widget(RichLog),
         },
-        presentation.Tag.GRID.value: {
-            "grid": lambda x: Grid(*x.get('inner',[])),
+
+        presentation.Tag.INPUT.value: {
+            "select": widget(Select, lambda x: ((_options(x),), {"id": _attr(x, "id")})),
+            "text": widget(TextArea, lambda x: ((), {"id": _attr(x, "id"), "language": "python"})),
+            "input": widget(Input, lambda x: ((), {
+                "placeholder": _attr(x, "placeholder", ""),
+                "value": _attr(x, "value", ""),
+                "password": _attr(x, "type") == "password",
+                "id": _attr(x, "id"),
+            })),
+            "checkbox": widget(Checkbox, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
+            "masked": widget(MaskedInput, lambda x: ((), {"template": _attr(x, "placeholder", ""), "id": _attr(x, "id")})),
+            "option": widget(OptionList, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")})),
+            "switch": widget(Switch, lambda x: ((), {"value": _bool_attr(x, "value"), "id": _attr(x, "id")})),
+            "radio": widget(RadioButton, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
+            "radioset": widget(RadioSet, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")})),
+            "selectionlist": widget(SelectionList, lambda x: ((_options(x),), {"id": _attr(x, "id")})),
+            "progress": widget(ProgressBar),
         },
+
+        presentation.Tag.ACTION.value: {
+            "action": widget(Button, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
+            "button": widget(Button, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
+            "link": widget(Link, lambda x: ((_text(x) or _attr(x, "href", ""),), {"url": _attr(x, "href", "#")})),
+        },
+
         presentation.Tag.CONTAINER.value: {
-            "container": lambda x: Container(*x.get('inner',[])),
-        }
+            "container": widget(Container, lambda x: (tuple(_children(x)), {})),
+            "loading": widget(LoadingIndicator, style=False),
+            "placeholder": widget(Placeholder),
+        },
+
+        presentation.Tag.ROW.value: {
+            "row": widget(HorizontalGroup, lambda x: (tuple(_children(x)), {})),
+        },
+        presentation.Tag.COLUMN.value: {
+            "column": widget(Vertical, lambda x: (tuple(_children(x)), {})),
+        },
+        presentation.Tag.STACK.value: {
+            # Textual non ha un widget "Stack" nativo: ContentSwitcher mostra
+            # un solo figlio per volta, comportamento equivalente a uno stack.
+            "stack": widget(ContentSwitcher, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")})),
+        },
+
+        presentation.Tag.DIVIDER.value: {
+            "divider": widget(Rule, style=False),
+            "horizontal": widget(Rule, style=False),
+        },
+
+        presentation.Tag.ICON.value: {
+            "icon": widget(Static, lambda x: ((_attr(x, "class", _attr(x, "name", "•")),), {}), style=False),
+        },
+
+        presentation.Tag.GROUP.value: {
+            "list": widget(ListView, lambda x: (tuple(ListItem(c) for c in _children(x)), {"id": _attr(x, "id")})),
+            "tab": _make_tabbed_content,
+            "tree": widget(Tree, lambda x: ((_attr(x, "label", "root"),), {"id": _attr(x, "id")})),
+            "directorytree": widget(DirectoryTree, lambda x: ((_attr(x, "path", "."),), {"id": _attr(x, "id")})),
+            "collapsible": widget(Collapsible, lambda x: (tuple(_children(x)), {"title": _attr(x, "title", "Toggle"), "id": _attr(x, "id")})),
+            "contentswitcher": widget(ContentSwitcher, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")})),
+        },
+
+        presentation.Tag.ACCORDION.value: {
+            "accordion": widget(Collapsible, lambda x: (tuple(_children(x)), {"title": _attr(x, "title", "Accordion"), "id": _attr(x, "id")})),
+        },
+
+        presentation.Tag.CARD.value: {
+            "card": _make_card,
+        },
+
+        presentation.Tag.MEDIA.value: {
+            # Un terminale non può riprodurre audio/video: mostriamo un
+            # segnaposto testuale invece di far fallire il render.
+            "media": widget(Static, lambda x: ((f"[media: {_attr(x, 'src', '?')}]",), {}), style=False),
+        },
+
+        presentation.Tag.GRID.value: {
+            "grid": widget(Grid, lambda x: (tuple(_children(x)), {})),
+            "sparkline": widget(Sparkline, lambda x: ((_parse_data(_attr(x, "data")),), {"id": _attr(x, "id")})),
+            "datatable": widget(DataTable),
+        },
     }
 
-
-    def __init__(self, defender:Defender, presenter:Presenter, messenger:Messenger, **constants):
+    def __init__(self, defender: Defender, presenter: Presenter, messenger: Messenger, **constants):
         """
-        Inizializza l'adapter Textual
-        
+        Inizializza l'adapter Textual.
+
         Args (via dependency injection dal container):
             defender: Manager per autenticazione/autorizzazione
             messenger: Manager per messaggistica
@@ -195,82 +441,50 @@ class Adapter(presentation.Port):
         self.defender = defender
         self.presenter = presenter
         self.initialize()
-        # Stato TUI
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.active_screens: Dict[str, 'TUIScreen'] = {}
+        self.widgets = DomRegistry()  # registro dei widget live, per id
         self.app = AppDinamica(self)
-    
-    async def start(self):
-        """
-        Avvia l'applicazione TUI
-        Equivalente di Starlette server.serve()
-        
-        Returns:
-            Coroutine per esecuzione async
-        """
-        self.session = await self.defender.session_create()
 
-        # Restituisci il coroutine di esecuzione (come fa Starlette)
+    async def start(self):
+        """Avvia l'applicazione TUI (equivalente di Starlette server.serve())."""
+        self.session = await self.defender.session_create()
         await self.parse_route()
         return self.app.run_async()
-    
+
     def mount_css(self, css_content: str) -> None:
-        """
-        Inietta lo stile nell'applicazione.
-        Nel web mappa su un file CSS. In Textual, carichiamo le regole nel foglio di stile dell'App.
-        """
+        """Inietta lo stile nell'applicazione."""
         if self.app:
-            # Textual permette di iniettare stringhe CSS dinamicamente
             self.app.parse_stylesheet(css_content)
 
-    async def mount_view(self,url):
+    async def mount_view(self, url):
         xml_view = await self.presenter.get_view(self.routes['/']['GET']['view'])
         return await self.render_template(text=xml_view)
 
-    async def render_view(self,url):
-        print("Mounting view...",self.routes)
+    async def render_view(self, url):
         screen = await self.mount_view(url=url)
         self.app.push_screen(screen)
-    
+
     async def mount_route(self, routes):
         for path, methods_dict in self.routes.items():
             for method, data in methods_dict.items():
-                typee = data.get('type')
-                # method = data.get('method')
-                view = data.get('view')
-
-                # Associa il path alla view (utile per debug o reverse lookup)
-                self.views[path] = view
-
-                #routes.append(r)
+                self.views[path] = data.get('view')
 
     async def authenticate(self, session: Dict[str, Any], **credentials) -> Dict[str, Any]:
-        """
-        Autentica un utente
-        Delegato al defender manager
-        """
         if self.defender:
             return await self.defender.authenticate(session, **credentials)
         return {"success": False, "errors": ["Autenticazione non disponibile"]}
-    
+
     async def terminate(self, session: Dict[str, Any], **credentials) -> Dict[str, Any]:
-        """
-        Termina una sessione
-        Delegato al defender manager
-        """
         if self.defender:
             return await self.defender.terminate(session, **credentials)
         return {"success": True}
-    
+
     async def activate(self, session: Dict[str, Any], **credentials) -> Dict[str, Any]:
-        """
-        Attiva un nuovo account
-        Delegato al defender manager
-        """
         if self.defender:
             return await self.defender.activate(session, **credentials)
         return {"success": False, "errors": ["Attivazione non disponibile"]}
-    
+
     async def rebuild(self, session: Dict[str, Any], **credentials):
         pass
 
@@ -279,26 +493,129 @@ class Adapter(presentation.Port):
         content = await self.presenter.get_view(file_path)
         await self.executor.add_file(file_path, content)
         self.executor.interpreter.runner.emit(sid, file_path, event_name)
-    
-    def node_create(self, tag, attrs={}, inner=[]):
-        #inner =  [f for f in inner if not isinstance(f, str) and tag == ]
-        # Se tag è una funzione (es. un componente funzionale/lambda)
-        if callable(tag) and type(tag).__name__ == "function":
-            return tag({"inner": inner, "attrs": attrs})
-        # Altrimenti trattalo come un elemento htpy standard
-        #children = [Markup(i) for i in inner] if isinstance(inner, list) else Markup(inner or "")
-        raise NotImplementedError("node_create è stato deprecato. Usa node_create2 per creare widget Textual direttamente da tag DSL.")
 
-    def node_union(self, node, context: Dict[str, Any]):
+    def node_create(self, tag, attrs={}, inner=[]):
         """
-        Unisce nodi DSL con contesto
-        Implementa l'interfaccia di presentation.port
+        Chiamato da mount_tag() come: self.node_create(elemento, new_attrs, inner)
+        dove `elemento` è il lambda selezionato da self.tags[tag][tipo].
+
+        Oltre a costruire il widget, lo registra in self.widgets (se ha un
+        id), così node_update()/dom_*() potranno trovarlo in seguito senza
+        dover ripercorrere l'albero XML.
         """
+        if not (callable(tag) and type(tag).__name__ == "function"):
+            raise NotImplementedError("node_create è stato deprecato. Usa node_create2 per creare widget Textual direttamente da tag DSL.")
+        instance = tag({"inner": inner, "attrs": attrs})
+        return self.widgets.register(attrs.get("id"), instance)
+
+    def node_union(self, node: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Unisce un nodo descrittore ({'attrs': {...}, 'inner': [...]}) con un
+        contesto di override, producendo un nuovo descrittore pronto per
+        node_create() o node_update().
+
+        - Gli 'attrs' di `context` sovrascrivono (in merge, chiave per chiave)
+          quelli di `node`.
+        - 'inner', se presente in `context`, SOSTITUISCE quello di `node`
+          (sono liste posizionali di figli: non esiste una chiave su cui
+          fare merge parziale in modo sensato — è compito del chiamante
+          fornire la lista completa e già aggiornata).
+
+        Operazione puramente sui dati (nessun widget live viene toccato):
+        serve a comporre l'aggiornamento PRIMA di applicarlo con node_update().
+        """
+        node = node or {}
+        context = context or {}
+        return {
+            "attrs": {**node.get("attrs", {}), **context.get("attrs", {})},
+            "inner": context["inner"] if "inner" in context else node.get("inner", []),
+        }
+
+    async def node_update(self, node, context: Dict[str, Any] = None):
+        """
+        Applica un aggiornamento a un widget Textual GIÀ MONTATO (patch in
+        place), invece di ricostruirlo da zero. `context` ha la stessa forma
+        di un nodo DSL: {'attrs': {...}, 'inner': [...]}.
+
+        Aggiorna, se applicabile al widget:
+          1. Stile     -> tramite attrs()
+          2. Testo     -> tramite widget.update(...) se il widget lo espone
+                          (Label, Static, Markdown, Digits, ...)
+          3. Figli     -> tramite remove_children()+mount() se il widget è
+                          un container già montato (Container, Vertical, ...)
+
+        È async perché il montaggio/smontaggio di figli in Textual lo è.
+        Se un tipo di widget deve cambiare del tutto (non solo il suo
+        contenuto), usare dom_replace() invece: node_update() patcha
+        un'istanza esistente, non può trasformarla in un'altra classe.
+        """
+        descriptor = self.node_union({"attrs": {}, "inner": []}, context or {})
+        new_attrs = descriptor["attrs"]
+        new_children = [c for c in descriptor["inner"] if not isinstance(c, str)]
+        new_text = "".join(c for c in descriptor["inner"] if isinstance(c, str))
+
+        # 1. Stile
+        if new_attrs:
+            attrs(node, new_attrs)
+
+        # 2. Testo (widget "foglia" con update(), es. Label/Static/Markdown/Digits)
+        if new_text and hasattr(node, "update") and callable(getattr(node, "update", None)):
+            try:
+                node.update(new_text)
+            except Exception as e:
+                print(f"[node_update] update() fallito su {node!r}: {e}")
+
+        # 3. Figli (container già montato)
+        if new_children and hasattr(node, "remove_children") and hasattr(node, "mount"):
+            try:
+                await node.remove_children()
+                await node.mount(*new_children)
+            except Exception as e:
+                print(f"[node_update] impossibile aggiornare i figli di {node!r}: {e}")
+
         return node
-    
-    def node_update(self, node, context: Dict[str, Any]):
+
+    # ------------------------------------------------------------------
+    # Funzioni di manipolazione del DOM live, costruite sopra node_update()
+    # e sul registro self.widgets. Pensate per il meccanismo di `bind`
+    # (rebuild via WebSocket) già presente in presentation.render_node().
+    # ------------------------------------------------------------------
+
+    def dom_get(self, widget_id: str):
+        """Restituisce il widget Textual live con quell'id, o None."""
+        return self.widgets.get(widget_id)
+
+    async def dom_update(self, widget_id: str, context: Dict[str, Any]):
+        """Applica node_update() al widget live con quell'id."""
+        node = self.dom_get(widget_id)
+        if node is None:
+            print(f"[dom_update] Nessun widget live con id '{widget_id}'")
+            return None
+        return await self.node_update(node, context)
+
+    async def dom_replace(self, widget_id: str, tag: str, attrs_dict: Dict[str, Any] = None, inner: List[Any] = None):
         """
-        Aggiorna nodi con nuovo contesto
-        Implementa l'interfaccia di presentation.port
+        Sostituisce completamente il widget con quell'id: lo smonta e monta
+        un widget nuovo al suo posto. Usare quando cambia il TIPO di widget
+        (es. da <text> a <input>), non solo il suo contenuto — in quel caso
+        node_update()/dom_update() bastano e sono più economici.
         """
-        return node
+        old = self.dom_get(widget_id)
+        new_attrs = dict(attrs_dict or {})
+        new_attrs.setdefault("id", widget_id)
+        new_widget = self.mount_tag(tag, new_attrs, inner or [])
+
+        if old is not None and getattr(old, "parent", None) is not None:
+            parent = old.parent
+            await old.remove()
+            await parent.mount(new_widget)
+
+        self.widgets.register(widget_id, new_widget)
+        return new_widget
+
+    async def dom_remove(self, widget_id: str):
+        """Rimuove un widget dalla UI (se montato) e dal registro."""
+        node = self.dom_get(widget_id)
+        if node is not None and getattr(node, "parent", None) is not None:
+            await node.remove()
+        self.widgets.forget(widget_id)
