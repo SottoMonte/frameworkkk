@@ -31,6 +31,7 @@ name = "log"
 name = "source"
 path = "public/"
 watch = true
+message = "log"
 
 [[network.neural]]
 name = "decoder"

@@ -4,6 +4,10 @@ factory:repository := {
         "LOG": [
             "/tmp/{{filter.eq.filename}}",
             "/tmp",
+        ];
+        "SOURCE": [
+            "/tmp/{{filter.eq.filename}}",
+            "/tmp",
         ]
     };
     

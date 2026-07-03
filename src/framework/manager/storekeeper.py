@@ -23,6 +23,10 @@ class Manager:
         '''for repository in self.repositories:
             self.maked[repository] = Repository(**self.repositories[repository])'''
         await self.messenger.post(session, message="Storekeeper avviato.", domain="console:info")
+        for provider in self.persistences:
+            if hasattr(provider, 'start'):
+                await provider.start(session)
+        
 
     async def stop(self, session):
         await self.messenger.post(session, message="Storekeeper arrestato.", domain="console:info")
@@ -76,7 +80,7 @@ class Manager:
                         operations.append(task)
                     else:
                         #language.framework_log("DEBUG", f"Provider {provider} non ha un profilo trovato.", emoji="🔍")
-                        print(f"Provider {provider} non ha un profilo trovato.")
+                        print(f"Provider {provider} repository_name {repository_name} profile {profile} non ha un profilo trovato.")
                 except Exception as e:
                     #language.framework_log("ERROR", f"Errore imprevisto durante la preparazione per il provider {provider}: {e}", emoji="🤯")
                     return flow.error(f"Errore imprevisto durante la preparazione per il provider {provider}: {e}")
