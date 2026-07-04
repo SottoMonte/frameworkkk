@@ -18,7 +18,7 @@ from textual.widgets import (
     Log, RichLog, Digits, Placeholder, MarkdownViewer,
 )
 from rich.text import Text
-from textual.screen import Screen
+from textual.screen import Screen, ModalScreen
 from textual.binding import Binding
 
 
@@ -41,16 +41,55 @@ def _attr(x: Dict[str, Any], key: str, default=None):
     return x.get("attrs", {}).get(key, default)
 
 
+def _widget_text(w) -> str:
+    """
+    Estrae il testo "sorgente" da un widget Textual già costruito.
+
+    IMPORTANTE: NON si può usare widget.render() qui — richiede un'app
+    Textual attiva e solleva NoActiveAppError se il widget non è ancora
+    montato (come nel nostro caso: node_create() costruisce i widget
+    PRIMA che vengano montati). Anche str(widget) non aiuta: restituisce
+    solo la rappresentazione della classe (es. "Label()"), non il testo.
+
+    Gli attributi pubblici giusti, verificati sui widget Textual reali:
+      - Static/Label:                      .content
+      - Button/Checkbox/RadioButton:       .label
+
+    NOTA: alcuni widget (es. Checkbox) hanno ENTRAMBI gli attributi, ma
+    '.content' è vuoto e solo '.label' contiene il testo — per questo si
+    prova ogni attributo e si accetta solo il primo risultato non vuoto,
+    invece di fermarsi al primo attributo semplicemente presente.
+    """
+    for attr in ("content", "label", "renderable"):
+        value = getattr(w, attr, None)
+        if value is None:
+            continue
+        text = str(value)
+        if text:
+            return text
+    return str(w)
+
+
 def _children(x: Dict[str, Any]) -> List[Any]:
-    """Figli che sono widget già costruiti (esclude il testo grezzo)."""
-    return [f for f in x.get("inner", []) if not isinstance(f, str)]
+    """
+    Figli che sono widget da comporre inline: esclude il testo grezzo e le
+    Screen (es. un <Window type="modal"> annidato in un'altra vista).
+
+    Una Screen non va MAI composta come figlio dentro un Container/Column/
+    Row: Textual la gestisce tramite lo screen stack (push_screen/
+    pop_screen), non come nodo di un albero di widget. Resta comunque
+    registrata in self.widgets (node_create registra QUALSIASI nodo con un
+    id, Screen incluse) — recuperabile in seguito per essere mostrata
+    on-demand con Adapter.open_registered_modal(id).
+    """
+    return [f for f in x.get("inner", []) if not isinstance(f, str) and not isinstance(f, Screen)]
 
 
 def _text(x: Dict[str, Any]) -> str:
-    """Testo del nodo: concatena stringhe e il render() dei figli non testuali."""
+    """Testo del nodo: concatena stringhe e il testo dei figli non testuali."""
     parts = []
     for f in x.get("inner", []):
-        parts.append(f if isinstance(f, str) else str(getattr(f, "render", lambda: f)()))
+        parts.append(f if isinstance(f, str) else _widget_text(f))
     return "".join(parts)
 
 
@@ -64,7 +103,7 @@ def _bool_attr(x: Dict[str, Any], key: str, default: bool = False) -> bool:
 def _options(x: Dict[str, Any]) -> List[Tuple[str, int]]:
     """Coppie (etichetta, indice) per Select/SelectionList a partire dai figli."""
     return [
-        (f if isinstance(f, str) else str(getattr(f, "render", lambda: f)()), idx)
+        (f if isinstance(f, str) else _widget_text(f), idx)
         for idx, f in enumerate(x.get("inner", []))
     ]
 
@@ -142,8 +181,12 @@ def attrs(widget, attrs_dict: Dict[str, Any] = None):
         widget.styles.overflow_y = "auto"
     if "overflow" not in merged and "overflow-x" not in merged:
         widget.styles.overflow_x = "hidden"
-    if "height" not in merged:
-        widget.styles.height = "80%"
+    # NOTA: niente default di "height" qui. Un default percentuale (es. 80%)
+    # applicato a QUALSIASI widget si risolve a 0 quando il genitore ha
+    # height:auto (TabPane, Collapsible, ...) — causa esattamente il bug
+    # "il contenuto annidato è montato ma invisibile". Meglio lasciare che
+    # sia il widget Textual stesso a usare il proprio default (auto, 1fr,
+    # ecc.) a meno che il DSL non specifichi height esplicitamente.
 
     return widget
 
@@ -164,6 +207,42 @@ def widget(cls, build: Callable[[Dict[str, Any]], Tuple[tuple, dict]] = None, st
     return factory
 
 
+def _build(children: bool = False, text: bool = False, default_text: str = "", extra: Dict[str, Any] = None):
+    """
+    Genera una funzione build(x) da passare a widget(), coprendo i due
+    pattern più comuni nel dizionario `tags`:
+
+      - children=True: passa i widget figli come argomenti posizionali
+        (es. Container(*figli), Grid(*figli), ...)
+      - text=True: passa il testo del nodo come unico argomento posizionale
+        (es. Button(testo), Checkbox(testo), ...)
+
+    `extra` aggiunge kwargs statici o dinamici (funzioni x -> valore), utile
+    per widget che hanno bisogno di un attributo specifico oltre a id/testo/
+    figli (es. {"language": "python"} o {"value": lambda x: _bool_attr(...)}).
+
+    kwargs include sempre {"id": _attr(x, "id")} come base.
+    """
+    extra = extra or {}
+
+    def build(x):
+        kwargs = {"id": _attr(x, "id")}
+        for key, value in extra.items():
+            kwargs[key] = value(x) if callable(value) else value
+        if children:
+            return tuple(_children(x)), kwargs
+        if text:
+            return (_text(x) or default_text,), kwargs
+        return (), kwargs
+
+    return build
+
+
+def _collapsible(default_title: str):
+    """Collapsible con titolo di default diverso (usato da <group type="collapsible"> e <accordion>)."""
+    return widget(Collapsible, _build(children=True, extra={"title": lambda x: _attr(x, "title", default_title)}))
+
+
 class XmlScreen(Screen):
     """Una schermata che si auto-costruisce leggendo un file XML."""
 
@@ -177,6 +256,52 @@ class XmlScreen(Screen):
         yield Header()
         yield Container(*self.inner)
         yield Footer()
+
+
+class XmlModalScreen(ModalScreen):
+    """
+    Variante modale di XmlScreen: si sovrappone alla schermata corrente
+    (sfondo attenuato, contenuto centrato) invece di sostituirla. Si apre
+    con Adapter.open_modal()/open_registered_modal() e si chiude con
+    Adapter.close_modal(), con ESC, o con un bottone click="modal:close".
+
+    NOTA: ModalScreen di Textual NON lega ESC alla chiusura di default
+    (verificato nel sorgente: le sue BINDINGS coprono solo focus/copia) —
+    va aggiunto esplicitamente, da qui il binding sotto.
+
+    Niente Header/Footer: una modale è tipicamente un riquadro di dialogo,
+    non un'intera schermata applicativa.
+    """
+
+    BINDINGS = [Binding("escape", "dismiss_modal", "Chiudi", show=False)]
+
+    DEFAULT_CSS = """
+    XmlModalScreen {
+        align: center middle;
+    }
+    XmlModalScreen > Container {
+        width: auto;
+        height: auto;
+        max-width: 80%;
+        max-height: 80%;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, inner: str, title: str = "", sub_title: str = "", **kwargs):
+        super().__init__(**kwargs)
+        self.inner = inner
+        self.title = title
+        self.sub_title = sub_title
+
+    def compose(self) -> ComposeResult:
+        yield Container(*self.inner)
+
+    async def action_dismiss_modal(self) -> None:
+        """Chiude questa modale (Screen.dismiss() la rimuove dallo screen stack)."""
+        await self.dismiss()
 
 
 class AppDinamica(App):
@@ -203,41 +328,60 @@ class AppDinamica(App):
             return self.adapter.DOM[widget_id]
         return None
 
+    def _dsl_attrs(self, widget_id: Optional[str]):
+        """Attributi DSL originali (click/submit/...) del nodo con quell'id, o None."""
+        w = self._dom_widget(widget_id)
+        return self.adapter.presenter.estrai_attributi_tag(w) if w is not None else None
+
+    def _log_change(self, kind: str, widget_id: Optional[str], value) -> None:
+        """Log generico per i widget "*.Changed" che non hanno ancora una logica dedicata."""
+        if self._dom_widget(widget_id) is not None:
+            print(f"{kind} {widget_id} cambiato a: {value}")
+
     async def on_mount(self) -> None:
         await self.adapter.render_view(url="/")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
-        w = self._dom_widget(event.button.id)
-        if w is not None:
-            attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
-            await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['click'], message=str(event.button.id))
+        a = self._dsl_attrs(event.button.id)
+        click = a.get('click') if a else None
 
-    async def on_input_changed(self, event: Input.Changed) -> None:
-        if self._dom_widget(event.input.id) is not None:
-            print(f"Input {event.input.id} modificato: {event.value}")
+        # Scorciatoie riservate al prefisso "modal:", gestite direttamente
+        # qui invece che tramite il messenger (sono pura UI, non logica
+        # applicativa):
+        #   - "modal:close"       -> chiude la modale corrente
+        #   - "modal:open:<id>"   -> apre la modale registrata con quell'id
+        #                            (un <Window type="modal"> annidato
+        #                            nella stessa vista)
+        if click == "modal:close":
+            self.adapter.close_modal()
+            return
+        if click and click.startswith("modal:open:"):
+            modal_id = click.split(":", 2)[2]
+            await self.adapter.open_registered_modal(modal_id)
+            return
+
+        if click:
+            await self.adapter.messenger.post(self.adapter.session, domain=click, message=str(event.button.id))
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
-        w = self._dom_widget(event.input.id)
-        if w is not None:
-            attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
-            if 'submit' in attrs_tag:
-                await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['submit'], message=str(event.value))
+        a = self._dsl_attrs(event.input.id)
+        if a and 'submit' in a:
+            await self.adapter.messenger.post(self.adapter.session, domain=a['submit'], message=str(event.value))
+
+    async def on_input_changed(self, event: Input.Changed) -> None:
+        self._log_change("Input", event.input.id, event.value)
 
     async def on_select_changed(self, event: Select.Changed) -> None:
-        if self._dom_widget(event.select.id) is not None:
-            print(f"Select {event.select.id} cambiata a: {event.value}")
+        self._log_change("Select", event.select.id, event.value)
 
     async def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        if self._dom_widget(event.checkbox.id) is not None:
-            print(f"Checkbox {event.checkbox.id} impostata a: {event.value}")
+        self._log_change("Checkbox", event.checkbox.id, event.value)
 
     async def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
-        if self._dom_widget(event.radio_set.id) is not None:
-            print(f"RadioSet {event.radio_set.id} cambiato: {event.pressed}")
+        self._log_change("RadioSet", event.radio_set.id, event.pressed)
 
     async def on_switch_changed(self, event: Switch.Changed) -> None:
-        if self._dom_widget(event.switch.id) is not None:
-            print(f"Switch {event.switch.id} impostato a: {event.value}")
+        self._log_change("Switch", event.switch.id, event.value)
 
     async def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
         print(f"Tab attivata: {event.tab.id}")
@@ -270,7 +414,7 @@ def _make_tabbed_content(x: Dict[str, Any]):
 def _make_card(x: Dict[str, Any]):
     """Container con bordo titolato: border_title è una proprietà d'istanza,
     non un parametro del costruttore, quindi va impostata dopo la creazione."""
-    card = widget(Container, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")}))(x)
+    card = widget(Container, _build(children=True))(x)
     title = _attr(x, "title")
     if title:
         card.border_title = title
@@ -323,21 +467,25 @@ class Adapter(presentation.Port):
     tags = {
         presentation.Tag.WINDOW.value: {
             "window": lambda x: XmlScreen(_children(x), _attr(x, "title", "App"), _attr(x, "subtitle", "")),
+            "modal": lambda x: XmlModalScreen(_children(x), _attr(x, "title", ""), _attr(x, "subtitle", "")),
         },
 
         presentation.Tag.NAVIGATION.value: {
-            "navigation": widget(Static, lambda x: (tuple(x.get("inner", [])), {"id": _attr(x, "id", "nav")})),
+            # Static è un widget "foglia" (un solo renderable, niente figli
+            # montabili): usare Container qui faceva sì che i widget annidati
+            # (es. <Text> dentro <Navigation>) non venissero mai mostrati.
+            "navigation": widget(Container, _build(children=True, extra={"id": lambda x: _attr(x, "id", "nav")})),
             "tabs": widget(Tabs, lambda x: (
-                tuple(Tab(f if isinstance(f, str) else str(f)) for f in x.get("inner", [])),
+                tuple(Tab(f if isinstance(f, str) else _widget_text(f)) for f in x.get("inner", [])),
                 {"id": _attr(x, "id")},
             )),
         },
 
         presentation.Tag.TEXT.value: {
-            "text": widget(Label, lambda x: ((Text(_text(x)),), {})),
-            "markdown": widget(Markdown, lambda x: ((_text(x),), {})),
-            "markdownviewer": widget(MarkdownViewer, lambda x: ((_text(x),), {})),
-            "pretty": widget(Pretty, lambda x: (tuple(_children(x)), {})),
+            "text": widget(Label, lambda x: ((Text(_text(x)),), {"id": _attr(x, "id")})),
+            "markdown": widget(Markdown, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
+            "markdownviewer": widget(MarkdownViewer, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
+            "pretty": widget(Pretty, _build(children=True)),
             "digits": widget(Digits, lambda x: ((_text(x) or "0",), {"id": _attr(x, "id")})),
             "log": widget(Log),
             "richlog": widget(RichLog),
@@ -354,10 +502,10 @@ class Adapter(presentation.Port):
             })),
             "checkbox": widget(Checkbox, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
             "masked": widget(MaskedInput, lambda x: ((), {"template": _attr(x, "placeholder", ""), "id": _attr(x, "id")})),
-            "option": widget(OptionList, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")})),
+            "option": widget(OptionList, _build(children=True)),
             "switch": widget(Switch, lambda x: ((), {"value": _bool_attr(x, "value"), "id": _attr(x, "id")})),
             "radio": widget(RadioButton, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
-            "radioset": widget(RadioSet, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")})),
+            "radioset": widget(RadioSet, _build(children=True)),
             "selectionlist": widget(SelectionList, lambda x: ((_options(x),), {"id": _attr(x, "id")})),
             "progress": widget(ProgressBar),
         },
@@ -369,21 +517,21 @@ class Adapter(presentation.Port):
         },
 
         presentation.Tag.CONTAINER.value: {
-            "container": widget(Container, lambda x: (tuple(_children(x)), {})),
+            "container": widget(Container, _build(children=True)),
             "loading": widget(LoadingIndicator, style=False),
             "placeholder": widget(Placeholder),
         },
 
         presentation.Tag.ROW.value: {
-            "row": widget(HorizontalGroup, lambda x: (tuple(_children(x)), {})),
+            "row": widget(HorizontalGroup, _build(children=True)),
         },
         presentation.Tag.COLUMN.value: {
-            "column": widget(Vertical, lambda x: (tuple(_children(x)), {})),
+            "column": widget(Vertical, _build(children=True)),
         },
         presentation.Tag.STACK.value: {
             # Textual non ha un widget "Stack" nativo: ContentSwitcher mostra
             # un solo figlio per volta, comportamento equivalente a uno stack.
-            "stack": widget(ContentSwitcher, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")})),
+            "stack": widget(ContentSwitcher, _build(children=True)),
         },
 
         presentation.Tag.DIVIDER.value: {
@@ -400,12 +548,12 @@ class Adapter(presentation.Port):
             "tab": _make_tabbed_content,
             "tree": widget(Tree, lambda x: ((_attr(x, "label", "root"),), {"id": _attr(x, "id")})),
             "directorytree": widget(DirectoryTree, lambda x: ((_attr(x, "path", "."),), {"id": _attr(x, "id")})),
-            "collapsible": widget(Collapsible, lambda x: (tuple(_children(x)), {"title": _attr(x, "title", "Toggle"), "id": _attr(x, "id")})),
-            "contentswitcher": widget(ContentSwitcher, lambda x: (tuple(_children(x)), {"id": _attr(x, "id")})),
+            "collapsible": _collapsible("Toggle"),
+            "contentswitcher": widget(ContentSwitcher, _build(children=True)),
         },
 
         presentation.Tag.ACCORDION.value: {
-            "accordion": widget(Collapsible, lambda x: (tuple(_children(x)), {"title": _attr(x, "title", "Accordion"), "id": _attr(x, "id")})),
+            "accordion": _collapsible("Accordion"),
         },
 
         presentation.Tag.CARD.value: {
@@ -419,7 +567,7 @@ class Adapter(presentation.Port):
         },
 
         presentation.Tag.GRID.value: {
-            "grid": widget(Grid, lambda x: (tuple(_children(x)), {})),
+            "grid": widget(Grid, _build(children=True)),
             "sparkline": widget(Sparkline, lambda x: ((_parse_data(_attr(x, "data")),), {"id": _attr(x, "id")})),
             "datatable": widget(DataTable),
         },
@@ -464,6 +612,60 @@ class Adapter(presentation.Port):
     async def render_view(self, url):
         screen = await self.mount_view(url=url)
         self.app.push_screen(screen)
+
+    async def open_modal(self, view_path: str, **context):
+        """
+        Costruisce la vista XML in `view_path` (che deve contenere un
+        <Window type="modal">, altrimenti mount_tag produce una XmlScreen
+        normale) e la mostra sopra la schermata corrente.
+
+        `context` viene passato al template Jinja della vista, come già
+        fa render_template() per le viste normali.
+
+        Usare per modali definite in un FILE XML SEPARATO. Se la modale è
+        invece annidata nello stesso file della pagina corrente (come
+        <Window type="modal"> figlio di <Window type="page">), è già stata
+        costruita e registrata durante il rendering della pagina: usare
+        open_registered_modal() invece, che non ricarica nulla da disco.
+        """
+        xml_view = await self.presenter.get_view(view_path)
+        modal = await self.render_template(text=xml_view, **context)
+        await self.app.push_screen(modal)
+        return modal
+
+    async def open_registered_modal(self, modal_id: str):
+        """
+        Ricostruisce e mostra come modale il <Window type="modal"> con
+        quell'id, definito inline nella stessa vista.
+
+        IMPORTANTE: ricostruisce SEMPRE un'istanza nuova a partire dal suo
+        XML grezzo (già disponibile in self.DOM, popolato durante il primo
+        rendering della pagina) invece di riusare il widget costruito in
+        precedenza. In Textual una Screen non è pensata per essere spinta
+        sullo screen stack più di una volta: dopo pop_screen() i suoi
+        widget interni restano "già montati" internamente, e ripresentare
+        la stessa istanza causa un blocco invece di un errore pulito.
+        Ricostruire da zero ad ogni apertura è il pattern corretto — è
+        esattamente lo stesso approccio già usato da open_modal() per le
+        modali caricate da file esterno, solo che qui il testo XML non
+        viene letto da disco ma da self.DOM.
+        """
+        xml_fragment = self.DOM.get(modal_id)
+        if xml_fragment is None:
+            print(f"[open_registered_modal] Nessun nodo con id '{modal_id}' in DOM")
+            return None
+        modal = await self.render_template(text=xml_fragment)
+        await self.app.push_screen(modal)
+        return modal
+
+    def close_modal(self) -> None:
+        """
+        Chiude la modale corrente, se ce n'è una in cima allo stack.
+        Non fa nulla se la schermata attiva non è una modale (evita di
+        chiudere per errore la schermata principale).
+        """
+        if isinstance(self.app.screen, ModalScreen):
+            self.app.pop_screen()
 
     async def mount_route(self, routes):
         for path, methods_dict in self.routes.items():

@@ -1,58 +1,44 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Window type="page" title="Omniport" background="#fdfbf7,#f5f2eb" font="sans">
-    
-    <!-- Navbar 
-    <Navigation width="full" background="#1a365d" padding="15px,40px" shadow="medium">
-        <Row justify="between" align="center">
-            <Row align="center" spacing="12px">
-                <Icon name="bi-file-earmark-text-fill" size="28px" color="#ffd700" />
-                <Column>
-                    <Text type="h4" font="extrabold" color="#ffffff" spacing="1px">CARTOLERIA IRPINA</Text>
-                    <Text size="12px" color="#ffd700" uppercase="true" font="bold">Avellino &amp; Provincia</Text>
-                </Column>
-            </Row>
-            
-            <Row spacing="25px" align="center">
-                <Action type="link" route="/cartoleria"><Text color="#ffffff" font="bold">Home</Text></Action>
-                <Action type="link" route="#prodotti"><Text color="#cbd5e0">Prodotti</Text></Action>
-                <Action type="link" route="#servizi"><Text color="#cbd5e0">Servizi</Text></Action>
-                <Action type="button" background="#ffd700" radius="medium" padding="8px,20px">
-                    <Text color="#1a365d" font="bold">ORDINA ORA</Text>
-                </Action>
-            </Row>
-        </Row>
-    </Navigation>-->
-    <!-- <Text type="pre" height="10%">
-         ______ _   _ _____ 
-        |  ____| \ | |  __ \
-        | |__  |  \| | |  | |
-        |  __| | . ` | |  | |
-        | |____| |\  | |__| |
-        |______|_| \_|_____/ 
-    </Text>
+    <Window id="confirm_dialog" type="modal">
+        <Column>
+            <Text height="80%">Sei sicuro di voler continuare?</Text>
+            <Input type="text" id="confirm_input" placeholder="Scrivi qualcosa..." />
+        </Column>
+    </Window>
     <Row>
-        <Action type="button">
-            <Text color="#ffffff" font="bold">🎤VOCE</Text>
-        </Action>
-        <Input id="msg" submit="terminal:submit" placeholder="Scrivi qualcosa..." />
+        <Input  height="20px" width="10%" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select" >
+            <Text value="1">Macro</Text>
+            <Text value="1">Micro</Text>
+        </Input>
+        <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select" >
+            <Text value="1">py.py</Text>
+            <Text value="1">ggg.json</Text>
+            <Text value="1">onsol.dsl</Text>
+        </Input>
+        <Action id="close" width="50px" type="button" click="modal:open:confirm_dialog" ><Text>IA</Text></Action>
     </Row>
-    <Action id="close" type="button" click="terminal:close"></Action>
-    <Action id="asd" type="button" click="terminal:cmd.close"></Action>
-    <Input id="select" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select" >
-        <Text value="1">Opzione 1</Text>
-        <Text value="1">Opzione 2</Text>
-        <Text value="1">Opzione 3</Text>
-    </Input>
-    <Action id="close" type="button" click="terminal:close" height="10%"></Action>-->
-    <Group type="tab" height="50%">
-        <Text id="tab1">ciao</Text>
-        <Text id="tab2">tb2</Text>
-        
+    <Group type="tab" height="100%">
+        <Column id="application" width="100%">
+            <Input type="text" id="editor-application" height="88%" />
+            <Navigation type="tabs">
+                <Text id="sadss">main.py</Text>
+                <Text id="sa1dss">page.xml</Text>
+            </Navigation>
+        </Column>
+        <Column id="framework" width="100%">
+            <Input type="text" id="editor-framework" height="90%" />
+            <Navigation type="tabs">
+                <Text id="sadss">Terminal</Text>
+                <Text id="sa1dss">Terminal</Text>
+            </Navigation>
+        </Column>
+        <Column id="infrastructure" width="100%">
+            <Input type="text" id="editor-infrastructure" height="90%" />
+            <Navigation type="tabs">
+                <Text id="sadss">Terminal</Text>
+                <Text id="sa1dss">Terminal</Text>
+            </Navigation>
+        </Column>
     </Group>
-    <Navigation type="tabs" height="50%">
-        <Input id="code" type="text" height="100%">ciao</Input>
-        <Input id="code2" type="text" height="100%">ciao</Input>
-    </Navigation>
-    <Input id="code" type="text" height="100%"></Input>
-    
 </Window>
