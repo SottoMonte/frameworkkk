@@ -12,9 +12,9 @@
             <Text value="1">Micro</Text>
         </Input>
         <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select" >
-            <Text value="1">py.py</Text>
-            <Text value="1">ggg.json</Text>
-            <Text value="1">onsol.dsl</Text>
+            {% for item in terminal.dire %}
+                <Text value="{{ item }}">{{ item.name }}</Text>
+            {% endfor %}
         </Input>
         <Action id="stampa" width="50px" type="button" click="terminal:stampa" ><Text>DIR</Text></Action>
         <Action id="close" width="50px" type="button" click="modal:open:confirm_dialog" ><Text>IA</Text></Action>
