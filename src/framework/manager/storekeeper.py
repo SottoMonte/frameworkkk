@@ -90,10 +90,10 @@ class Manager:
     
     # overview/view/get
     async def overview(self, session, **constants):
-        #print("#####OVERVIEW#####",session,constants)
-        resultato = await self.preparation(session,storekeeper=constants)
-        repository,operations = flow.output(resultato)
-        return await self.executor.first_completed(operations=operations,success=repository.results)
+        state = await self.preparation(session,constants|{'operation':'view'})
+        repository,operations = flow.output(state)
+        #print(repository,operations)
+        return await self.orchestrator.first_completed(operations=operations,success=repository.results)
 
     # gather/read/get
     async def gather(self, session, storekeeper,**constants):

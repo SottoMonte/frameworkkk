@@ -16,6 +16,7 @@
             <Text value="1">ggg.json</Text>
             <Text value="1">onsol.dsl</Text>
         </Input>
+        <Action id="stampa" width="50px" type="button" click="terminal:stampa" ><Text>DIR</Text></Action>
         <Action id="close" width="50px" type="button" click="modal:open:confirm_dialog" ><Text>IA</Text></Action>
     </Row>
     <Group type="tab" height="100%">

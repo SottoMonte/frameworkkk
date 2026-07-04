@@ -373,10 +373,17 @@ class SessionHandle:
         """Attende il completamento di un nodo specifico."""
         await self._interp._runner.wait_node(self._sid, file, node)
 
-    @property
-    def context(self) -> Dict:
-        """Restituisce una view (non copia) del contesto corrente della sessione."""
-        return self._interp._runner.context(self._sid)
+    def context(self, file: str | None = None) -> Dict:
+        """
+        Restituisce il contesto della sessione.
+
+        Se viene specificato un file, restituisce solo il contesto relativo
+        a quel file.
+        """
+        if file is None:
+            return self._interp._runner.context(self._sid)
+
+        return self._interp._runner.get_file_context(self._sid, file)
 
     async def close(self) -> None:
         """Chiude la sessione e rilascia le risorse."""

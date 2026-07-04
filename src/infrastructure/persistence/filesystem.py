@@ -10,7 +10,7 @@ from framework.manager.messenger import Manager as Messenger
 
 
 class FileWatcherHandler(FileSystemEventHandler):
-    def __init__(self, adapter, session, loop):  # 🌟 Riceve il loop principale
+    def __init__(self, adapter, session, loop):
         self.adapter = adapter
         self.session = session
         self.loop = loop  
@@ -20,13 +20,11 @@ class FileWatcherHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if event.is_directory:
             return
-
         current_time = time.time()
         if current_time - self._last_modified_times.get(event.src_path, 0) < self._debounce_interval:
             return
         self._last_modified_times[event.src_path] = current_time
 
-        # 🌟 Usiamo in modo sicuro il loop principale salvato nell'__init__
         coro = self.adapter.handle_watcher_event(self.session, event.src_path)
         asyncio.run_coroutine_threadsafe(coro, self.loop)
 
@@ -47,10 +45,7 @@ class Adapter(persistence.Port):
 
     def _start_watcher(self, session, main_loop):
         print(f"👀 Avvio del watcher su '{self.path}'...")
-        
-        # Passiamo il loop principale recuperato in precedenza
         event_handler = FileWatcherHandler(adapter=self, session=session, loop=main_loop)
-        
         self.observer = Observer()
         self.observer.schedule(event_handler, path=self.path, recursive=True)
         self.observer.start()
@@ -73,11 +68,9 @@ class Adapter(persistence.Port):
                 pass
 
     def __del__(self):
-        # Evita che errori di garbage collection blocchino la chiusura
         if self.observer and self.observer.is_alive():
             self.stop_watcher()
 
-    # --- Gli altri metodi del framework rimangono invariati ---
     @flow.result()
     async def request(self, **constants):
         filename = constants.get('filter', {}).get('eq', {}).get('filename')
@@ -86,9 +79,76 @@ class Adapter(persistence.Port):
                 file.write(str(constants) + "\n")
         return flow.success(None)
 
+    # --- Operazioni CRUD standard di modello ---
     async def create(self, **constants): return await self.request(**{'method': 'POST'} | constants)
     async def delete(self, **constants): return await self.request(**{'method': 'DELETE'} | constants)
-    async def read(self, **constants): return await self.request(**{'method': 'GET'} | constants)
     async def update(self, **constants): return await self.request(**{'method': 'PUT'} | constants)
-    async def view(self, **constants): return await self.request(**{'method': 'GET'} | constants)
-    async def query(self, **constants): return await self.request(**{'method': 'GET'} | constants)
+    async def read(self, **constants): return await self.request(**{'method': 'GET'} | constants)
+
+    # --- Operazioni Infrastrutturali (View & Query) ---
+
+    @flow.result()
+    async def view(self, **constants):
+        """
+        Invocato da Manager.overview().
+        Raccoglie ricorsivamente tutto il contenuto del file system e delega a query il filtraggio.
+        """
+        if not self.path or not os.path.exists(self.path):
+            return flow.failure(f"La path '{self.path}' non esiste o non è valida.")
+
+        all_items = []
+        try:
+            for root, dirs, files in os.walk(self.path):
+                relative_root = os.path.relpath(root, self.path)
+                if relative_root == ".":
+                    relative_root = ""
+
+                # Estrazione directory
+                for d in dirs:
+                    all_items.append({
+                        "type": "directory",
+                        "name": d,
+                        "relative_path": os.path.join(relative_root, d),
+                        "absolute_path": os.path.join(root, d)
+                    })
+                
+                # Estrazione file
+                for f in files:
+                    all_items.append({
+                        "type": "file",
+                        "name": f,
+                        "relative_path": os.path.join(relative_root, f),
+                        "absolute_path": os.path.join(root, f)
+                    })
+            
+            # 🌟 Passiamo la lista completa e i costanti originari (con i filtri) al metodo query
+            return await self.query(dataset=all_items, **constants)
+            
+        except Exception as e:
+            return flow.failure(f"Errore durante l'ispezione della path: {str(e)}")
+
+    @flow.result()
+    async def query(self, **constants):
+        """
+        Esegue la logica di filtraggio sul dataset passato da view.
+        """
+        dataset = constants.get('dataset')
+        filters = constants.get('filter', {})
+
+        # Fallback se query viene invocato direttamente senza il dataset di view
+        if dataset is None:
+            return await self.request(**{'method': 'GET'} | constants)
+
+        filtered_items = dataset
+
+        # Filtro sul tipo: es. filter={"type": {"eq": "file"}} o {"type": {"eq": "directory"}}
+        type_filter = filters.get('type', {}).get('eq')
+        if type_filter:
+            filtered_items = [item for item in filtered_items if item['type'] == type_filter]
+
+        # Puoi estendere qui altri filtri (es. estensione file, substring nel nome ecc.)
+        name_filter = filters.get('name', {}).get('eq')
+        if name_filter:
+            filtered_items = [item for item in filtered_items if item['name'] == name_filter]
+
+        return flow.success(filtered_items)

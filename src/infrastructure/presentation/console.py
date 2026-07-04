@@ -607,7 +607,7 @@ class Adapter(presentation.Port):
 
     async def mount_view(self, url):
         xml_view = await self.presenter.get_view(self.routes['/']['GET']['view'])
-        return await self.render_template(text=xml_view)
+        return await self.render_template(self.session, controllers=[self.routes['/']['GET']['controller']],text=xml_view)
 
     async def render_view(self, url):
         screen = await self.mount_view(url=url)
@@ -629,7 +629,7 @@ class Adapter(presentation.Port):
         open_registered_modal() invece, che non ricarica nulla da disco.
         """
         xml_view = await self.presenter.get_view(view_path)
-        modal = await self.render_template(text=xml_view, **context)
+        modal = await self.render_template(text=xml_view, controllers=[self.routes[view_path]['GET']['controller']], **context)
         await self.app.push_screen(modal)
         return modal
 

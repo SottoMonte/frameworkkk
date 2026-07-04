@@ -474,15 +474,20 @@ class Port(Protocol):
             print(f"[!] Error: {e}")
             #raise e
 
-    async def render_template(self, text=None,file=None,**constants):
+    async def render_template(self, session, text=None,file=None, controllers=[], **constants):
         if text is None and file is None: raise Exception("No text or file provided")
         if text is None:
             text = await loader.resource(file)
 
         template = self.env.from_string(text)
-        session = await self.defender.session_create()
-        
-        #data = await session.run('tris')
+
+        data = {}
+
+        for controller in controllers:
+            data[controller] = session.context(controller)
+
+        await self.messenger.post(session, domain="console:info", message=data)
+
         try:
             #content = template.render(constants|{'tris':data})
             content = template.render(constants)
