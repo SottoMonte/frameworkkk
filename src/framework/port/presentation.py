@@ -486,11 +486,13 @@ class Port(Protocol):
         for controller in controllers:
             data[controller] = await session.run(controller,{'sid':session})
 
-        await self.messenger.post(session, domain="console:info", message=data)
+        managers = self.loader.get_managers()
+
+        #await self.messenger.post(session, domain="console:info", message=data)
 
         try:
             #content = template.render(constants|{'tris':data})
-            content = template.render(constants|data)
+            content = template.render(constants|data|{'manager': managers})
             xml = ET.fromstring(content)
             view = await self.render_node(text,xml,constants)
             return view

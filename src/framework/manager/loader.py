@@ -4,6 +4,7 @@ from graphlib import TopologicalSorter
 from collections import defaultdict
 from jinja2 import Environment, BaseLoader
 import tomli
+from pathlib import Path
 
 
 # ── Container ────────────────────────────────────────────────────────────────
@@ -279,9 +280,63 @@ class Loader:
             path = 'src/'+path
         return open(path, 'rb').read().decode()
 
+    
+    def file_dependencies(self, file_path: str, root: str = "src") -> list[str]:
+        """
+        Restituisce la lista dei file Python corrispondenti ai moduli importati.
+        """
+
+        try:
+            tree = ast.parse(Path(file_path).read_text(encoding="utf-8"))
+        except Exception:
+            return []
+
+        deps = set()
+        deps.add(file_path)  # Includi il file stesso come dipendenza
+
+        def add(path: Path):
+            if path.exists() and path.is_file():
+                deps.add(str(path))
+
+        for node in ast.walk(tree):
+
+            # import framework.service.flow
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    add(Path(root, *alias.name.split(".")).with_suffix(".py"))
+
+            # from ... import ...
+            elif isinstance(node, ast.ImportFrom):
+
+                if node.module is None:
+                    continue
+
+                base = Path(root, *node.module.split("."))
+
+                # Caso 1:
+                # from framework.manager.loader import Loader
+                # -> framework/manager/loader.py
+                module_file = base.with_suffix(".py")
+                if module_file.exists():
+                    add(module_file)
+                    continue
+
+                # Caso 2:
+                # from framework.port import presentation
+                # -> framework/port/presentation.py
+                for alias in node.names:
+                    if alias.name == "*":
+                        continue
+
+                    candidate = (base / alias.name).with_suffix(".py")
+                    if candidate.exists():
+                        add(candidate)
+
+        return sorted(deps)
+
     def get_managers(self) -> dict[str, Any]:
         """Restituisce un dizionario con 'nome_manager' -> Istanza."""
-        result = {}
+        result = {"loader": self}
         for cls in self._managers:
             instance = self.container.get(cls)
             if instance is not None:

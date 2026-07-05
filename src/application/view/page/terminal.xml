@@ -7,38 +7,43 @@
         </Column>
     </Window>
     <Row>
-        <Input  height="20px" width="10%" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select" >
-            <Text value="1">Macro</Text>
-            <Text value="1">Micro</Text>
-        </Input>
         <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select" >
             {% for item in terminal.dire %}
-                <Text value="{{ item }}">{{ item.name }}</Text>
+                <Text value="{{ item }}">{{ item.relative_path }}</Text>
             {% endfor %}
         </Input>
-        <Action id="stampa" width="50px" type="button" click="terminal:stampa" ><Text>DIR</Text></Action>
+        <Action id="stampa" width="50px" type="button" click="terminal:stampa" ><Text>CONFIG</Text></Action>
         <Action id="close" width="50px" type="button" click="modal:open:confirm_dialog" ><Text>IA</Text></Action>
     </Row>
     <Group type="tab" height="100%">
         <Column id="application" width="100%">
             <Input type="text" id="editor-application" height="88%" />
             <Navigation type="tabs">
-                <Text id="sadss">main.py</Text>
-                <Text id="sa1dss">page.xml</Text>
+                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
+                {% if item.startswith('src/application/') %}
+                <Text value="{{ item }}">{{ item }}</Text>
+                {% endif %}
+                {% endfor %}
             </Navigation>
         </Column>
         <Column id="framework" width="100%">
             <Input type="text" id="editor-framework" height="90%" />
             <Navigation type="tabs">
-                <Text id="sadss">Terminal</Text>
-                <Text id="sa1dss">Terminal</Text>
+                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
+                {% if item.startswith('src/framework/') %}
+                <Text value="{{ item }}">{{ item }}</Text>
+                {% endif %}
+                {% endfor %}
             </Navigation>
         </Column>
         <Column id="infrastructure" width="100%">
             <Input type="text" id="editor-infrastructure" height="90%" />
             <Navigation type="tabs">
-                <Text id="sadss">Terminal</Text>
-                <Text id="sa1dss">Terminal</Text>
+                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
+                {% if item.startswith('src/infrastructure/') %}
+                <Text value="{{ item }}">{{ item }}</Text>
+                {% endif %}
+                {% endfor %}
             </Navigation>
         </Column>
     </Group>

@@ -26,6 +26,7 @@ import framework.port.presentation as presentation
 from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
+from framework.manager.loader import Loader
 
 
 # ==========================================================================
@@ -573,11 +574,12 @@ class Adapter(presentation.Port):
         },
     }
 
-    def __init__(self, defender: Defender, presenter: Presenter, messenger: Messenger, **constants):
+    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, **constants):
         """
         Inizializza l'adapter Textual.
 
         Args (via dependency injection dal container):
+            loader: Manager per il caricamento delle risorse
             defender: Manager per autenticazione/autorizzazione
             messenger: Manager per messaggistica
             executor: Manager per esecuzione DSL
@@ -588,6 +590,7 @@ class Adapter(presentation.Port):
         self.messenger = messenger
         self.defender = defender
         self.presenter = presenter
+        self.loader = loader
         self.initialize()
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.active_screens: Dict[str, 'TUIScreen'] = {}
