@@ -756,8 +756,7 @@ class Adapter(presentation.Port):
         """
         descriptor = self.node_union({"attrs": {}, "inner": []}, context or {})
         new_attrs = descriptor["attrs"]
-        new_children = [c for c in descriptor["inner"] if not isinstance(c, str)]
-        new_text = "".join(c for c in descriptor["inner"] if isinstance(c, str))
+        new_text, new_children = presentation.split_text_and_children(descriptor["inner"])
 
         # 1. Stile
         if new_attrs:

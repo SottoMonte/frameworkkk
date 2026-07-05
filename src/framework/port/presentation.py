@@ -17,6 +17,41 @@ import pathlib
 
 import framework.service.flow as flow
 
+
+def split_text_and_children(inner=None):
+    """Separa testo e figli mantenendo l'ordine dei contenuti."""
+    text_parts = []
+    children = []
+    for item in inner or []:
+        if isinstance(item, str):
+            text_parts.append(item)
+        else:
+            children.append(item)
+    return "".join(text_parts), children
+
+
+def apply_text_and_children(target, text=None, children=None):
+    """Applica testo e figli a un elemento XML in modo centralizzato."""
+    if text is None and children is None:
+        return target
+
+    for child in list(target):
+        target.remove(child)
+
+    if text is not None:
+        target.text = str(text)
+        return target
+
+    if children is not None:
+        for child in children:
+            if isinstance(child, ET.Element):
+                target.append(child)
+            else:
+                target.text = str(child)
+
+    return target
+
+
 class Tag(Enum):
     WINDOW = "window"
     TEXT = "text"
