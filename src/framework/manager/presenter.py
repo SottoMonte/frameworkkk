@@ -2,6 +2,8 @@ import framework.port.presentation as presentation
 from framework.manager.loader import Loader
 
 import re
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 class Manager:
     def __init__(self, presentations: list[presentation.Port], loader:Loader, **constants):
@@ -68,3 +70,61 @@ class Manager:
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
             await driver.rebuild(node_id,session_id,context)
+
+    async def update_node(self, node_id, attrs=None, text=None, children=None):
+        """Aggiorna un nodo XML salvato nel DOM in memoria, senza tocciare il file fisico."""
+        driver = self._get_driver()
+        if driver is None:
+            raise RuntimeError("Nessun driver disponibile per aggiornare il DOM")
+
+        dom = getattr(driver, "DOM", None)
+        if not isinstance(dom, dict):
+            raise TypeError("Il driver deve esporre un attributo DOM come dizionario")
+
+        if node_id not in dom:
+            raise KeyError(f"Nodo con id '{node_id}' non trovato nel DOM")
+
+        xml_fragment = dom[node_id]
+        if isinstance(xml_fragment, ET.Element):
+            root = xml_fragment
+        else:
+            if isinstance(xml_fragment, bytes):
+                xml_fragment = xml_fragment.decode("utf-8")
+            root = ET.fromstring(f"<root>{xml_fragment}</root>")
+
+        target = root.find(f".//*[@id='{node_id}']")
+        if target is None:
+            if root.attrib.get("id") == node_id:
+                target = root
+            else:
+                raise KeyError(f"Nodo con id '{node_id}' non trovato nel DOM")
+
+        if attrs:
+            for key, value in attrs.items():
+                if value is None:
+                    target.attrib.pop(key, None)
+                else:
+                    target.attrib[key] = str(value)
+
+        if text is not None:
+            for child in list(target):
+                target.remove(child)
+            target.text = str(text)
+
+        if children is not None:
+            for child in list(target):
+                target.remove(child)
+            for child in children:
+                if isinstance(child, ET.Element):
+                    target.append(child)
+                else:
+                    target.text = str(child)
+
+        dom[node_id] = ET.tostring(target, encoding="unicode")
+
+        if hasattr(driver, "dom_update") and callable(getattr(driver, "dom_update")):
+            await driver.dom_update(node_id, {"attrs": attrs or {}, "inner": [text] if text is not None else []})
+        elif hasattr(driver, "apply_node_update") and callable(getattr(driver, "apply_node_update")):
+            await driver.apply_node_update(node_id, attrs=attrs, text=text, children=children)
+
+        return dom[node_id]

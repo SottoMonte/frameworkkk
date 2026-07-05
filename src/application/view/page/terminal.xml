@@ -1,19 +1,20 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <Window type="page" title="Omniport" background="#fdfbf7,#f5f2eb" font="sans">
     <Window id="confirm_dialog" type="modal">
         <Column>
-            <Text height="80%">Sei sicuro di voler continuare?</Text>
-            <Input type="text" id="confirm_input" placeholder="Scrivi qualcosa..." />
+            
+            <Input type="text" id="confirm_input" placeholder="Scrivi qualcosa..."></Input>
         </Column>
     </Window>
+    <Text id="confirm_text" height="80%">Sei sicuro di voler continuare?</Text>
     <Row>
-        <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select" >
+        <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select">
             {% for item in terminal.dire %}
                 <Text value="{{ item }}">{{ item.relative_path }}</Text>
             {% endfor %}
         </Input>
-        <Action id="stampa" width="50px" type="button" click="terminal:stampa" ><Text>CONFIG</Text></Action>
-        <Action id="close" width="50px" type="button" click="modal:open:confirm_dialog" ><Text>IA</Text></Action>
+        <Action id="stampa" width="50px" type="button" click="terminal:new"><Text>CONFIG</Text></Action>
+        <Action id="close" width="50px" type="button" click="modal:open:confirm_dialog"><Text>IA</Text></Action>
     </Row>
     <Group type="tab" height="100%">
         <Column id="application" width="100%">
