@@ -114,6 +114,7 @@ def node(name: str, fn: Callable, **kw):
         "on_success":  kw.get("on_success"),
         "on_error":    kw.get("on_error"),
         "on_end":      kw.get("on_end"),
+        "entry": kw.get("entry", True),
     }
 
 # ── DSL ───────────────────────────────────────────────────────────────────────
@@ -405,9 +406,31 @@ class DagRunner:
             await self.start()
 
         # Enqueue i root node
+        '''for n in self.graphs[fname].nodes:
+            if self.graphs[fname].in_degree(n) == 0 and self.nodes[fname][n].get("entry", True):
+                self.queue.put_nowait((sid, fname, n))'''
+        
+        # Enqueue root nodes (bootstrap del DAG)
         for n in self.graphs[fname].nodes:
+            nd = self.nodes[fname][n]
+
+            # solo nodi root
             if self.graphs[fname].in_degree(n) == 0:
-                self.queue.put_nowait((sid, fname, n))
+
+                # ❌ nodo non avviabile → skip silenzioso o warning
+                if (
+                    not nd.get("entry", True)
+                    and not nd.get("trigger")
+                    and not nd.get("schedule")
+                ):
+                    # opzionale debug
+                    # print(f"[WARN] Node '{n}' is unreachable (entry=False, no trigger, no schedule)")
+                    continue
+
+                # ✅ solo entry nodes partono automaticamente
+                if nd.get("entry", True):
+                    self.queue.put_nowait((sid, fname, n))
+
 
         # Aspetta solo i nodi one-shot (senza schedule)
         one_shot = [
@@ -415,7 +438,7 @@ class DagRunner:
             for n in self.nodes[fname]
             if not self.nodes[fname][n].get("schedule")
         ]
-
+        
         if one_shot:
             await asyncio.gather(*one_shot)
         else:

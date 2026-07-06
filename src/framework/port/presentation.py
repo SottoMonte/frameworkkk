@@ -355,6 +355,12 @@ class Port(Protocol):
     async def node_union(self, node, context):
         pass
 
+    def node_get(self, id: str):
+        """Restituisce il widget DSL corrispondente a un id, se presente nel DOM."""
+        if id and id in self.DOM:
+            return self.DOM[id]
+        return None
+
     @abstractmethod
     async def rebuild(self, node_id, view=None, context=dict()):
         pass
@@ -456,7 +462,7 @@ class Port(Protocol):
 
         try:
             #content = template.render(constants|{'tris':data})
-            content = template.render(constants|data|{'manager': managers})
+            content = template.render(constants|{'sid':session}|data|{'manager': managers})
             xml = ET.fromstring(content)
             view = await self.render_node(text,xml,constants)
             return view

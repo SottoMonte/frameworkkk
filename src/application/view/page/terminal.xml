@@ -13,7 +13,7 @@
                 <Text value="{{ item }}">{{ item.relative_path }}</Text>
             {% endfor %}
         </Input>
-        <Action id="stampa" width="50px" type="button" click="terminal:new"><Text>CONFIG</Text></Action>
+        <Action id="stampa" width="50px" type="button" click="terminal:stampa"><Text>CONFIG</Text></Action>
         <Action id="close" width="50px" type="button" click="modal:open:confirm_dialog"><Text>IA</Text></Action>
     </Row>
     <Group type="tab" height="100%">

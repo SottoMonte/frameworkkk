@@ -362,57 +362,40 @@ class AppDinamica(App):
         super().__init__(**kwargs)
         self.adapter = adapter
 
-    def _dom_widget(self, widget_id: Optional[str]):
-        """Restituisce il widget DSL corrispondente a un id, se presente nel DOM."""
-        if widget_id and widget_id in self.adapter.DOM:
-            return self.adapter.DOM[widget_id]
-        return None
-
-    def _dsl_attrs(self, widget_id: Optional[str]):
-        """Attributi DSL originali (click/submit/...) del nodo con quell'id, o None."""
-        w = self._dom_widget(widget_id)
-        return self.adapter.presenter.estrai_attributi_tag(w) if w is not None else None
-
-    def _log_change(self, kind: str, widget_id: Optional[str], value) -> None:
-        """Log generico per i widget "*.Changed" che non hanno ancora una logica dedicata."""
-        if self._dom_widget(widget_id) is not None:
-            print(f"{kind} {widget_id} cambiato a: {value}")
-
     async def on_mount(self) -> None:
         await self.adapter.render_view(url="/")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
-        a = self._dsl_attrs(event.button.id)
-        click = a.get('click') if a else None
+        
+        w = self.adapter.node_get(event.button.id)
 
-        # Scorciatoie riservate al prefisso "modal:", gestite direttamente
-        # qui invece che tramite il messenger (sono pura UI, non logica
-        # applicativa):
-        #   - "modal:close"       -> chiude la modale corrente
-        #   - "modal:open:<id>"   -> apre la modale registrata con quell'id
-        #                            (un <Window type="modal"> annidato
-        #                            nella stessa vista)
-        if click == "modal:close":
+        if w is not None:
+            attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
+            await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['click'], message=str(event.button.id))
+        
+        '''if click == "modal:close":
             self.adapter.close_modal()
             return
         if click and click.startswith("modal:open:"):
             modal_id = click.split(":", 2)[2]
             await self.adapter.open_registered_modal(modal_id)
-            return
-
-        if click:
-            await self.adapter.messenger.post(self.adapter.session, domain=click, message=str(event.button.id))
+            return'''
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         a = self._dsl_attrs(event.input.id)
+        raise Exception(f"[on_input_submitted] Nessun attributo 'submit' per Input {event.input.id} (DSL: {a})")
         if a and 'submit' in a:
             await self.adapter.messenger.post(self.adapter.session, domain=a['submit'], message=str(event.value))
-
+        raise Exception(f"[on_input_submitted] Nessun attributo 'submit' per Input {event.input.id} (DSL: {a})")
+    
     async def on_input_changed(self, event: Input.Changed) -> None:
-        self._log_change("Input", event.input.id, event.value)
+        a = self._dsl_attrs(event.input.id)
+        raise Exception(f"[on_input_changed] Nessun attributo 'change' per Input {event.input.id} (DSL: {a})")
 
     async def on_select_changed(self, event: Select.Changed) -> None:
-        self._log_change("Select", event.select.id, event.value)
+        pass
+        #a = self._dsl_attrs(event.select.id)
+        #raise Exception(f"[on_select_changed] Nessun attributo 'change' per Select {event.select.id} (DSL: {a})")
 
     async def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         self._log_change("Checkbox", event.checkbox.id, event.value)

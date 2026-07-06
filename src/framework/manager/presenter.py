@@ -4,6 +4,9 @@ from framework.manager.loader import Loader
 import re
 import xml.etree.ElementTree as ET
 
+import asyncio
+from bs4 import BeautifulSoup
+
 class Manager:
     def __init__(self, presentations: list[presentation.Port], loader:Loader, **constants):
         self.presentations = presentations
