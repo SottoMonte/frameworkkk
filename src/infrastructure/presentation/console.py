@@ -122,19 +122,6 @@ def _parse_data(raw) -> List[float]:
             return []
     return []
 
-
-# ==========================================================================
-# attrs(): applica gli attributi di STILE (già filtrati da mount_tag() /
-# _ATTRIBUTES_SCHEMA in presentation.py) alle proprietà .styles del widget.
-#
-# Invece di una tabella di alias esplicita per ogni proprietà, si usa una
-# blocklist di attributi "costruttivi" (usati direttamente dai widget:
-# id, title, path, label, data, ...) e per tutto il resto si tenta un
-# setattr generico su widget.styles, fallendo in modo silenzioso (con log)
-# se quella proprietà non esiste per quel widget. Questo evita di dover
-# mantenere una mappatura 1:1 manuale ogni volta che si aggiunge un nuovo
-# attributo di stile nello schema.
-# ==========================================================================
 _NON_STYLE_KEYS = {
     "id", "class", "type", "name", "value", "placeholder",
     "title", "path", "label", "data",
@@ -258,7 +245,6 @@ class XmlScreen(Screen):
         yield Container(*self.inner)
         yield Footer()
 
-
 class XmlModalScreen(ModalScreen):
     """
     Variante modale di XmlScreen: si sovrappone alla schermata corrente
@@ -304,6 +290,59 @@ class XmlModalScreen(ModalScreen):
         """Chiude questa modale (Screen.dismiss() la rimuove dallo screen stack)."""
         await self.dismiss()
 
+    async def open_modal(self, view_path: str, **context):
+        """
+        Costruisce la vista XML in `view_path` (che deve contenere un
+        <Window type="modal">, altrimenti mount_tag produce una XmlScreen
+        normale) e la mostra sopra la schermata corrente.
+
+        `context` viene passato al template Jinja della vista, come già
+        fa render_template() per le viste normali.
+
+        Usare per modali definite in un FILE XML SEPARATO. Se la modale è
+        invece annidata nello stesso file della pagina corrente (come
+        <Window type="modal"> figlio di <Window type="page">), è già stata
+        costruita e registrata durante il rendering della pagina: usare
+        open_registered_modal() invece, che non ricarica nulla da disco.
+        """
+        xml_view = await self.presenter.get_view(view_path)
+        modal = await self.render_template(text=xml_view, controllers=[self.routes[view_path]['GET']['controller']], **context)
+        await self.app.push_screen(modal)
+        return modal
+
+    async def open_registered_modal(self, modal_id: str):
+        """
+        Ricostruisce e mostra come modale il <Window type="modal"> con
+        quell'id, definito inline nella stessa vista.
+
+        IMPORTANTE: ricostruisce SEMPRE un'istanza nuova a partire dal suo
+        XML grezzo (già disponibile in self.DOM, popolato durante il primo
+        rendering della pagina) invece di riusare il widget costruito in
+        precedenza. In Textual una Screen non è pensata per essere spinta
+        sullo screen stack più di una volta: dopo pop_screen() i suoi
+        widget interni restano "già montati" internamente, e ripresentare
+        la stessa istanza causa un blocco invece di un errore pulito.
+        Ricostruire da zero ad ogni apertura è il pattern corretto — è
+        esattamente lo stesso approccio già usato da open_modal() per le
+        modali caricate da file esterno, solo che qui il testo XML non
+        viene letto da disco ma da self.DOM.
+        """
+        xml_fragment = self.DOM.get(modal_id)
+        if xml_fragment is None:
+            print(f"[open_registered_modal] Nessun nodo con id '{modal_id}' in DOM")
+            return None
+        modal = await self.render_template(text=xml_fragment)
+        await self.app.push_screen(modal)
+        return modal
+
+    def close_modal(self) -> None:
+        """
+        Chiude la modale corrente, se ce n'è una in cima allo stack.
+        Non fa nulla se la schermata attiva non è una modale (evita di
+        chiudere per errore la schermata principale).
+        """
+        if isinstance(self.app.screen, ModalScreen):
+            self.app.pop_screen()
 
 class AppDinamica(App):
     DEFAULT_CSS = """
@@ -597,7 +636,7 @@ class Adapter(presentation.Port):
         self.widgets = DomRegistry()  # registro dei widget live, per id
         self.app = AppDinamica(self)
 
-    async def start(self):
+    async def start(self, session):
         """Avvia l'applicazione TUI (equivalente di Starlette server.serve())."""
         self.session = await self.defender.session_create()
         await self.parse_route()
@@ -615,89 +654,33 @@ class Adapter(presentation.Port):
     async def render_view(self, url):
         screen = await self.mount_view(url=url)
         self.app.push_screen(screen)
-
-    async def open_modal(self, view_path: str, **context):
-        """
-        Costruisce la vista XML in `view_path` (che deve contenere un
-        <Window type="modal">, altrimenti mount_tag produce una XmlScreen
-        normale) e la mostra sopra la schermata corrente.
-
-        `context` viene passato al template Jinja della vista, come già
-        fa render_template() per le viste normali.
-
-        Usare per modali definite in un FILE XML SEPARATO. Se la modale è
-        invece annidata nello stesso file della pagina corrente (come
-        <Window type="modal"> figlio di <Window type="page">), è già stata
-        costruita e registrata durante il rendering della pagina: usare
-        open_registered_modal() invece, che non ricarica nulla da disco.
-        """
-        xml_view = await self.presenter.get_view(view_path)
-        modal = await self.render_template(text=xml_view, controllers=[self.routes[view_path]['GET']['controller']], **context)
-        await self.app.push_screen(modal)
-        return modal
-
-    async def open_registered_modal(self, modal_id: str):
-        """
-        Ricostruisce e mostra come modale il <Window type="modal"> con
-        quell'id, definito inline nella stessa vista.
-
-        IMPORTANTE: ricostruisce SEMPRE un'istanza nuova a partire dal suo
-        XML grezzo (già disponibile in self.DOM, popolato durante il primo
-        rendering della pagina) invece di riusare il widget costruito in
-        precedenza. In Textual una Screen non è pensata per essere spinta
-        sullo screen stack più di una volta: dopo pop_screen() i suoi
-        widget interni restano "già montati" internamente, e ripresentare
-        la stessa istanza causa un blocco invece di un errore pulito.
-        Ricostruire da zero ad ogni apertura è il pattern corretto — è
-        esattamente lo stesso approccio già usato da open_modal() per le
-        modali caricate da file esterno, solo che qui il testo XML non
-        viene letto da disco ma da self.DOM.
-        """
-        xml_fragment = self.DOM.get(modal_id)
-        if xml_fragment is None:
-            print(f"[open_registered_modal] Nessun nodo con id '{modal_id}' in DOM")
-            return None
-        modal = await self.render_template(text=xml_fragment)
-        await self.app.push_screen(modal)
-        return modal
-
-    def close_modal(self) -> None:
-        """
-        Chiude la modale corrente, se ce n'è una in cima allo stack.
-        Non fa nulla se la schermata attiva non è una modale (evita di
-        chiudere per errore la schermata principale).
-        """
-        if isinstance(self.app.screen, ModalScreen):
-            self.app.pop_screen()
-
+    
     async def mount_route(self, routes):
         for path, methods_dict in self.routes.items():
             for method, data in methods_dict.items():
                 self.views[path] = data.get('view')
 
-    async def authenticate(self, session: Dict[str, Any], **credentials) -> Dict[str, Any]:
-        if self.defender:
-            return await self.defender.authenticate(session, **credentials)
-        return {"success": False, "errors": ["Autenticazione non disponibile"]}
+    async def rebuild(self, node_id: str, session_id: str = None, context: Dict[str, Any] = None):
+        """Ricostruisce il widget live a partire dal frammento XML aggiornato nel DOM."""
+        xml_fragment = self.DOM.get(node_id)
+        if xml_fragment is None:
+            print(f"[rebuild] Nessun nodo con id '{node_id}' in DOM")
+            return None
 
-    async def terminate(self, session: Dict[str, Any], **credentials) -> Dict[str, Any]:
-        if self.defender:
-            return await self.defender.terminate(session, **credentials)
-        return {"success": True}
+        try:
+            rendered_node = await self.render_template(self.session if hasattr(self, 'session') else None, text=xml_fragment)
+        except Exception as e:
+            print(f"[rebuild] Impossibile ricostruire il nodo '{node_id}': {e}")
+            return None
 
-    async def activate(self, session: Dict[str, Any], **credentials) -> Dict[str, Any]:
-        if self.defender:
-            return await self.defender.activate(session, **credentials)
-        return {"success": False, "errors": ["Attivazione non disponibile"]}
-
-    async def rebuild(self, session: Dict[str, Any], **credentials):
-        pass
-
-    async def render_reactive(self, session, view: Any, context) -> Any:
-        file_path = f"src/application/controller/{dsl_alias}.dsl"
-        content = await self.presenter.get_view(file_path)
-        await self.executor.add_file(file_path, content)
-        self.executor.interpreter.runner.emit(sid, file_path, event_name)
+        old_widget = self.dom_get(node_id)
+        #if old_widget is not None and getattr(old_widget, "parent", None) is not None:
+        parent = old_widget.parent
+        await old_widget.remove()
+        await parent.mount(rendered_node)
+        raise Exception(f"[rebuild] Nodo '{node_id}' ricostruito ma non montato correttamente: parent={parent}, new={rendered_node}")
+        self.widgets.register(node_id, rendered_node)
+        return rendered_node
 
     def node_create(self, tag, attrs={}, inner=[]):
         """
@@ -778,12 +761,6 @@ class Adapter(presentation.Port):
                 print(f"[node_update] impossibile aggiornare i figli di {node!r}: {e}")
 
         return node
-
-    # ------------------------------------------------------------------
-    # Funzioni di manipolazione del DOM live, costruite sopra node_update()
-    # e sul registro self.widgets. Pensate per il meccanismo di `bind`
-    # (rebuild via WebSocket) già presente in presentation.render_node().
-    # ------------------------------------------------------------------
 
     def dom_get(self, widget_id: str):
         """Restituisce il widget Textual live con quell'id, o None."""

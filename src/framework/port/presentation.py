@@ -17,41 +17,6 @@ import pathlib
 
 import framework.service.flow as flow
 
-
-def split_text_and_children(inner=None):
-    """Separa testo e figli mantenendo l'ordine dei contenuti."""
-    text_parts = []
-    children = []
-    for item in inner or []:
-        if isinstance(item, str):
-            text_parts.append(item)
-        else:
-            children.append(item)
-    return "".join(text_parts), children
-
-
-def apply_text_and_children(target, text=None, children=None):
-    """Applica testo e figli a un elemento XML in modo centralizzato."""
-    if text is None and children is None:
-        return target
-
-    for child in list(target):
-        target.remove(child)
-
-    if text is not None:
-        target.text = str(text)
-        return target
-
-    if children is not None:
-        for child in children:
-            if isinstance(child, ET.Element):
-                target.append(child)
-            else:
-                target.text = str(child)
-
-    return target
-
-
 class Tag(Enum):
     WINDOW = "window"
     TEXT = "text"
@@ -394,47 +359,11 @@ class Port(Protocol):
     async def rebuild(self, node_id, view=None, context=dict()):
         pass
 
-    @abstractmethod
-    async def render_reactive(self, *args, **kwargs):
-        pass
-
-    def combine_children(self, children):
-        return "".join(children)
-
-    def estrai_da_nodo(self, nodo_padre, target_id):
-        """
-        Cerca un elemento per ID partendo da un nodo già esistente
-        e lo restituisce come stringa XML.
-        """
-        # Cerchiamo il sotto-nodo partendo dal nodo_padre
-        elemento = nodo_padre.find(f".//*[@id='{target_id}']")
-        
-        if elemento is not None:
-            # Serializziamo il nodo trovato
-            return ET.tostring(elemento, encoding='unicode', method='xml').strip()
-        
-        return None
-
-    def estrai_da_xml_string(self, xml_string, target_id):
-        if not xml_string:
-            return None
-
-        try:
-            # Usiamo 'html.parser' che è SEMPRE presente in Python.
-            # È meno schizzinoso di 'xml' e non richiede lxml.
-            soup = BeautifulSoup(xml_string, 'html.parser')
-            
-            # Cerchiamo l'elemento con l'id specifico
-            elemento = soup.find(attrs={"id": target_id})
-            
-            if elemento:
-                # Serializziamo il risultato
-                return str(elemento).strip()
-                
-        except Exception as e:
-            print(f"Errore durante l'estrazione: {e}")
-        
-        return None
+    async def render_reactive(self, session, view: Any, context) -> Any:
+        file_path = f"src/application/controller/{dsl_alias}.dsl"
+        content = await self.presenter.get_view(file_path)
+        await self.executor.add_file(file_path, content)
+        self.executor.interpreter.runner.emit(sid, file_path, event_name)
 
     def mount_tag(self, tag, attrs={}, inner=[], in_svg=False):
         if "}" in tag:
@@ -535,7 +464,6 @@ class Port(Protocol):
             print(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
             raise e
             #raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
-            
 
     async def render_node(self, parent,node, context):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
@@ -546,7 +474,7 @@ class Port(Protocol):
 
         ID = node.attrib.get('id')
         if isinstance(ID, str) and ID not in self.DOM:
-            self.DOM[ID] = self.estrai_da_xml_string(parent,ID)
+            self.DOM[ID] = self.presenter.estrai_da_xml_string(parent,ID)
 
         # Controllo se il tag è un componente (custom tag)
         component_paths = [
@@ -590,10 +518,6 @@ class Port(Protocol):
         new_context['in_svg'] = in_svg
         for child in list(node):
             children.append(await self.render_node(parent,child, new_context))
-
-        # Se è il nodo root fittizio o uno slot residuo, restituiamo solo i figli uniti
-        if tag == "root" :
-            return self.combine_children(children)
 
         # Gestione ID e Stato
         node_id = node.attrib.get('id')

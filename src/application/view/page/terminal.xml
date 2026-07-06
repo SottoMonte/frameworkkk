@@ -3,10 +3,10 @@
     <Window id="confirm_dialog" type="modal">
         <Column>
             
+            
             <Input type="text" id="confirm_input" placeholder="Scrivi qualcosa..."></Input>
         </Column>
     </Window>
-    <Text id="confirm_text" height="80%">Sei sicuro di voler continuare?</Text>
     <Row>
         <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select">
             {% for item in terminal.dire %}

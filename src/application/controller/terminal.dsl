@@ -1,5 +1,5 @@
 {
-    new(deps:false) -> presenter.update_node(node_id:"confirm_text", text:"sadasdsa");
+    new(deps:false) -> presenter.render(node_id:"select");
     a:"asaas";
     dire: storekeeper.overview("asdasd", repository: "file",filter: {"type": {"eq": "file"}});
     //close(deps:false) -> exit();
