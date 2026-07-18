@@ -6,6 +6,8 @@ from graphlib import TopologicalSorter
 from jinja2 import Environment, BaseLoader
 import tomli
 from pathlib import Path
+import asyncio
+import signal
 
 
 # ── Errori ────────────────────────────────────────────────────────────────────
@@ -384,6 +386,48 @@ class Container:
                 print(f"[~] '{cls.__name__}.{pname}' ← {[a.__class__.__name__ for a in adapters]}")
 
 
+class Application:
+    """Manager del Ciclo di Vita Globale dell'App."""
+    def __init__(self, container , manager_names: list[str], session=None):
+        self._c = container
+        self._managers = manager_names
+        self._stop_event = asyncio.Event()
+        self._running_tasks: list[asyncio.Task] = []
+        self._session = session
+
+    async def start(self) -> None:
+        print("[*] Avvio dei manager del framework...")
+        loop = asyncio.get_running_loop()
+        
+        # Cattura segnali di terminazione OS
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, self._stop_event.set)
+
+        for manager in self._managers:
+            if  hasattr(manager, "start"):
+                res = await manager.start(self._session)
+                if res:
+                    if isinstance(res, list):
+                        for coro in res: self._running_tasks.append(asyncio.create_task(coro))
+                    elif asyncio.iscoroutine(res) or inspect.isawaitable(res):
+                        self._running_tasks.append(asyncio.create_task(res))
+
+        print("[+] Framework completamente attivo. In ascolto...")
+        await self._stop_event.wait()
+
+    async def stop(self) -> None:
+        print("\n[*] Spegnimento controllato dei servizi...")
+        for manager in reversed(self._managers):
+            
+            if  hasattr(manager, "stop"):
+                await manager.stop(self._session)
+
+        for task in self._running_tasks:
+            if not task.done():
+                task.cancel()
+                
+        print("[*] Framework spento correttamente.")
+
 # ── Infrastructure ───────────────────────────────────────────────────────────
 
 class Infrastructure:
@@ -456,7 +500,6 @@ class Infrastructure:
 
 _BOOTSTRAPPED = False   # guardia di processo: vedi Loader.bootstrap()
 
-
 class Loader:
     """Coordina Container, Registry e Infrastructure. Nessuna logica propria."""
 
@@ -481,8 +524,6 @@ class Loader:
         'orchestrator': 'src/framework/manager/orchestrator.py',
         'networker':    'src/framework/manager/networker.py',
     }
-    # (short_name_modulo_core, nome_attributo): dove trovare la classe Application
-    application_factory: tuple[str, str] = ('factory', 'Application')
 
     def __init__(self):
         self.container = Container()
@@ -615,5 +656,5 @@ class Loader:
         entry_cls = next(d.cls for d in self.registry.managers())  # il primo dichiarato ('defender')
         await self._start_entry(entry_cls)
 
-        Application = self.registry.core_attribute(*self.application_factory)
+        #Application = self.registry.core_attribute(*self.application_factory)
         return Application(self.container, instances, self.session)
