@@ -14,7 +14,7 @@
             {% endfor %}
         </Input>
         <Action id="stampa" width="50px" type="button" click="terminal:stampa"><Text>CONFIG</Text></Action>
-        <Action id="close" width="50px" type="button" click="modal:open:confirm_dialog"><Text>IA</Text></Action>
+        <Action id="close" width="50px" type="button" click="terminal:new"><Text>IA</Text></Action>
     </Row>
     <Group type="tab" height="100%">
         <Column id="application" width="100%">

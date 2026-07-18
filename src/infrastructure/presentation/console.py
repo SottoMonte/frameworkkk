@@ -661,8 +661,8 @@ class Adapter(presentation.Port):
         parent = old_widget.parent
         await old_widget.remove()
         await parent.mount(rendered_node)
-        raise Exception(f"[rebuild] Nodo '{node_id}' ricostruito ma non montato correttamente: parent={parent}, new={rendered_node}")
         self.widgets.register(node_id, rendered_node)
+        exit(1)
         return rendered_node
 
     def node_create(self, tag, attrs={}, inner=[]):

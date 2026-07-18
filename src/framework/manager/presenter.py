@@ -37,20 +37,6 @@ class Manager:
     def _get_driver(self):
         return self.presentations[-1] if self.presentations else None
 
-    def estrai_attributi_tag(self, tag_string: str):
-        """
-        Riceve una stringa del tag XML/DSL ed estrae tutti gli attributi in un dizionario.
-        Gestisce sia virgolette singole che doppie.
-        """
-        # Questa regex cerca pattern tipo: chiave="valore" oppure chiave='valore'
-        pattern = r'(\w+)=["\']([^"\']*)["\']'
-        
-        # Trova tutte le corrispondenze nella stringa
-        matches = re.findall(pattern, tag_string)
-        
-        # Converte la lista di tuple (chiave, valore) in un dizionario
-        return dict(matches)
-
     async def selector(self,**constants):
         driver = self._get_driver()
         return await driver.selector(**constants) if driver else None
@@ -65,6 +51,7 @@ class Manager:
         return await driver.apply_route(**constants) if driver else None
         
     async def rebuild(self,node_id,session_id,context):
+        
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
             await driver.rebuild(node_id,session_id,context)
@@ -79,7 +66,6 @@ class Manager:
             else:
                 children.append(item)
         return "".join(text_parts), children
-
 
     def apply_text_and_children(self, target, text=None, children=None):
         """Applica testo e figli a un elemento XML in modo centralizzato."""
@@ -115,6 +101,20 @@ class Manager:
             return ET.tostring(elemento, encoding='unicode', method='xml').strip()
         
         return None
+
+    def estrai_attributi_tag(self, tag_string: str):
+        """
+        Riceve una stringa del tag XML/DSL ed estrae tutti gli attributi in un dizionario.
+        Gestisce sia virgolette singole che doppie.
+        """
+        # Questa regex cerca pattern tipo: chiave="valore" oppure chiave='valore'
+        pattern = r'(\w+)=["\']([^"\']*)["\']'
+        
+        # Trova tutte le corrispondenze nella stringa
+        matches = re.findall(pattern, tag_string)
+        
+        # Converte la lista di tuple (chiave, valore) in un dizionario
+        return dict(matches)
 
     def estrai_da_xml_string(self, xml_string, target_id):
         if not xml_string:
