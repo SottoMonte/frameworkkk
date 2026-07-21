@@ -12,8 +12,50 @@ class Manager:
         self.defender = defender
         self.providers = messages
 
+    @staticmethod
+    def _split_domain(domain: str | None) -> tuple[str | None, str | None]:
+        """
+        Spezza 'controller:domain' in (controller, domain).
+        Se non c'è ':' ritorna (None, domain) invariato.
+        """
+        if domain and ':' in domain:
+            controller, domain = domain.split(':', 1)
+            return controller, domain
+        return None, domain
+
+    def _matching_providers(self, controller: str | None) -> list:
+        """
+        Ritorna i provider che corrispondono al controller.
+        Se controller è None, ritorna tutti i provider (nessun filtro).
+        """
+        if controller is None:
+            return list(self.providers)
+        return [
+            p for p in self.providers
+            if p.config.get('name') == controller or p.adapter == controller
+        ]
+
+    def route_provider(self,package):
+        controller, domain = self._split_domain(package.get('domain'))
+        matched = self._matching_providers(controller)
+
     @flow.result(inputs='messenger')
     async def post(self, session, **constants):
+        message_text = constants.get('message')
+        controller, domain = self._split_domain(constants.get('domain'))
+
+        matched = self._matching_providers(controller)
+
+        if controller and not matched:
+            if controller in self.defender.controllers:
+                await session.emit(controller, domain, message_text)
+            # altrimenti: nessun provider adatto, nessuna azione (comportamento invariato)
+            return
+
+        for provider in matched:
+            await provider.post(**constants | {'domain': domain})
+
+    async def post2(self, session, **constants):
         #payload = constants.get('payload')
         message = constants.get('message')
         domain = constants.get('domain')
@@ -39,45 +81,40 @@ class Manager:
                     #raise Exception(f"messenger.post: provider={provider} controller={controller}, domain={domain}, session.context={a}")
                     #await self.post(session,message=f"{controller}:{domain}"+a, domain="console:info")
                 else: 
-                    await self.post(session,message=f"Provider {provider} non è adatto per il dominio '{domain}' (controller '{controller}')", domain="console:warning")
+                    pass
+                    #await self.post(session,message=f"Provider {provider} non è adatto per il dominio '{domain}' (controller '{controller}')", domain="console:warning")
             else:
                 await provider.post(**constants|{'domain': domain})
 
-    async def read(self, **constants):
-        prohibited = constants['prohibited'] if 'prohibited' in constants else []
-        allowed = constants['allowed'] if 'allowed' in constants else ['FAST']
-        operations = []
-        
-        for provider in self.providers:
-            profile = provider.config['profile'].upper()
-            domain_provider = provider.config.get('domain','*').split(',')
-            domain_message = constants.get('domain',[])
-            task = asyncio.create_task(provider.read(location=profile,**constants))
-            operations.append(task)
-        
-        return await self.executor.first_completed(operations=operations)
-        '''finished, unfinished = await asyncio.wait(operations, return_when=asyncio.FIRST_COMPLETED)
-        for operation in finished:
-            return operation.result()
-        #return finished[0].result()'''
-        '''while operations:
-            
-            finished, unfinished = await asyncio.wait(operations, return_when=asyncio.FIRST_COMPLETED)
-            
-            
-            for operation in finished:
-                transaction = operation.result()
-                if transaction['state']:
-                    result = transaction['result']
+    async def read(self, session, **constants):
+        controller, domain = self._split_domain(constants.get('domain'))
+        matched = self._matching_providers(controller)
 
-                    for task in unfinished:
-                        task.cancel()
-                    if unfinished:
-                        await asyncio.wait(unfinished)
-                    
-                    return result
-                else:
-                    if len(operations) == 1:
-                        return transaction
+        if controller and not matched:
+            if controller in self.defender.controllers:
+                # TODO: definire come leggere dal defender per questo controller,
+                # analogamente a session.emit(...) usato in post
+                return None
+            return None
 
-            operations = unfinished'''
+        tasks = [
+            asyncio.create_task(provider.read(session,**constants | {'domain': domain}))
+            for provider in matched
+        ]
+
+        if not tasks:
+            return None
+
+        try:
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            result = done.pop().result()
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            return result
+        except Exception as e:
+            print(f"[Messenger] Errore nel loop di lettura: {e}")
+            return None

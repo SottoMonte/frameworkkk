@@ -76,9 +76,9 @@ class Registry:
             setattr(self._pkg(parent), child, pkg)
         return pkg
 
-    async def load_module(self, name: str, path: str, extra: dict = None) -> types.ModuleType:
+    async def load_module(self, name: str, path: str, extra: dict = None, force: bool = False) -> types.ModuleType:
         """Carica ed esegue un file come modulo, usando importlib per spec/loader/exec."""
-        if name in sys.modules:
+        if name in sys.modules and not force:
             return sys.modules[name]
 
         self._pkg(name.rpartition('.')[0])
@@ -143,6 +143,16 @@ class Registry:
         if not hasattr(mod, attr):
             raise RuntimeError(f"'{attr}' non trovato nel modulo core '{module_short_name}'.")
         return getattr(mod, attr)
+
+    def remove_adapter(self, name):
+
+        self.components = [
+            c for c in self.components
+            if not (
+                c.kind is ComponentKind.ADAPTER
+                and c.cls.__module__ == name
+            )
+        ]
 
     # ── reflection ───────────────────────────────────────────────────────────
 
@@ -329,6 +339,14 @@ class Container:
         else:
             self._instances.setdefault(cls, []).append(obj)
 
+    def remove_port(self, iface):
+
+        self._ports.pop(iface, None)
+
+    def remove_instances(self, cls):
+
+        self._instances.pop(cls, None)
+
     def get(self, cls: Type) -> Any:
         """Ultima istanza registrata per cls (l'unica, se singleton)."""
         instances = self._instances.get(cls)
@@ -388,15 +406,40 @@ class Container:
 
 class Application:
     """Manager del Ciclo di Vita Globale dell'App."""
-    def __init__(self, container , manager_names: list[str], session=None):
+    def __init__(self, container , loader, manager_names: list[str], session=None):
         self._c = container
+        self._loader = loader
         self._managers = manager_names
         self._stop_event = asyncio.Event()
         self._running_tasks: list[asyncio.Task] = []
         self._session = session
 
+    async def _message_consumer_worker(self):
+       
+        # Recuperiamo il bus dal container
+        lll = self._loader.get_managers()
+
+        messenger = lll.get('messenger')
+
+        if messenger is None:
+            print("[!] Nessun messenger trovato nel container. Il worker di messaggistica non può partire.")
+            exit(1)
+
+        try:
+            while not self._stop_event.is_set():
+                messages = await messenger.read(self._session, domain="event")
+                aaa =  await self._loader.reload_resource(messages)
+                print(aaa)
+                print(f"[Worker] Messaggi ricevuti: {messages}")   
+
+        except asyncio.CancelledError:
+            print("[*] Worker di messaggistica terminato.")
+
     async def start(self) -> None:
         print("[*] Avvio dei manager del framework...")
+
+        self._running_tasks.append(asyncio.create_task(self._message_consumer_worker()))
+
         loop = asyncio.get_running_loop()
         
         # Cattura segnali di terminazione OS
@@ -413,6 +456,7 @@ class Application:
                         self._running_tasks.append(asyncio.create_task(res))
 
         print("[+] Framework completamente attivo. In ascolto...")
+        
         await self._stop_event.wait()
 
     async def stop(self) -> None:
@@ -593,17 +637,73 @@ class Loader:
     async def resource(self, path):
         return await self.infrastructure.resource(path)
 
+    async def reload_adapter(self, changed_path: str):
+
+        changed = Path(changed_path).resolve()
+
+
+        # trova quale port è coinvolta
+        affected_port = None
+        affected_name = None
+
+        for port, adapters in self.infrastructure.schemes.items():
+            pass
+
+
+        for port_key in self.ports:
+
+            for adapter_name, cfg in self.current_config.get(port_key, {}).items():
+
+                path = Path(
+                    f"src/infrastructure/{port_key}/{adapter_name}.py"
+                ).resolve()
+
+                if path == changed:
+                    affected_port = port_key
+                    affected_name = adapter_name
+                    break
+
+
+        if not affected_port:
+            return
+
+
+        print(
+            f"[reload] adapter {affected_port}/{affected_name}"
+        )
+
+
+        # elimina vecchi adapter
+        self.container.remove_port(
+            affected_port
+        )
+
+
+        # rimuovi descriptor vecchi
+        self.registry.remove_adapter(
+            affected_port,
+            affected_name
+        )
+
+
+        # riscopri
+        await self._discover_adapters(
+            self.current_config
+        )
+
+
+        # ricostruisci
+        self._build_adapters()
+
+
+        # reinietta
+        self.container.inject_ports()
+
     def file_dependencies(self, file_path: str, root: str = "src") -> list[str]:
         return self.registry.file_dependencies(file_path, root)
 
     async def _start_entry(self, entry_cls: Type) -> Any:
-        """
-        Avvia 'a freddo' il manager d'ingresso (il 'defender') e crea la sessione.
-        Passo preliminare al bootstrap: la sessione deve esistere già prima che
-        'Application' possa essere costruita. Il defender verrà avviato di nuovo
-        'a caldo' dentro Application.start(), stavolta insieme a tutti gli altri
-        manager e con la sessione già disponibile — vedi framework.service.factory.
-        """
+        
         entry = self.container.get(entry_cls)
         if entry is None:
             raise RuntimeError(f"Manager d'ingresso '{entry_cls.__name__}' non costruito.")
@@ -641,6 +741,7 @@ class Loader:
             }})
 
         config = self.infrastructure.load_toml(config_toml_path)
+        self.current_config = config
         managers_config = config.get('manager', {})
 
         print('\n[*] Discover...')
@@ -657,4 +758,4 @@ class Loader:
         await self._start_entry(entry_cls)
 
         #Application = self.registry.core_attribute(*self.application_factory)
-        return Application(self.container, instances, self.session)
+        return Application(self.container,self, instances, self.session)

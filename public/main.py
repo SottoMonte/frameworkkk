@@ -1,19 +1,19 @@
 import sys
 import os
 import asyncio
+import argparse # Importa la libreria necessaria
 
-# Setup del path per trovare i moduli sotto 'src'
+# Setup del path
 cwd = os.getcwd()
 sys.path.insert(1, cwd + '/src')
 
 from framework.manager.loader import Loader
 
-async def main():
+async def main(config):
     loader_instance = Loader()
     
-    # Il bootstrap ora chiede SOLO il file di configurazione dell'utente.
-    # Tutto il resto viene risolto internamente al framework!
-    app = await loader_instance.bootstrap("pyproject.toml")
+    # Usa il parametro passato dal terminale
+    app = await loader_instance.bootstrap(config['config'])
     
     try:
         await app.start()
@@ -23,4 +23,20 @@ async def main():
         await app.stop()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Configurazione dell'argparse
+    parser = argparse.ArgumentParser(description="Avvia il framework con una configurazione specifica.")
+    
+    parser.add_argument(
+        "--config", 
+        type=str, 
+        default="pyproject.toml", 
+        help="Percorso del file di configurazione (default: pyproject.toml)"
+    )
+
+    parser.add_argument("--debug", action="store_true", help="Abilita la modalità debug")
+    
+    args = parser.parse_args()
+    args_dict = vars(args)
+    
+    # Esecuzione con il parametro passato
+    asyncio.run(main(args_dict))

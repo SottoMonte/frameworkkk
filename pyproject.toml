@@ -17,9 +17,12 @@ presentation = "demo.dsl"
 [manager.messenger]
 debug_mode = true
 
-[[message.console]]
-persistence = "log"
-name = "console"
+#[[message.console]]
+#persistence = "log"
+#name = "console"
+
+[[message.bus]]
+name = "broker"
 
 [[presentation.console]]
 name = "tui"
@@ -31,7 +34,7 @@ name = "log"
 name = "source"
 path = "src/"
 watch = true
-message = "log"
+message = "broker"
 
 [[network.neural]]
 name = "decoder"
