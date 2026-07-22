@@ -234,9 +234,9 @@ def _collapsible(default_title: str):
 class XmlScreen(Screen):
     """Una schermata che si auto-costruisce leggendo un file XML."""
 
-    def __init__(self, inner: str, title: str, sub_title: str = "", **kwargs):
+    def __init__(self, inner: Any, title: str = "App", sub_title: str = "", **kwargs):
         super().__init__(**kwargs)
-        self.inner = inner
+        self.inner = inner if isinstance(inner, (list, tuple)) else [inner]
         self.title = title
         self.sub_title = sub_title
 
@@ -365,7 +365,7 @@ class AppDinamica(App):
     async def on_mount(self) -> None:
         await self.adapter.render_view(url="/")
 
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
+'''    async def on_button_pressed(self, event: Button.Pressed) -> None:
         
         w = self.adapter.node_get(event.button.id)
 
@@ -373,13 +373,13 @@ class AppDinamica(App):
             attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
             await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['click'], message=str(event.button.id))
         
-        '''if click == "modal:close":
+        """if click == "modal:close":
             self.adapter.close_modal()
             return
         if click and click.startswith("modal:open:"):
             modal_id = click.split(":", 2)[2]
             await self.adapter.open_registered_modal(modal_id)
-            return'''
+            return"""
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         a = self._dsl_attrs(event.input.id)
@@ -411,14 +411,44 @@ class AppDinamica(App):
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         print(f"ListView selezionata: {event.item}")
-
+'''
 
 # ==========================================================================
 # Casi speciali: non riducibili alla factory `widget()` per vincoli reali
 # dell'API Textual (non per pigrizia — vedi commenti).
 # ==========================================================================
 
-def _make_tabbed_content(x: Dict[str, Any]):
+class DynamicTabbedContent(TabbedContent):
+    """
+    TabbedContent costruito dinamicamente dal DSL.
+
+    I figli vengono aggiunti durante compose(),
+    quindi Textual gestisce correttamente il lifecycle.
+    """
+
+    def __init__(self, children, **kwargs):
+        self._dsl_children = children
+
+        titles = [
+            getattr(child, "id", None) or f"tab-{i+1}"
+            for i, child in enumerate(children)
+        ]
+
+        super().__init__(*titles, **kwargs)
+
+    def compose(self):
+        yield from self._dsl_children
+
+def _make_tabbed_content(x):
+    return attrs(
+        DynamicTabbedContent(
+            _children(x),
+            id=_attr(x, "id")
+        ),
+        x.get("attrs", {})
+    )
+
+def _make_tabbed_content2(x: Dict[str, Any]):
     """
     TabbedContent(*titles) accetta SOLO stringhe come titoli: passargli
     un TabPane fa sì che Textual provi a renderizzarlo come testo e crasha
@@ -469,6 +499,9 @@ class DomRegistry:
     def forget(self, widget_id: Optional[str]):
         if widget_id:
             self._widgets.pop(widget_id, None)
+
+    def forget_all(self):
+        self._widgets.clear()
 
     def __contains__(self, widget_id) -> bool:
         return widget_id in self._widgets
@@ -608,6 +641,7 @@ class Adapter(presentation.Port):
             presenter: Manager per presentazione
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
+        self._render_lock = asyncio.Lock()
         self.config = constants
         self.messenger = messenger
         self.defender = defender
@@ -619,6 +653,14 @@ class Adapter(presentation.Port):
         self.widgets = DomRegistry()  # registro dei widget live, per id
         self.app = AppDinamica(self)
 
+    def _ensure_active_app(self):
+        if hasattr(self, 'app') and self.app:
+            from textual._context import active_app
+            try:
+                active_app.get()
+            except LookupError:
+                active_app.set(self.app)
+
     async def start(self, session):
         """Avvia l'applicazione TUI (equivalente di Starlette server.serve())."""
         self.session = await self.defender.session_create()
@@ -628,16 +670,35 @@ class Adapter(presentation.Port):
     def mount_css(self, css_content: str) -> None:
         """Inietta lo stile nell'applicazione."""
         if self.app:
+            self._ensure_active_app()
             self.app.parse_stylesheet(css_content)
 
     async def mount_view(self, url):
-        xml_view = await self.presenter.get_view(self.routes['/']['GET']['view'])
-        return await self.render_template(self.session, controllers=[self.routes['/']['GET']['controller']],text=xml_view)
+        self._ensure_active_app()
+        route_info = self.routes.get(url, {}).get('GET') if hasattr(self, 'routes') and self.routes.get(url) else None
+        if not route_info and '/' in self.routes:
+            route_info = self.routes['/'].get('GET', {})
+        if not route_info:
+            raise KeyError(f"Nessuna rotta GET trovata per l'URL '{url}'")
+
+        view_path = route_info.get('view')
+        controller = route_info.get('controller')
+        controllers = [controller] if controller else []
+
+        xml_view = await self.presenter.get_view(view_path)
+        return await self.render_template(self.session, controllers=controllers, text=xml_view)
 
     async def render_view(self, url):
-        screen = await self.mount_view(url=url)
-        self.app.push_screen(screen)
-    
+        self._ensure_active_app()
+        self.url = url
+        async with self._render_lock:
+            screen = await self.mount_view(url)
+
+            if self.app.screen.id == "_default":
+                await self.app.push_screen(screen)
+            else:
+                await self.app.switch_screen(screen)
+
     async def mount_route(self, routes):
         for path, methods_dict in self.routes.items():
             for method, data in methods_dict.items():
@@ -645,6 +706,7 @@ class Adapter(presentation.Port):
 
     async def rebuild(self, node_id: str, session_id: str = None, context: Dict[str, Any] = None):
         """Ricostruisce il widget live a partire dal frammento XML aggiornato nel DOM."""
+        self._ensure_active_app()
         xml_fragment = self.DOM.get(node_id)
         if xml_fragment is None:
             print(f"[rebuild] Nessun nodo con id '{node_id}' in DOM")
@@ -662,7 +724,6 @@ class Adapter(presentation.Port):
         await old_widget.remove()
         await parent.mount(rendered_node)
         self.widgets.register(node_id, rendered_node)
-        exit(1)
         return rendered_node
 
     def node_create(self, tag, attrs={}, inner=[]):

@@ -1,51 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Window type="page" title="Omniport" background="#fdfbf7,#f5f2eb" font="sans">
-    <Window id="confirm_dialog" type="modal">
-        <Column>
-            
-            
-            <Input type="text" id="confirm_input" placeholder="Scrivi qualcosa..."></Input>
-        </Column>
-    </Window>
     <Row>
-        <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select">
-            {% for item in terminal.dire %}
-                <Text value="{{ item }}">{{ item.relative_path }}</Text>
-            {% endfor %}
-        </Input>
-        <Action id="stampa" width="50px" type="button" click="terminal:stampa"><Text>CONFIG</Text></Action>
-        <Action id="close" width="50px" type="button" click="terminal:new"><Text>IA</Text></Action>
+        <Text>3333</Text>
     </Row>
-    <Group type="tab" height="100%">
-        <Column id="application" width="100%">
-            <Input type="text" id="editor-application" height="88%" />
-            <Navigation type="tabs">
-                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
-                {% if item.startswith('src/application/') %}
-                <Text value="{{ item }}">{{ item }}</Text>
-                {% endif %}
-                {% endfor %}
-            </Navigation>
-        </Column>
-        <Column id="framework" width="100%">
-            <Input type="text" id="editor-framework" height="90%" />
-            <Navigation type="tabs">
-                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
-                {% if item.startswith('src/framework/') %}
-                <Text value="{{ item }}">{{ item }}</Text>
-                {% endif %}
-                {% endfor %}
-            </Navigation>
-        </Column>
-        <Column id="infrastructure" width="100%">
-            <Input type="text" id="editor-infrastructure" height="90%" />
-            <Navigation type="tabs">
-                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
-                {% if item.startswith('src/infrastructure/') %}
-                <Text value="{{ item }}">{{ item }}</Text>
-                {% endif %}
-                {% endfor %}
-            </Navigation>
-        </Column>
-    </Group>
 </Window>

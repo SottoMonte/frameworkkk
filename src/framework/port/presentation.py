@@ -479,8 +479,10 @@ class Port(Protocol):
             in_svg = True
 
         ID = node.attrib.get('id')
-        if isinstance(ID, str) and ID not in self.DOM:
-            self.DOM[ID] = self.presenter.estrai_da_xml_string(parent,ID)
+        if isinstance(ID, str):
+            extracted = self.presenter.estrai_da_xml_string(parent, ID)
+            if extracted:
+                self.DOM[ID] = extracted
 
         # Controllo se il tag è un componente (custom tag)
         component_paths = [

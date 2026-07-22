@@ -15,33 +15,36 @@ class FileWatcherHandler(FileSystemEventHandler):
         self.session = session
         self.loop = loop  
         self._last_modified_times = {}
-        self._debounce_interval = 0.2
+        self._debounce_interval = 1.0  # 1 secondo per evitare doppi eventi da editor
 
     def _trigger_event(self, event_type, event):
         if event.is_directory:
             return
             
         current_time = time.time()
-        # Applichiamo il debounce principalmente sulle modifiche per evitare loop o eventi duplicati
-        if event_type == "file_modified":
-            if current_time - self._last_modified_times.get(event.src_path, 0) < self._debounce_interval:
-                return
-            self._last_modified_times[event.src_path] = current_time
+        # Debounce su tutti i tipi di evento per evitare loop o eventi duplicati
+        if current_time - self._last_modified_times.get(event.src_path, 0) < self._debounce_interval:
+            return
+        self._last_modified_times[event.src_path] = current_time
 
         coro = self.adapter.handle_watcher_event(self.session, event_type, event.src_path)
         asyncio.run_coroutine_threadsafe(coro, self.loop)
 
     def on_modified(self, event):
+        if event.is_directory:
+            return
+        #print(f"\n[Watcher] File modificato: {event.src_path}")
         self._trigger_event("modified", event)
 
     def on_created(self, event):
-        self._trigger_event("created", event)
+        if not event.is_directory:
+            self._trigger_event("created", event)
 
     def on_deleted(self, event):
-        self._trigger_event("deleted", event)
+        if not event.is_directory:
+            self._trigger_event("deleted", event)
 
     def on_moved(self, event):
-        # Per i file spostati potresti voler tracciare anche event.dest_path
         if event.is_directory:
             return
         coro = self.adapter.handle_watcher_event(self.session, "moved", event.src_path, event.dest_path)
@@ -61,6 +64,9 @@ class Adapter(persistence.Port):
         if self.watch:
             main_loop = asyncio.get_running_loop()
             self._start_watcher(session, main_loop)
+
+    async def stop(self, session=None):
+        self.stop_watcher()
 
     def _start_watcher(self, session, main_loop):
         print(f"👀 Avvio del watcher su '{self.path}'...")

@@ -56,6 +56,36 @@ class Manager:
         if driver and hasattr(driver, 'rebuild'):
             await driver.rebuild(node_id,session_id,context)
 
+    def sono_stessa_risorsa(self, p1: str, p2: str) -> bool:
+        if not p1 or not p2:
+            return False
+
+        # 1. Uniforma le barre e rimuove slash iniziali/finali o './'
+        parts1 = [p for p in p1.replace("\\", "/").split("/") if p and p != "."]
+        parts2 = [p for p in p2.replace("\\", "/").split("/") if p and p != "."]
+
+        if not parts1 or not parts2:
+            return False
+
+        # 2. Prende il percorso più corto come riferimento
+        if len(parts1) <= len(parts2):
+            short, long = parts1, parts2
+        else:
+            short, long = parts2, parts1
+
+        # 3. Verifica che la coda (i segmenti finali) del percorso più lungo 
+        #    corrisponda esattamente a tutti i segmenti del percorso più corto
+        return long[-len(short):] == short
+
+    async def reload(self, session, path):
+        driver = self._get_driver()
+        if driver and hasattr(driver, 'render_view') and hasattr(driver, 'routes') and hasattr(driver, 'url'):
+            route_data = driver.routes.get(driver.url, {}).get('GET', {})
+            view_path = route_data.get('view')
+            if view_path and self.sono_stessa_risorsa(path, view_path):
+                await driver.render_view(driver.url)
+
+
     def split_text_and_children(self,inner=None):
         """Separa testo e figli mantenendo l'ordine dei contenuti."""
         text_parts = []

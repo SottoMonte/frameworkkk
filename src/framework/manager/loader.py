@@ -8,6 +8,7 @@ import tomli
 
 MANAGER, ADAPTER = "manager", "adapter"
 
+
 class Framework:
     """Discovery, caricamento moduli, reflection e registro dei componenti (dict semplici)."""
 
@@ -198,6 +199,7 @@ class Framework:
                                  if not self.is_port_list(dep) and dep in cls_set}
         return [c for c in TopologicalSorter(graph).static_order() if c in cls_set]
 
+
 class Application:
     """Manager del Ciclo di Vita Globale dell'App."""
 
@@ -208,18 +210,39 @@ class Application:
         self._stop_event = asyncio.Event()
         self._running_tasks: list = []
         self._session = session
+        self._reload_lock = asyncio.Lock()
 
     async def _message_consumer_worker(self):
-        messenger = self._loader.get_managers().get('messenger')
-        if messenger is None:
-            print("[!] Nessun messenger trovato nel container. Il worker di messaggistica non può partire.")
-            exit(1)
-
         try:
             while not self._stop_event.is_set():
+                messenger = self._loader.get_managers().get('messenger')
+                if messenger is None:
+                    print("[!] Nessun messenger trovato nel container. Il worker di messaggistica non può partire.")
+                    await asyncio.sleep(1)
+                    continue
+
                 message = await messenger.read(self._session, domain="event")
-                ok = await self._loader.reload(message)
-                print(f"[Worker] Reload eseguito per: {ok}")
+                if not message:
+                    await asyncio.sleep(0.05)
+                    continue
+
+                # Ignora eventi su directory (non file .py/.xml/ecc.)
+                msg_str = str(message)
+                if not any(msg_str.endswith(ext) for ext in ('.py', '.xml', '.json', '.toml', '.dsl', '.css')):
+                    continue
+
+                # Serializza i reload: se uno è già in corso, scarta questo evento
+                if self._reload_lock.locked():
+                    continue
+
+                async with self._reload_lock:
+                    current_managers = self._loader.get_managers()
+                    for name, manager in list(current_managers.items()):
+                        if hasattr(manager, 'reload'):
+                            try:
+                                await manager.reload(self._session, message)
+                            except Exception as e:
+                                print(f"[!] Errore durante il reload in {name}: {e}")
         except asyncio.CancelledError:
             print("[*] Worker di messaggistica terminato.")
 
@@ -252,6 +275,7 @@ class Application:
             if not task.done():
                 task.cancel()
         print("[*] Framework spento correttamente.")
+
 
 class Infrastructure:
     """TOML, JSON, Jinja, schemi, risorse."""
@@ -305,6 +329,7 @@ class Infrastructure:
             path = 'src/' + path
         return open(path, 'rb').read().decode()
 
+
 class Container:
     """Singleton manager, istanze multiple adapter, porte collegate agli adapter."""
 
@@ -320,18 +345,36 @@ class Container:
 
     def get(self, cls: Type):
         items = self._instances.get(cls)
-        return items[-1] if items else None
+        if items:
+            return items[-1]
+        mod_name = getattr(cls, '__module__', None)
+        if mod_name:
+            for k, val in self._instances.items():
+                if getattr(k, '__module__', None) == mod_name and val:
+                    return val[-1]
+        return None
 
     def remove(self, cls: Type):
-        self._instances.pop(cls, None)
-        for iface, objs in self._ports.items():
-            self._ports[iface] = [o for o in objs if not isinstance(o, cls)]
+        mod_name = getattr(cls, '__module__', None)
+        keys_to_pop = [
+            k for k in self._instances 
+            if k is cls or (mod_name and getattr(k, '__module__', None) == mod_name)
+        ]
+        for k in keys_to_pop:
+            self._instances.pop(k, None)
+
+        for iface, objs in list(self._ports.items()):
+            self._ports[iface] = [
+                o for o in objs 
+                if not (isinstance(o, cls) or (mod_name and getattr(o.__class__, '__module__', None) == mod_name))
+            ]
 
     def add_port(self, iface: Type, obj: Any):
         self._ports[iface].append(obj)
 
     def get_port(self, iface: Type):
         return list(self._ports.get(iface, []))
+
 
 class Loader:
     """Orchestratore: Framework per discovery/reflection, Infrastructure per I/O, Container per la DI."""
@@ -431,11 +474,29 @@ class Loader:
                 port_list[:] = self.container.get_port(iface)
                 print(f"[~] {pname} <- {[x.__class__.__name__ for x in port_list]}")
 
+    def _update_object_references(self, old_cls: Type, new_obj: Any) -> None:
+        """Aggiorna i riferimenti alle vecchie istanze di old_cls in tutti i componenti del container."""
+        all_instances = []
+        for items in self.container._instances.values():
+            all_instances.extend(items)
+
+        for inst in all_instances:
+            if inst is new_obj:
+                continue
+            for attr_name, attr_val in list(getattr(inst, '__dict__', {}).items()):
+                if isinstance(attr_val, old_cls) or (
+                    hasattr(attr_val, '__class__') and 
+                    attr_val.__class__.__name__ == old_cls.__name__ and 
+                    attr_val.__class__.__module__ == old_cls.__module__
+                ):
+                    setattr(inst, attr_name, new_obj)
+                    print(f"[~] Riferimento aggiornato in {inst.__class__.__name__}.{attr_name} -> {new_obj.__class__.__name__}")
+
     # ─────────────────────────────────────────
     # reload: un file cambia -> ricostruisci a catena chi dipende da lui -> re-inietta
     # ─────────────────────────────────────────
 
-    async def reload(self, changed_path: str) -> bool:
+    async def reload(self, session,changed_path: str) -> bool:
         """
         Ricarica changed_path e tutto quello collegato a catena, per qualsiasi tipo
         di file del framework:
@@ -474,11 +535,13 @@ class Loader:
             seed_names = {name}
 
         else:
-            target = next((d for d in self.framework.components if d['path'] == changed_path), None)
-            if target is None:
+            # ATTENZIONE: un file può avere PIÙ descriptor (stesso adapter, più
+            # config TOML tramite [[...]]), quindi vanno presi tutti, non solo il primo.
+            matches = [d for d in self.framework.components if d['path'] == changed_path]
+            if not matches:
                 print(f"[reload] file non riconosciuto: {changed_path}")
                 return False
-            to_reload = [target]
+            to_reload = matches
             seed_names = {Path(changed_path).stem}
 
         # chiusura transitiva: chi importa (testualmente) uno dei nomi noti va
@@ -497,28 +560,75 @@ class Loader:
             print(f"[reload] nessun componente collegato a '{changed_path}'")
             return False
 
-        rebuilt = []
+        # raggruppa per file: più descriptor sullo stesso path condividono la STESSA
+        # classe (stesso modulo caricato una volta sola). Rimuovo/ricarico il modulo
+        # UNA volta per gruppo, poi richiamo discover() per ogni config di quel gruppo:
+        # la prima chiamata ri-esegue il file (non è più in sys.modules), le successive
+        # riusano la classe appena caricata — stesso comportamento di _discover_adapters.
+        by_path: dict = {}
         for d in to_reload:
-            self.container.remove(d['cls'])
-            self.framework.remove(d['cls'])
-            sys.modules.pop(d['cls'].__module__, None)
-            new_d = await self.framework.discover(d['cls'].__module__, d['path'], d['kind'], d['config'], d['interface'])
-            if new_d:
-                rebuilt.append(new_d)
+            by_path.setdefault(d['path'], []).append(d)
+
+        rebuilt = []
+        old_classes = []
+        for path, group in by_path.items():
+            old_cls = group[0]['cls']
+            old_obj = self.container.get(old_cls)
+            if old_obj:
+                if hasattr(old_obj, 'stop'):
+                    try:
+                        res = old_obj.stop(session)
+                        if asyncio.iscoroutine(res) or inspect.isawaitable(res):
+                            await res
+                    except Exception as e:
+                        print(f"[!] Errore durante stop() di {old_cls.__name__}: {e}")
+                elif hasattr(old_obj, 'stop_watcher'):
+                    try:
+                        old_obj.stop_watcher()
+                    except Exception:
+                        pass
+
+            old_classes.append(old_cls)
+            self.container.remove(old_cls)
+            self.framework.remove(old_cls)
+            sys.modules.pop(old_cls.__module__, None)
+            for d in group:
+                new_d = await self.framework.discover(old_cls.__module__, d['path'], d['kind'], d['config'], d['interface'])
+                if new_d:
+                    rebuilt.append(new_d)
 
         self._build_managers([d for d in rebuilt if d['kind'] == MANAGER])
         self._build_adapters([d for d in rebuilt if d['kind'] == ADAPTER])
         self._inject_ports()
 
+        # Aggiorna i riferimenti alle vecchie istanze dentro le altre componenti e avvia i nuovi componenti
+        for old_cls in old_classes:
+            rebuilt_descriptor = next((d for d in rebuilt if d['cls'].__module__ == old_cls.__module__), None)
+            if rebuilt_descriptor is None:
+                continue
+            new_obj = self.container.get(rebuilt_descriptor['cls'])
+            if new_obj:
+                self._update_object_references(old_cls, new_obj)
+                # Non richiamare start() su adapter che gestiscono un processo già attivo
+                # (es. console TUI il cui app.run_async() è già in esecuzione come task).
+                # Solo i manager e adapter senza app_running possono essere ri-avviati.
+                app_already_running = (
+                    rebuilt_descriptor['kind'] == ADAPTER and
+                    hasattr(new_obj, 'app') and new_obj.app is not None
+                )
+                if hasattr(new_obj, 'start') and not app_already_running:
+                    try:
+                        res = new_obj.start(session)
+                        if asyncio.iscoroutine(res) or inspect.isawaitable(res):
+                            await res
+                    except Exception as e:
+                        print(f"[!] Errore durante start() di {new_obj.__class__.__name__}: {e}")
+
+        if hasattr(self, 'app') and self.app:
+            self.app._managers = [self.container.get(d['cls']) for d in self.framework.managers() if self.container.get(d['cls'])]
+
         print(f"[reload] ricostruiti: {[d['cls'].__name__ for d in rebuilt]}")
         return True
-
-    async def reload_resource(self, message) -> bool:
-        """Messaggio atteso: {'type': 'file_changed', 'path': '...'}"""
-        if not isinstance(message, dict) or message.get("type") != "file_changed":
-            return False
-        path = message.get("path")
-        return await self.reload(path) if path else False
 
     # ─────────────────────────────────────────────
 
@@ -568,4 +678,6 @@ class Loader:
         session = await entry.session_create()
         print(f"[*] Sessione creata: {session}")
 
-        return Application(self.container, self, instances, session)
+        app = Application(self.container, self, instances, session)
+        self.app = app
+        return app
