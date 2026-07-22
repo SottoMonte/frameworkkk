@@ -68,7 +68,6 @@ class Adapter(persistence.Port):
         self.observer = Observer()
         self.observer.schedule(event_handler, path=self.path, recursive=True)
         self.observer.start()
-        print(f"🚀 Watcher attivo!")
 
     async def handle_watcher_event(self, session, event_type, filepath):
         await self.messenger.post(
