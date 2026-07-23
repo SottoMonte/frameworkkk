@@ -47,8 +47,7 @@ class FileWatcherHandler(FileSystemEventHandler):
     def on_moved(self, event):
         if event.is_directory:
             return
-        coro = self.adapter.handle_watcher_event(self.session, "moved", event.src_path, event.dest_path)
-        asyncio.run_coroutine_threadsafe(coro, self.loop)
+        self._trigger_event("moved", event)
 
 
 class Adapter(persistence.Port):

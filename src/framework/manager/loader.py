@@ -8,197 +8,504 @@ import tomli
 
 MANAGER, ADAPTER = "manager", "adapter"
 
+class Handle:
+    def __init__(self, obj=None):
+        # Usiamo un dizionario interno dedicato per lo stato dell'Handle
+        super().__setattr__('_state', {})
+        super().__setattr__('obj', None)
+        if obj is not None:
+            self.swap(obj)
+
+    def swap(self, obj):
+        # Salva il nuovo oggetto
+        super().__setattr__('obj', obj)
+        if obj is not None:
+            # Sincronizza lo stato salvato finora nell'Handle dentro il nuovo obj
+            for key, value in self._state.items():
+                setattr(obj, key, value)
+
+    def __getattr__(self, name):
+        if name in ('obj', '_state'):
+            return super().__getattribute__(name)
+        return getattr(self.obj, name)
+
+    def __setattr__(self, name, value):
+        if name in ('obj', '_state'):
+            super().__setattr__(name, value)
+        else:
+            # 1. Salva lo stato nell'Handle per non perderlo
+            self._state[name] = value
+            # 2. Aggiorna anche l'oggetto corrente (se esiste)
+            if self.obj is not None:
+                setattr(self.obj, name, value)
+
+    def __repr__(self):
+        if self.obj is None:
+            return "<Handle object (empty)>"
+        return str(self.obj).replace('.Manager', '.Manager.Handle')
 
 class Framework:
-    """Discovery, caricamento moduli, reflection e registro dei componenti (dict semplici)."""
+    """
+    Framework kernel.
+
+    Responsabilità:
+    - caricare moduli
+    - caricare core
+    - registrare componenti
+    - risolvere ordine dipendenze
+
+    NON crea istanze.
+    NON gestisce DI.
+    NON gestisce lifecycle.
+    """
 
     def __init__(self):
-        self.components: list = []
-        self.errors: list = []
 
-    def _pkg(self, name: str) -> types.ModuleType:
-        """Crea i package intermedi framework.x.y (non esistono su disco come veri package)."""
-        if not name or name in sys.modules:
-            return sys.modules.get(name)
+        # nome componente -> descriptor
+        self.components: dict[str, dict] = {}
+
+        self.errors = []
+
+
+    # =====================================================
+    # Namespace
+    # =====================================================
+
+    def _pkg(self, name):
+
+        if not name:
+            return None
+
+        if name in sys.modules:
+            return sys.modules[name]
+
+
         pkg = types.ModuleType(name)
+
         pkg.__path__ = []
-        pkg.__package__ = name.rpartition('.')[0]
+
+        pkg.__package__ = (
+            name.rpartition(".")[0]
+        )
+
+
         sys.modules[name] = pkg
-        if '.' in name:
-            parent, child = name.rsplit('.', 1)
-            setattr(self._pkg(parent), child, pkg)
+
+
+        if "." in name:
+
+            parent, child = name.rsplit(".",1)
+
+            setattr(
+                self._pkg(parent),
+                child,
+                pkg
+            )
+
+
         return pkg
 
-    async def load_module(self, name: str, path: str, extra: dict = None, force: bool = False) -> types.ModuleType:
-        """
-        Carica ed esegue un file come modulo. Usa compile()+exec() diretti invece di
-        SourceFileLoader: quest'ultimo scrive/legge bytecode cache in __pycache__ basata
-        su mtime, e su riscritture ravvicinate (hot reload) può riusare bytecode STALE
-        anche dopo aver modificato il file. compile() legge sempre il contenuto attuale.
-        """
+
+
+    # =====================================================
+    # Python loader
+    # =====================================================
+
+    async def load_module(
+        self,
+        name,
+        path,
+        extra=None,
+        force=False
+    ):
+
+
         if name in sys.modules and not force:
             return sys.modules[name]
 
-        self._pkg(name.rpartition('.')[0])
 
-        mod = types.ModuleType(name)
-        mod.__file__ = path
+        self._pkg(
+            name.rpartition(".")[0]
+        )
+
+
+        module = types.ModuleType(name)
+
+        module.__file__ = path
+
+
         if extra:
-            mod.__dict__.update(extra)
+            module.__dict__.update(extra)
 
-        sys.modules[name] = mod
-        if '.' in name:
-            pkg, short = name.rsplit('.', 1)
-            setattr(self._pkg(pkg), short, mod)
+
+        sys.modules[name] = module
+
+
+        if "." in name:
+
+            pkg, short = name.rsplit(".",1)
+
+            setattr(
+                self._pkg(pkg),
+                short,
+                module
+            )
+
 
         try:
-            code = open(path, 'rb').read()
-            exec(compile(code, path, 'exec'), mod.__dict__)
+
+            code = Path(path).read_bytes()
+
+            exec(
+                compile(
+                    code,
+                    path,
+                    "exec"
+                ),
+                module.__dict__
+            )
+
+
         except Exception as e:
-            del sys.modules[name]
-            raise RuntimeError(f"'{name}': {e}") from e
+
+            sys.modules.pop(
+                name,
+                None
+            )
+
+            raise RuntimeError(
+                f"Errore caricamento {name}: {e}"
+            )
+
 
         print(f"[+] {name}")
-        return mod
 
-    async def load_core(self, services: dict, ports: dict, extra_by_name: dict = None) -> None:
-        """Carica service/port del core in ordine topologico sui loro import reciproci."""
-        extra_by_name = extra_by_name or {}
-        all_mods = services | ports
-        codes, deps = {}, {}
-        for short, path in all_mods.items():
-            ns = f"framework.{'service' if short in services else 'port'}.{short}"
-            if ns in sys.modules:
-                continue
-            code = open(path, 'rb').read().decode()
-            codes[short] = (path, ns)
-            deps[short] = {n.split('.')[-1] for n in self.imports(code)} & all_mods.keys()
-        for name in TopologicalSorter(deps).static_order():
-            if name not in codes:
-                continue
-            path, ns = codes[name]
-            await self.load_module(ns, path, extra_by_name.get(name))
+        return module
 
-    @staticmethod
-    def imports(code: str) -> list:
-        try:
-            tree = ast.parse(code)
-        except Exception:
-            return []
-        seen = {}
-        for n in ast.walk(tree):
-            if isinstance(n, ast.Import):
-                for a in n.names: seen[a.name] = None
-            elif isinstance(n, ast.ImportFrom) and n.module:
-                seen[n.module] = None
-        return list(seen)
 
-    @staticmethod
-    def dependencies(cls: Type) -> dict:
-        """Nome parametro -> tipo, dalle annotazioni del costruttore (escluso self)."""
-        return {
-            name: p.annotation
-            for name, p in inspect.signature(cls.__init__).parameters.items()
-            if name != 'self' and p.annotation is not inspect.Parameter.empty
+
+    # =====================================================
+    # Core bootstrap
+    # =====================================================
+
+    async def load_core(
+        self,
+        services,
+        ports,
+        extra_by_name=None
+    ):
+
+
+        extra_by_name = (
+            extra_by_name or {}
+        )
+
+
+        modules = {
+            **services,
+            **ports
         }
 
-    @staticmethod
-    def is_port_list(ann: Any) -> bool:
-        return (hasattr(ann, '__origin__') and ann.__origin__ is list
-                and bool(getattr(ann, '__args__', None)))
 
-    def file_dependencies(self, file_path: str, root: str = "src") -> list:
-        """
-        Path reali su disco dei moduli importati da file_path (se esistono sotto root),
-        più file_path stesso. A differenza di 'imports' (usato da reload per il nome),
-        qui si risolve fino al file fisico: utile per capire quali sorgenti tocca un file
-        anche se non sono (ancora) componenti scoperti dal Framework.
-        """
-        try:
-            tree = ast.parse(Path(file_path).read_text(encoding="utf-8"))
-        except Exception:
-            return []
+        graph = {}
 
-        deps = {file_path}
+        pending = {}
 
-        def add(path: Path):
-            if path.exists() and path.is_file():
-                deps.add(str(path))
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    add(Path(root, *alias.name.split(".")).with_suffix(".py"))
-            elif isinstance(node, ast.ImportFrom):
-                if node.module is None:
-                    continue
-                base = Path(root, *node.module.split("."))
-                module_file = base.with_suffix(".py")
-                if module_file.exists():
-                    add(module_file)
-                    continue
-                for alias in node.names:
-                    if alias.name == "*":
-                        continue
-                    candidate = (base / alias.name).with_suffix(".py")
-                    if candidate.exists():
-                        add(candidate)
 
-        return sorted(deps)
+        for name,path in modules.items():
 
-    async def discover(self, name: str, path: str, kind: str, config: dict, interface: Type = None) -> Optional[dict]:
-        """Carica un modulo e ne registra il descriptor (dict). Errori accumulati, non persi."""
+            namespace = (
+                "framework.service."
+                + name
+                if name in services
+                else
+                "framework.port."
+                + name
+            )
+
+
+            code = Path(path).read_text()
+
+
+            pending[name] = (
+                namespace,
+                path
+            )
+
+
+            graph[name] = {
+
+                x.split(".")[-1]
+
+                for x in self.imports(code)
+
+            } & modules.keys()
+
+
+
+        for name in TopologicalSorter(graph).static_order():
+
+
+            if name not in pending:
+                continue
+
+
+            namespace,path = pending[name]
+
+
+            await self.load_module(
+                namespace,
+                path,
+                extra_by_name.get(name)
+            )
+
+            print(
+                f"[✓] Core {namespace}"
+            )
+
+
+
+    # =====================================================
+    # Discovery
+    # =====================================================
+
+    async def discover(
+        self,
+        name,
+        path,
+        kind,
+        config=None,
+        interface=None
+    ):
+
+
         if not os.path.isfile(path):
-            self.errors.append(f"modulo non trovato: '{path}' (atteso per '{name}')")
+
+            self.errors.append(
+                f"File mancante {path}"
+            )
+
             return None
 
-        class_name = 'Manager' if kind == MANAGER else 'Adapter'
-        mod = await self.load_module(name, path)
-        cls = getattr(mod, class_name, None)
+
+
+        module = await self.load_module(
+            name,
+            path
+        )
+
+
+        expected = (
+            "Manager"
+            if kind == MANAGER
+            else
+            "Adapter"
+        )
+
+
+        cls = getattr(
+            module,
+            expected,
+            None
+        )
+
+
         if cls is None:
-            self.errors.append(f"classe '{class_name}' non trovata in '{name}' ({path})")
+
+            self.errors.append(
+                f"{expected} mancante in {name}"
+            )
+
             return None
+
+
 
         descriptor = {
-            'cls': cls, 'kind': kind, 'interface': interface, 'path': path,
-            'dependencies': self.dependencies(cls), 'config': config, 'port_lists': {},
-            # nomi (ultimo segmento) dei moduli importati dal file sorgente: usati per capire
-            # quali adapter dipendono da un dato service/port quando quel file cambia.
-            'imports': {n.split('.')[-1] for n in self.imports(open(path, 'rb').read().decode())},
-        }
-        self.components.append(descriptor)
 
-        cfg_name = config.get('name') if isinstance(config, dict) else None
-        print(f"[~] {class_name} '{cls.__name__}' scoperto" + (f" name='{cfg_name}'" if cfg_name else ""))
+            "name": name,
+
+            "cls": cls,
+
+            "kind": kind,
+
+            "interface": interface,
+
+            "config": config or {},
+
+            "path": path,
+
+            "dependencies":
+                self.dependencies(cls),
+
+            "port_lists": {}
+
+        }
+
+
+        self.components[name] = descriptor
+
+
+        print(
+            f"[~] {kind}: {name}"
+        )
+
+
         return descriptor
 
-    def remove(self, cls: Type) -> None:
-        self.components = [c for c in self.components if c['cls'] is not cls]
 
-    def check(self) -> None:
+
+    # =====================================================
+    # Registry
+    # =====================================================
+
+    def managers(self):
+
+        return iter(
+            [
+                x
+                for x in self.components.values()
+                if x["kind"] == MANAGER
+            ]
+        )
+
+    def adapters(self):
+
+        return iter(
+            [
+                x
+                for x in self.components.values()
+                if x["kind"] == ADAPTER
+            ]
+        )
+
+
+
+    # =====================================================
+    # Dependency graph
+    # =====================================================
+
+    def build_order(self, kind):
+
+        items = {
+            x["name"]: x
+            for x in self.components.values()
+            if x["kind"] == kind
+        }
+
+        graph = {}
+
+        for name, item in items.items():
+
+            deps = set()
+
+            for dep in item["dependencies"].values():
+
+                module = getattr(
+                    dep,
+                    "__module__",
+                    ""
+                )
+
+                dep_name = module.split(".")[-1]
+
+
+                for other_name in items:
+
+                    if other_name.endswith(dep_name):
+                        deps.add(other_name)
+
+
+            graph[name] = deps
+
+
+        order = list(
+            TopologicalSorter(graph).static_order()
+        )
+
+
+        return [
+            items[name]
+            for name in order
+        ]
+    # =====================================================
+    # Reflection
+    # =====================================================
+
+    @staticmethod
+    def dependencies(cls):
+
+        return {
+
+            name:p.annotation
+
+            for name,p in
+            inspect.signature(
+                cls.__init__
+            ).parameters.items()
+
+            if name!="self"
+            and p.annotation
+            is not inspect.Parameter.empty
+
+        }
+
+
+
+    @staticmethod
+    def imports(code):
+
+        try:
+            tree=ast.parse(code)
+        except:
+            return []
+
+
+        result=set()
+
+
+        for n in ast.walk(tree):
+
+            if isinstance(n,ast.Import):
+
+                for x in n.names:
+                    result.add(x.name)
+
+
+            elif isinstance(n,ast.ImportFrom):
+
+                if n.module:
+                    result.add(n.module)
+
+
+        return list(result)
+
+
+
+    @staticmethod
+    def is_port_list(annotation):
+
+        return (
+            getattr(
+                annotation,
+                "__origin__",
+                None
+            )
+            is list
+        )
+
+
+    # =====================================================
+    # Validation
+    # =====================================================
+
+    def check(self):
+
         if self.errors:
-            details = "\n".join(f"  - {e}" for e in self.errors)
-            raise RuntimeError(f"Discovery fallita per {len(self.errors)} componente/i:\n{details}")
 
-    def by_kind(self, kind: str) -> Iterator:
-        return (c for c in self.components if c['kind'] == kind)
-
-    def managers(self) -> Iterator:
-        return self.by_kind(MANAGER)
-
-    def adapters(self) -> Iterator:
-        return self.by_kind(ADAPTER)
-
-    def build_order(self, kind: str) -> list:
-        """Ordine topologico delle classi di un kind, sulle sole dipendenze verso lo stesso kind."""
-        descriptors = list(self.by_kind(kind))
-        cls_set = {d['cls'] for d in descriptors}
-        graph = {cls: set() for cls in cls_set}
-        for d in descriptors:
-            graph[d['cls']] |= {dep for dep in d['dependencies'].values()
-                                 if not self.is_port_list(dep) and dep in cls_set}
-        return [c for c in TopologicalSorter(graph).static_order() if c in cls_set]
-
+            raise RuntimeError(
+                "\n".join(self.errors)
+            )
 
 class Application:
     """Manager del Ciclo di Vita Globale dell'App."""
@@ -216,33 +523,15 @@ class Application:
         try:
             while not self._stop_event.is_set():
                 messenger = self._loader.get_managers().get('messenger')
-                if messenger is None:
-                    print("[!] Nessun messenger trovato nel container. Il worker di messaggistica non può partire.")
-                    await asyncio.sleep(1)
-                    continue
-
                 message = await messenger.read(self._session, domain="event")
-                if not message:
-                    await asyncio.sleep(0.05)
-                    continue
-
-                # Ignora eventi su directory (non file .py/.xml/ecc.)
-                msg_str = str(message)
-                if not any(msg_str.endswith(ext) for ext in ('.py', '.xml', '.json', '.toml', '.dsl', '.css')):
-                    continue
-
-                # Serializza i reload: se uno è già in corso, scarta questo evento
-                if self._reload_lock.locked():
-                    continue
-
-                async with self._reload_lock:
-                    current_managers = self._loader.get_managers()
-                    for name, manager in list(current_managers.items()):
-                        if hasattr(manager, 'reload'):
-                            try:
-                                await manager.reload(self._session, message)
-                            except Exception as e:
-                                print(f"[!] Errore durante il reload in {name}: {e}")
+                current_managers = self._loader.get_managers()
+                for name, manager in list(current_managers.items()):
+                    print(manager)
+                    if hasattr(manager, 'reload'):
+                        try:
+                            await manager.reload(self._session, message)
+                        except Exception as e:
+                            print(f"[!] Errore durante il reload in {name}: {e}")
         except asyncio.CancelledError:
             print("[*] Worker di messaggistica terminato.")
 
@@ -329,6 +618,8 @@ class Infrastructure:
             path = 'src/' + path
         return open(path, 'rb').read().decode()
 
+from collections import defaultdict
+from typing import Type, Any, Union
 
 class Container:
     """Singleton manager, istanze multiple adapter, porte collegate agli adapter."""
@@ -337,44 +628,71 @@ class Container:
         self._instances: dict = {}
         self._ports: dict = defaultdict(list)
 
+    def _match(self, target: Union[Type, str], candidate_cls: Type) -> bool:
+        """Verifica se una chiave o classe corrisponde a un target (classe o stringa parziale)."""
+        if isinstance(target, str):
+            search_str = target.lower()
+            class_name = getattr(candidate_cls, '__name__', str(candidate_cls)).lower()
+            module_name = getattr(candidate_cls, '__module__', '').lower()
+            full_path = f"{module_name}.{class_name}"
+            return search_str in class_name or search_str in full_path
+        return candidate_cls is target or target == candidate_cls
+
     def put(self, cls: Type, obj: Any, singleton=True):
         if singleton:
             self._instances[cls] = [obj]
         else:
             self._instances.setdefault(cls, []).append(obj)
 
-    def get(self, cls: Type):
-        items = self._instances.get(cls)
-        if items:
-            return items[-1]
-        mod_name = getattr(cls, '__module__', None)
+    def get(self, cls: Union[Type, str]):
+        # 1. Cerca per corrispondenza (classe o stringa) tra le istanze registrate
+        for k, val in self._instances.items():
+            if self._match(cls, k) and val:
+                return val[-1]
+
+        # 2. Fallback sul nome del modulo se cls è una classe
+        mod_name = getattr(cls, '__module__', None) if not isinstance(cls, str) else None
         if mod_name:
             for k, val in self._instances.items():
                 if getattr(k, '__module__', None) == mod_name and val:
                     return val[-1]
         return None
 
-    def remove(self, cls: Type):
-        mod_name = getattr(cls, '__module__', None)
+    def remove(self, cls: Union[Type, str]):
         keys_to_pop = [
             k for k in self._instances 
-            if k is cls or (mod_name and getattr(k, '__module__', None) == mod_name)
+            if self._match(cls, k) or (not isinstance(cls, str) and getattr(cls, '__module__', None) == getattr(k, '__module__', None))
         ]
         for k in keys_to_pop:
             self._instances.pop(k, None)
 
+        mod_name = getattr(cls, '__module__', None) if not isinstance(cls, str) else None
         for iface, objs in list(self._ports.items()):
             self._ports[iface] = [
                 o for o in objs 
-                if not (isinstance(o, cls) or (mod_name and getattr(o.__class__, '__module__', None) == mod_name))
+                if not (self._match(cls, o.__class__) or (mod_name and getattr(o.__class__, '__module__', None) == mod_name))
             ]
 
-    def add_port(self, iface: Type, obj: Any):
+    def add_port(self, iface: Union[Type, str], obj: Any):
         self._ports[iface].append(obj)
 
-    def get_port(self, iface: Type):
+    def get_port(self, iface: Union[Type, str]):
+        results = []
+        
+        # Se passi una stringa (es. "persistence", "network", ecc.)
+        if isinstance(iface, str):
+            for k, objs in self._ports.items():
+                # Se la chiave è una stringa diretta o una classe/oggetto
+                if isinstance(k, str):
+                    if iface.lower() in k.lower():
+                        results.extend(objs)
+                else:
+                    if self._match(iface, k):
+                        results.extend(objs)
+            return results
+        
+        # Altrimenti se passi la classe direttamente
         return list(self._ports.get(iface, []))
-
 
 class Loader:
     """Orchestratore: Framework per discovery/reflection, Infrastructure per I/O, Container per la DI."""
@@ -406,6 +724,7 @@ class Loader:
         self.infra = Infrastructure()
         self.container = Container()
         self.container.put(Loader, self)
+        
         sys.modules['framework.loader'] = sys.modules[__name__]
         self.current_config: dict = {}
 
@@ -441,19 +760,34 @@ class Loader:
                 kwargs[pname] = dep
         return kwargs
 
-    def _build_managers(self, descriptors=None) -> list:
-        """Se descriptors è None costruisce tutti i manager, nell'ordine topologico (bootstrap);
-        altrimenti solo quelli passati, comunque rispettando l'ordine topologico globale (reload)."""
-        wanted = {d['cls'] for d in descriptors} if descriptors is not None else None
+    def _build_managers(self):
+
         instances = []
-        for cls in self.framework.build_order(MANAGER):
-            if wanted is not None and cls not in wanted:
-                continue
-            descriptor = next(d for d in self.framework.managers() if d['cls'] is cls)
-            obj = cls(**self._kwargs(descriptor), **descriptor['config'])
-            self.container.put(cls, obj, singleton=True)
+
+        for descriptor in self.framework.build_order(MANAGER):
+
+            cls = descriptor["cls"]
+
+            obj_in = cls(
+                **self._kwargs(descriptor),
+                **descriptor["config"]
+            )
+
+            obj = Handle(obj_in)
+
+            self.container.put(
+                cls,
+                obj,
+                singleton=True
+            )
+
             instances.append(obj)
-            print(f"[✓] Manager {cls.__name__}")
+
+            print(
+                f"[✓] Manager {cls.__module__}.{cls.__name__}"
+            )
+
+
         return instances
 
     def _build_adapters(self, descriptors=None) -> None:
@@ -461,7 +795,8 @@ class Loader:
         altrimenti costruisce solo quelli passati (reload mirato)."""
         for descriptor in (descriptors if descriptors is not None else self.framework.adapters()):
             cls = descriptor['cls']
-            obj = cls(**self._kwargs(descriptor), **descriptor['config'])
+            obj_in = cls(**self._kwargs(descriptor), **descriptor['config'])
+            obj = Handle(obj_in)
             self.container.put(cls, obj, singleton=False)
             if descriptor['interface']:
                 self.container.add_port(descriptor['interface'], obj)
@@ -474,165 +809,22 @@ class Loader:
                 port_list[:] = self.container.get_port(iface)
                 print(f"[~] {pname} <- {[x.__class__.__name__ for x in port_list]}")
 
-    def _update_object_references(self, old_cls: Type, new_obj: Any) -> None:
-        """Aggiorna i riferimenti alle vecchie istanze di old_cls in tutti i componenti del container."""
-        all_instances = []
-        for items in self.container._instances.values():
-            all_instances.extend(items)
+    
+    async def reload(self, session, changed_path) -> bool:
+        if changed_path.endswith('.py'):
+            if '/infrastructure/' in changed_path:
+                a = changed_path.split('/')
+                for i,x in enumerate(a):
+                    if x == "infrastructure":
+                        index = i
+                port = a[index+1]
+                adapters = self.container.get_port(port)
+                await self.framework.reload_module(changed_path)
 
-        for inst in all_instances:
-            if inst is new_obj:
-                continue
-            for attr_name, attr_val in list(getattr(inst, '__dict__', {}).items()):
-                if isinstance(attr_val, old_cls) or (
-                    hasattr(attr_val, '__class__') and 
-                    attr_val.__class__.__name__ == old_cls.__name__ and 
-                    attr_val.__class__.__module__ == old_cls.__module__
-                ):
-                    setattr(inst, attr_name, new_obj)
-                    print(f"[~] Riferimento aggiornato in {inst.__class__.__name__}.{attr_name} -> {new_obj.__class__.__name__}")
-
-    # ─────────────────────────────────────────
-    # reload: un file cambia -> ricostruisci a catena chi dipende da lui -> re-inietta
-    # ─────────────────────────────────────────
-
-    async def reload(self, session,changed_path: str) -> bool:
-        """
-        Ricarica changed_path e tutto quello collegato a catena, per qualsiasi tipo
-        di file del framework:
-
-        - schema (.json)                  -> ricarica gli schemi e il service 'scheme'
-        - service/port core (.py)         -> ricarica quel modulo
-        - manager o adapter già scoperto  -> ricostruisce quel componente
-
-        In ogni caso, chiunque importi (testualmente) il nome del file appena
-        ricaricato viene a sua volta ricaricato e ricostruito, a catena
-        (un manager che importa un altro manager, un adapter che importa un port, ecc.),
-        finché non ci sono più nuovi componenti da aggiungere. Alla fine le liste
-        di Port vengono re-iniettate nei manager (i "servizi" wired via TOML).
-        """
-        changed_path = str(changed_path)
-        seed_names: set = set()
-        to_reload: list = []
-
-        if changed_path.endswith('.json'):
-            # schema: non ha un descriptor proprio, ricarica tutti gli schemi e il
-            # service 'scheme' che li espone (extra iniettato al momento del load)
-            schemes = await self.load_schemes(["src/framework/scheme", "src/application/model"])
-            sys.modules.pop("framework.service.scheme", None)
-            await self.framework.load_module(
-                "framework.service.scheme", self.services['scheme'], force=True,
-                extra={"schemes": schemes, "jinja_env": self.infra.jinja_env},
-            )
-            seed_names = {'scheme'}
-
-        elif changed_path in (self.services | self.ports).values():
-            core = self.services | self.ports
-            name = next(k for k, p in core.items() if p == changed_path)
-            kind_dir = 'service' if changed_path in self.services.values() else 'port'
-            sys.modules.pop(f"framework.{kind_dir}.{name}", None)
-            await self.framework.load_module(f"framework.{kind_dir}.{name}", changed_path, force=True)
-            seed_names = {name}
-
-        else:
-            # ATTENZIONE: un file può avere PIÙ descriptor (stesso adapter, più
-            # config TOML tramite [[...]]), quindi vanno presi tutti, non solo il primo.
-            matches = [d for d in self.framework.components if d['path'] == changed_path]
-            if not matches:
-                print(f"[reload] file non riconosciuto: {changed_path}")
-                return False
-            to_reload = matches
-            seed_names = {Path(changed_path).stem}
-
-        # chiusura transitiva: chi importa (testualmente) uno dei nomi noti va
-        # ricaricato, e il suo nome si aggiunge a quelli da cercare (effetto a catena)
-        known = {d['cls'] for d in to_reload}
-        frontier = seed_names
-        while frontier:
-            found = [d for d in self.framework.components if d['cls'] not in known and frontier & d['imports']]
-            if not found:
-                break
-            to_reload += found
-            known |= {d['cls'] for d in found}
-            frontier = {Path(d['path']).stem for d in found}
-
-        if not to_reload:
-            print(f"[reload] nessun componente collegato a '{changed_path}'")
-            return False
-
-        # raggruppa per file: più descriptor sullo stesso path condividono la STESSA
-        # classe (stesso modulo caricato una volta sola). Rimuovo/ricarico il modulo
-        # UNA volta per gruppo, poi richiamo discover() per ogni config di quel gruppo:
-        # la prima chiamata ri-esegue il file (non è più in sys.modules), le successive
-        # riusano la classe appena caricata — stesso comportamento di _discover_adapters.
-        by_path: dict = {}
-        for d in to_reload:
-            by_path.setdefault(d['path'], []).append(d)
-
-        rebuilt = []
-        old_classes = []
-        for path, group in by_path.items():
-            old_cls = group[0]['cls']
-            old_obj = self.container.get(old_cls)
-            if old_obj:
-                if hasattr(old_obj, 'stop'):
-                    try:
-                        res = old_obj.stop(session)
-                        if asyncio.iscoroutine(res) or inspect.isawaitable(res):
-                            await res
-                    except Exception as e:
-                        print(f"[!] Errore durante stop() di {old_cls.__name__}: {e}")
-                elif hasattr(old_obj, 'stop_watcher'):
-                    try:
-                        old_obj.stop_watcher()
-                    except Exception:
-                        pass
-
-            old_classes.append(old_cls)
-            self.container.remove(old_cls)
-            self.framework.remove(old_cls)
-            sys.modules.pop(old_cls.__module__, None)
-            for d in group:
-                new_d = await self.framework.discover(old_cls.__module__, d['path'], d['kind'], d['config'], d['interface'])
-                if new_d:
-                    rebuilt.append(new_d)
-
-        self._build_managers([d for d in rebuilt if d['kind'] == MANAGER])
-        self._build_adapters([d for d in rebuilt if d['kind'] == ADAPTER])
-        self._inject_ports()
-
-        # Aggiorna i riferimenti alle vecchie istanze dentro le altre componenti e avvia i nuovi componenti
-        for old_cls in old_classes:
-            rebuilt_descriptor = next((d for d in rebuilt if d['cls'].__module__ == old_cls.__module__), None)
-            if rebuilt_descriptor is None:
-                continue
-            new_obj = self.container.get(rebuilt_descriptor['cls'])
-            if new_obj:
-                self._update_object_references(old_cls, new_obj)
-                # Non richiamare start() su adapter che gestiscono un processo già attivo
-                # (es. console TUI il cui app.run_async() è già in esecuzione come task).
-                # Solo i manager e adapter senza app_running possono essere ri-avviati.
-                app_already_running = (
-                    rebuilt_descriptor['kind'] == ADAPTER and
-                    hasattr(new_obj, 'app') and new_obj.app is not None
-                )
-                if hasattr(new_obj, 'start') and not app_already_running:
-                    try:
-                        res = new_obj.start(session)
-                        if asyncio.iscoroutine(res) or inspect.isawaitable(res):
-                            await res
-                    except Exception as e:
-                        print(f"[!] Errore durante start() di {new_obj.__class__.__name__}: {e}")
-
-        if hasattr(self, 'app') and self.app:
-            self.app._managers = [self.container.get(d['cls']) for d in self.framework.managers() if self.container.get(d['cls'])]
-
-        print(f"[reload] ricostruiti: {[d['cls'].__name__ for d in rebuilt]}")
-        return True
-
-    # ─────────────────────────────────────────────
-
-    # ─────────────────────────────────────────────
+            elif '/framework/manager/' in changed_path:
+                print("manager",changed_path)
+            else:
+                print("module",changed_path)
 
     async def load_schemes(self, directories: list) -> dict:
         return await self.infra.load_schemes(directories)

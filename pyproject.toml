@@ -24,8 +24,8 @@ debug_mode = true
 [[message.bus]]
 name = "broker"
 
-[[presentation.console]]
-name = "tui"
+#[[presentation.console]]
+#name = "tui"
 
 [[persistence.filesystem]]
 name = "log"
