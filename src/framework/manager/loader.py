@@ -16,6 +16,9 @@ class Resource:
     config: dict = field(
         default_factory=dict
     )
+    extend: dict = field(
+        default_factory=dict
+    )
 
 class Handle:
     def __init__(self, obj=None):
@@ -24,14 +27,26 @@ class Handle:
         super().__setattr__('obj', None)
         if obj is not None:
             self.swap(obj)
+        self.init = True
 
-    def swap(self, obj):
+    def swap2(self, obj):
         # Salva il nuovo oggetto
         super().__setattr__('obj', obj)
         if obj is not None:
             # Sincronizza lo stato salvato finora nell'Handle dentro il nuovo obj
             for key, value in self._state.items():
                 setattr(obj, key, value)
+
+    def swap(self,obj):
+
+        old = self.obj
+
+        if old is not None and obj is not None:
+            for key,value in old.__dict__.items():
+                if key not in ("__dict__",):
+                    setattr(obj,key,value)
+
+        super().__setattr__('obj',obj)
 
     def __getattr__(self, name):
         if name in ('obj', '_state'):
@@ -365,7 +380,7 @@ class Framework:
             module = await self.load_module(
                 resource.name,
                 resource.path,
-                resource.config,
+                resource.extend,
                 force=True
             )
 
@@ -436,7 +451,7 @@ class Application:
                 message = await messenger.read(self._session, domain="event")
                 current_managers = self._loader.get_managers()
                 for name, manager in list(current_managers.items()):
-                    print(manager)
+                    #print(manager)
                     if hasattr(manager, 'reload'):
                         try:
                             await manager.reload(self._session, message)
@@ -568,6 +583,11 @@ class Container:
                     return val[-1]
         return None
 
+    def clear_port(self, iface):
+        for k in list(self._ports.keys()):
+            if self._match(iface, k):
+                self._ports[k].clear()
+
     def remove(self, cls: Union[Type, str]):
         keys_to_pop = [
             k for k in self._instances 
@@ -650,22 +670,20 @@ class Loader:
                 configs = adapter_config if isinstance(adapter_config, list) else [adapter_config]
                 ns = f"framework.adapter.{port_key}.{adapter_name}"
                 path = f"src/infrastructure/{port_key}/{adapter_name}.py"
-                for cfg in configs:
-                    #print("----->",interface)
-                    await self.framework.load(Resource(name=ns, path=path, kind="ADAPTER",config=cfg), cfg)
-                    #await self.framework.load(ns, path, ADAPTER, cfg, interface=interface)
-
+                await self.framework.load(Resource(name=ns, path=path, kind="ADAPTER", config=configs))
+    
     def _args(self, dependencies: dict) -> dict:
         lista = []
         for ann in dependencies:
             if ann.__module__.startswith("framework.port"):
+                print(ann)
                 lista.append(self.container.get_port(ann))
             else:
                 if self.container.get(ann):
                     lista.append(self.container.get(ann))
         return lista
 
-    def _build_managers(self):
+    def _build_managers2(self):
         dependencies = {}
         managers = []
         for key in self.managers:
@@ -706,9 +724,108 @@ class Loader:
             print(f"[✓] Manager {item.__module__}.{item.__name__}")
         return instances
 
-    
+    def _build_managers(self, resources) -> list:
 
-    def _build_adapters(self, resources=[]) -> None:
+        dependencies = {}
+        managers = []
+
+        # Discovery classi e dipendenze
+        for resource in resources:
+
+            manager = getattr(
+                resource.module,
+                "Manager",
+                None
+            )
+
+            if manager is None:
+                print(f"[!] Nessun Manager in {resource.name}")
+                continue
+
+            dependencies |= self.framework.dependencies_from_class(manager)
+
+            managers.append(manager)
+
+
+        # Ordinamento dependency graph
+        order = self.framework.resolve_order(
+            managers,
+            dependencies
+        )
+
+
+        instances = []
+
+        for manager_cls in order:
+
+            if manager_cls not in managers:
+                continue
+
+
+            # caso Loader
+            if (
+                manager_cls.__module__ == "framework.loader"
+                or "loader.Loader" in manager_cls.__qualname__
+            ):
+                self.container.put(
+                    manager_cls,
+                    self,
+                    singleton=True
+                )
+                continue
+
+
+            deps = dependencies.get(
+                manager_cls,
+                []
+            )
+
+            args = self._args(deps)
+
+
+            # recupera config dal resource
+            resource = next(
+                (
+                    r for r in resources
+                    if r.module.Manager is manager_cls
+                ),
+                None
+            )
+
+
+            config = {}
+
+            if resource:
+                config = resource.config or {}
+
+
+            obj_in = manager_cls(
+                *args,
+                **config
+            )
+
+
+            obj = Handle(obj_in)
+
+
+            self.container.put(
+                manager_cls,
+                obj,
+                singleton=True
+            )
+
+
+            instances.append(obj)
+
+
+            print(
+                f"[✓] Manager {manager_cls.__module__}.{manager_cls.__name__}"
+            )
+
+
+        return instances
+
+    def _build_adapters2(self, resources=[]) -> None:
         for resource in resources:
             port = resource.name.split('.')[2]
             interface = self._port_interface(port)
@@ -724,22 +841,118 @@ class Loader:
 
                     print(f"[✓] Adapter {classe.__name__} name={config.get('name')}")
     
+    def _build_adapters(self, resources, save=True):
+        created = []
+        for resource in resources:
+
+            parts = resource.name.split(".")
+
+            if len(parts) < 4:
+                continue
+
+
+            port = parts[2]
+
+
+            interface = self._port_interface(port)
+
+            if interface is None:
+                print(
+                    f"[!] Porta non trovata: {port}"
+                )
+                continue
+
+
+            adapter_cls = getattr(
+                resource.module,
+                "Adapter",
+                None
+            )
+
+
+            if adapter_cls is None:
+                print(
+                    f"[!] Nessun Adapter in {resource.name}"
+                )
+                continue
+
+
+            configs = resource.config
+
+            if not isinstance(configs, list):
+                configs = [configs]
+
+
+            for config in configs:
+
+                dependencies = (
+                    self.framework
+                    .dependencies_from_class(adapter_cls)
+                    .get(adapter_cls, [])
+                )
+
+
+                args = self._args(
+                    dependencies
+                )
+
+
+                obj_in = adapter_cls(
+                    *args,
+                    **config
+                )
+
+
+                obj = Handle(
+                    obj_in
+                )
+
+                created.append(obj)
+
+                if save:
+                    self.container.add_port(interface,obj)
+
+
+                print(
+                    f"[✓] Adapter {adapter_cls.__name__} "
+                    f"name={config.get('name')}"
+                )
+        return created
+
     async def reload(self, session, changed_path) -> bool:
         if changed_path.endswith('.py'):
-            if '/infrastructure/' in changed_path:
+            '''if '/infrastructure/' in changed_path:
                 a = changed_path.split('/')
                 for i,x in enumerate(a):
                     if x == "infrastructure":
                         index = i
                 port = a[index+1]
-                adapters = self.container.get_port(port)
-                adapters.clear()
+                interface = f"framework.port.{port}.Port"
+                adapters = self.container.get_port(interface)
                 print(adapters)
+                self.container.clear_port(interface)
                 resource = self.framework.resource_by_path(changed_path)
                 resource = await self.framework.reload(resource)
                 self._build_adapters([resource])
-                
-                adapters = self.container.get_port(port)
+                adapters = self.container.get_port(interface)
+                print(adapters)
+                return True'''
+            if '/infrastructure/' in changed_path:
+                port = changed_path.split("/")[changed_path.split("/").index("infrastructure")+1]
+                interface = f"framework.port.{port}.Port"
+
+                old_handles = self.container.get_port(interface)
+                adapters = self.container.get_port(interface)
+                print(adapters)
+                resource = self.framework.resource_by_path(changed_path)
+                await self.framework.reload(resource)
+
+                new_handles = self._build_adapters([resource],False)
+
+                for old, new in zip(old_handles, new_handles):
+                    old.swap(new.obj)
+
+                adapters = self.container.get_port(interface)
                 print(adapters)
                 return True
 
@@ -800,13 +1013,29 @@ class Loader:
         self.current_config = config
 
         print("\n[*] Discovery...")
+        manager_resources = []
+
         for name, path in self.managers.items():
-            await self.framework.load(Resource(name=f"framework.manager.{name}", path=path), config.get("manager", {}).get(name, {}))
-        
+
+            resource = Resource(
+                name=f"framework.manager.{name}",
+                path=path,
+                kind="MANAGER",
+                config=config.get("manager", {}).get(name, {})
+            )
+
+            await self.framework.load(resource,)
+
+            manager_resources.append(resource)
+
         await self._discover_adapters(config)
+
+
         print("\n[*] Build...")
-        instances = self._build_managers()
-        self._build_adapters(self.framework.componetes_ports())
+
+
+        instances = self._build_managers(manager_resources)
+        adapters = self._build_adapters(self.framework.componetes_ports())
         #print(self.container.get("framework.manager.messenger.Manager").providers)
         
         defender = self.container.get("framework.manager.defender.Manager")

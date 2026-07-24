@@ -641,17 +641,18 @@ class Adapter(presentation.Port):
             presenter: Manager per presentazione
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
-        self._render_lock = asyncio.Lock()
-        self.config = constants
-        self.messenger = messenger
-        self.defender = defender
-        self.presenter = presenter
-        self.loader = loader
-        self.initialize()
-        self.sessions: Dict[str, Dict[str, Any]] = {}
-        self.active_screens: Dict[str, 'TUIScreen'] = {}
-        self.widgets = DomRegistry()  # registro dei widget live, per id
-        self.app = AppDinamica(self)
+        if not hasattr(self, 'init'):
+            self._render_lock = asyncio.Lock()
+            self.config = constants
+            self.messenger = messenger
+            self.defender = defender
+            self.presenter = presenter
+            self.loader = loader
+            self.initialize()
+            self.sessions: Dict[str, Dict[str, Any]] = {}
+            self.active_screens: Dict[str, 'TUIScreen'] = {}
+            self.widgets = DomRegistry()  # registro dei widget live, per id
+            self.app = AppDinamica(self)
 
     def _ensure_active_app(self):
         if hasattr(self, 'app') and self.app:
