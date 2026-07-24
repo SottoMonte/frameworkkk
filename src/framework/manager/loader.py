@@ -5,8 +5,17 @@ from collections import defaultdict
 from pathlib import Path
 from jinja2 import Environment, BaseLoader
 import tomli
+from dataclasses import dataclass, field
 
-MANAGER, ADAPTER = "manager", "adapter"
+@dataclass
+class Resource:
+    name: str
+    path: str
+    module: any = None
+    kind: str = None
+    config: dict = field(
+        default_factory=dict
+    )
 
 class Handle:
     def __init__(self, obj=None):
@@ -44,32 +53,126 @@ class Handle:
             return "<Handle object (empty)>"
         return str(self.obj).replace('.Manager', '.Manager.Handle')
 
+class Reflection:
+    """Utility di reflection sui moduli Python."""
+
+    @staticmethod
+    def imports(code: str) -> list[str]:
+        try:
+            tree = ast.parse(code)
+        except Exception:
+            return []
+
+        result = set()
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    result.add(alias.name)
+
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    result.add(node.module)
+
+        return list(result)
+
+    @staticmethod
+    def dependencies(cls):
+        return {
+            name: p.annotation
+            for name, p in inspect.signature(cls.__init__).parameters.items()
+            if name != "self"
+            and p.annotation is not inspect.Parameter.empty
+        }
+
+    @staticmethod
+    def is_port_list(annotation):
+        return (
+            getattr(annotation, "__origin__", None)
+            is list
+        )
+
+    @staticmethod
+    def file_dependencies(file_path: str, root="src"):
+
+        try:
+            tree = ast.parse(Path(file_path).read_text())
+        except Exception:
+            return []
+
+        deps = {file_path}
+
+        def add(path):
+            if path.exists():
+                deps.add(str(path))
+
+        for node in ast.walk(tree):
+
+            if isinstance(node, ast.Import):
+
+                for alias in node.names:
+                    add(
+                        Path(root, *alias.name.split(".")).with_suffix(".py")
+                    )
+
+            elif isinstance(node, ast.ImportFrom):
+
+                if node.module is None:
+                    continue
+
+                base = Path(root, *node.module.split("."))
+
+                module = base.with_suffix(".py")
+
+                if module.exists():
+                    add(module)
+                    continue
+
+                for alias in node.names:
+
+                    if alias.name == "*":
+                        continue
+
+                    add(
+                        (base / alias.name).with_suffix(".py")
+                    )
+
+        return sorted(deps)
+
+    @staticmethod
+    def dependencies(cls):
+        return {
+            name: p.annotation
+            for name, p in inspect.signature(cls.__init__).parameters.items()
+            if (
+                name != "self"
+                and p.annotation is not inspect.Parameter.empty
+            )
+        }
+
+    @staticmethod
+    def is_port_list(annotation):
+        return (
+            getattr(annotation, "__origin__", None)
+            is list
+        )
+
 class Framework:
     """
-    Framework kernel.
+    Kernel del framework.
 
     Responsabilità:
-    - caricare moduli
-    - caricare core
-    - registrare componenti
-    - risolvere ordine dipendenze
 
-    NON crea istanze.
-    NON gestisce DI.
-    NON gestisce lifecycle.
+    - creare namespace dinamici
+    - caricare moduli Python
+    - registrare descriptor
     """
 
     def __init__(self):
-
-        # nome componente -> descriptor
-        self.components: dict[str, dict] = {}
-
+        self.reflection = Reflection()
+        self.components = {}
         self.errors = []
 
-
-    # =====================================================
-    # Namespace
-    # =====================================================
 
     def _pkg(self, name):
 
@@ -79,22 +182,17 @@ class Framework:
         if name in sys.modules:
             return sys.modules[name]
 
-
         pkg = types.ModuleType(name)
 
         pkg.__path__ = []
 
-        pkg.__package__ = (
-            name.rpartition(".")[0]
-        )
-
+        pkg.__package__ = name.rpartition(".")[0]
 
         sys.modules[name] = pkg
 
-
         if "." in name:
 
-            parent, child = name.rsplit(".",1)
+            parent, child = name.rsplit(".", 1)
 
             setattr(
                 self._pkg(parent),
@@ -102,48 +200,28 @@ class Framework:
                 pkg
             )
 
-
         return pkg
 
 
-
-    # =====================================================
-    # Python loader
-    # =====================================================
-
-    async def load_module(
-        self,
-        name,
-        path,
-        extra=None,
-        force=False
-    ):
-
+    async def load_module(self,name,path,extra=None,force=False):
 
         if name in sys.modules and not force:
             return sys.modules[name]
 
-
-        self._pkg(
-            name.rpartition(".")[0]
-        )
-
+        self._pkg(name.rpartition(".")[0])
 
         module = types.ModuleType(name)
 
         module.__file__ = path
 
-
         if extra:
             module.__dict__.update(extra)
 
-
         sys.modules[name] = module
-
 
         if "." in name:
 
-            pkg, short = name.rsplit(".",1)
+            pkg, short = name.rsplit(".", 1)
 
             setattr(
                 self._pkg(pkg),
@@ -151,353 +229,185 @@ class Framework:
                 module
             )
 
-
         try:
 
             code = Path(path).read_bytes()
 
             exec(
-                compile(
-                    code,
-                    path,
-                    "exec"
-                ),
+                compile(code, path, "exec"),
                 module.__dict__
             )
 
+        except Exception:
 
-        except Exception as e:
+            sys.modules.pop(name, None)
 
-            sys.modules.pop(
-                name,
-                None
-            )
-
-            raise RuntimeError(
-                f"Errore caricamento {name}: {e}"
-            )
-
+            raise
 
         print(f"[+] {name}")
 
         return module
 
 
+    def dependencies_from_class(self, target):
+        import inspect
+        from typing import get_type_hints, get_args
 
-    # =====================================================
-    # Core bootstrap
-    # =====================================================
+        dependencies = {}
 
-    async def load_core(
-        self,
-        services,
-        ports,
-        extra_by_name=None
-    ):
-
-
-        extra_by_name = (
-            extra_by_name or {}
+        hints = get_type_hints(
+            target.__init__
         )
 
+        signature = inspect.signature(
+            target.__init__
+        )
+
+        deps = []
+
+        for name, parameter in signature.parameters.items():
+
+            if name == "self":
+                continue
+
+            # ignora **constants
+            if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                continue
+
+            annotation = hints.get(name)
+
+            if annotation is None:
+                continue
+
+            # caso list[message.Port]
+            args = get_args(annotation)
+
+            if args:
+                deps.extend(args)
+            else:
+                deps.append(annotation)
+
+        dependencies[target] = deps
+
+        return dependencies
+
+
+    def resolve_order(self, nodes, dependencies):
+
+        graph = {
+            node: set(dependencies.get(node, []))
+            for node in nodes
+        }
+
+        return list(
+            TopologicalSorter(graph).static_order()
+        )
+
+    async def load_core(self,services,ports,extra_by_name=None):
+
+        extra_by_name = extra_by_name or {}
 
         modules = {
             **services,
             **ports
         }
 
-
         graph = {}
 
         pending = {}
 
-
-
-        for name,path in modules.items():
-
+        for name, path in modules.items():
             namespace = (
-                "framework.service."
-                + name
-                if name in services
+                f"framework.service.{name}"
+                if name in modules
                 else
-                "framework.port."
-                + name
+                f"framework.port.{name}"
             )
 
-
-            code = Path(path).read_text()
-
-
-            pending[name] = (
-                namespace,
-                path
-            )
-
+            pending[name] = Resource(name=namespace,path=path)
 
             graph[name] = {
-
                 x.split(".")[-1]
-
-                for x in self.imports(code)
-
+                for x in self.reflection.imports(
+                    Path(path).read_text()
+                )
             } & modules.keys()
-
-
 
         for name in TopologicalSorter(graph).static_order():
 
-
-            if name not in pending:
-                continue
-
-
-            namespace,path = pending[name]
-
+            resouce = pending[name]
 
             await self.load_module(
-                namespace,
-                path,
+                resouce.name,
+                resouce.path,
                 extra_by_name.get(name)
             )
 
-            print(
-                f"[✓] Core {namespace}"
+            await self.add(resouce)
+
+            print(f"[✓] Creato {resouce.name}")
+
+    
+    async def load(self,resource,extra_by_name={}):
+
+            await self.load_module(
+                resource.name,
+                resource.path,
+                extra_by_name.get(resource.name.split()[-1])
             )
 
+            await self.add(resource)
 
+            print(f"[✓] Creato {resource.name}")
 
-    # =====================================================
-    # Discovery
-    # =====================================================
+    async def reload(self,resource):
 
-    async def discover(
-        self,
-        name,
-        path,
-        kind,
-        config=None,
-        interface=None
-    ):
-
-
-        if not os.path.isfile(path):
-
-            self.errors.append(
-                f"File mancante {path}"
+            module = await self.load_module(
+                resource.name,
+                resource.path,
+                resource.config,
+                force=True
             )
 
-            return None
+            #await self.add(resource)
+            resource.module = module
+
+            print(f"[✓] Reload {resource.name}")
+            return resource
 
 
+    async def add(self, resource):
 
-        module = await self.load_module(
-            name,
-            path
-        )
+        module = await self.load_module(resource.name,resource.path)
+        resource.module = module
+        self.components[resource.name] = resource
 
-
-        expected = (
-            "Manager"
-            if kind == MANAGER
-            else
-            "Adapter"
-        )
+        print(f"[~] {resource.name}")
 
 
-        cls = getattr(
-            module,
-            expected,
-            None
-        )
+    def component(self, name):
+        return self.components.get(name)
 
 
-        if cls is None:
+    def components_iter(self):
 
-            self.errors.append(
-                f"{expected} mancante in {name}"
-            )
+        return self.components.values()
 
-            return None
-
-
-
-        descriptor = {
-
-            "name": name,
-
-            "cls": cls,
-
-            "kind": kind,
-
-            "interface": interface,
-
-            "config": config or {},
-
-            "path": path,
-
-            "dependencies":
-                self.dependencies(cls),
-
-            "port_lists": {}
-
-        }
-
-
-        self.components[name] = descriptor
-
-
-        print(
-            f"[~] {kind}: {name}"
-        )
-
-
-        return descriptor
-
-
-
-    # =====================================================
-    # Registry
-    # =====================================================
-
-    def managers(self):
-
-        return iter(
-            [
-                x
-                for x in self.components.values()
-                if x["kind"] == MANAGER
-            ]
-        )
-
-    def adapters(self):
-
-        return iter(
-            [
-                x
-                for x in self.components.values()
-                if x["kind"] == ADAPTER
-            ]
-        )
-
-
-
-    # =====================================================
-    # Dependency graph
-    # =====================================================
-
-    def build_order(self, kind):
-
-        items = {
-            x["name"]: x
-            for x in self.components.values()
-            if x["kind"] == kind
-        }
-
-        graph = {}
-
-        for name, item in items.items():
-
-            deps = set()
-
-            for dep in item["dependencies"].values():
-
-                module = getattr(
-                    dep,
-                    "__module__",
-                    ""
-                )
-
-                dep_name = module.split(".")[-1]
-
-
-                for other_name in items:
-
-                    if other_name.endswith(dep_name):
-                        deps.add(other_name)
-
-
-            graph[name] = deps
-
-
-        order = list(
-            TopologicalSorter(graph).static_order()
-        )
-
-
+    def componetes_ports(self):
         return [
-            items[name]
-            for name in order
+            component
+            for component in self.components.values()
+            if component.name.startswith("framework.adapter.")
         ]
-    # =====================================================
-    # Reflection
-    # =====================================================
 
-    @staticmethod
-    def dependencies(cls):
+    def resource_by_path(self, path: str):
+        path = str(Path(path))
 
-        return {
+        for resource in self.components.values():
+            if str(Path(resource.path)) == path:
+                return resource
 
-            name:p.annotation
-
-            for name,p in
-            inspect.signature(
-                cls.__init__
-            ).parameters.items()
-
-            if name!="self"
-            and p.annotation
-            is not inspect.Parameter.empty
-
-        }
-
-
-
-    @staticmethod
-    def imports(code):
-
-        try:
-            tree=ast.parse(code)
-        except:
-            return []
-
-
-        result=set()
-
-
-        for n in ast.walk(tree):
-
-            if isinstance(n,ast.Import):
-
-                for x in n.names:
-                    result.add(x.name)
-
-
-            elif isinstance(n,ast.ImportFrom):
-
-                if n.module:
-                    result.add(n.module)
-
-
-        return list(result)
-
-
-
-    @staticmethod
-    def is_port_list(annotation):
-
-        return (
-            getattr(
-                annotation,
-                "__origin__",
-                None
-            )
-            is list
-        )
-
-
-    # =====================================================
-    # Validation
-    # =====================================================
+        return None
 
     def check(self):
 
@@ -537,7 +447,8 @@ class Application:
 
     async def start(self) -> None:
         print("[*] Avvio dei manager del framework...")
-        self._running_tasks.append(asyncio.create_task(self._message_consumer_worker()))
+        if self._loader.kwargs.get('dev'):
+            self._running_tasks.append(asyncio.create_task(self._message_consumer_worker()))
 
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -564,7 +475,6 @@ class Application:
             if not task.done():
                 task.cancel()
         print("[*] Framework spento correttamente.")
-
 
 class Infrastructure:
     """TOML, JSON, Jinja, schemi, risorse."""
@@ -692,7 +602,8 @@ class Container:
             return results
         
         # Altrimenti se passi la classe direttamente
-        return list(self._ports.get(iface, []))
+        
+        return self._ports[iface]
 
 class Loader:
     """Orchestratore: Framework per discovery/reflection, Infrastructure per I/O, Container per la DI."""
@@ -724,7 +635,7 @@ class Loader:
         self.infra = Infrastructure()
         self.container = Container()
         self.container.put(Loader, self)
-        
+        self.handle = Handle(self)
         sys.modules['framework.loader'] = sys.modules[__name__]
         self.current_config: dict = {}
 
@@ -740,75 +651,78 @@ class Loader:
                 ns = f"framework.adapter.{port_key}.{adapter_name}"
                 path = f"src/infrastructure/{port_key}/{adapter_name}.py"
                 for cfg in configs:
-                    await self.framework.discover(ns, path, ADAPTER, cfg, interface=interface)
+                    #print("----->",interface)
+                    await self.framework.load(Resource(name=ns, path=path, kind="ADAPTER",config=cfg), cfg)
+                    #await self.framework.load(ns, path, ADAPTER, cfg, interface=interface)
 
-    def _kwargs(self, descriptor: dict) -> dict:
-        kwargs = {}
-        for pname, ann in descriptor['dependencies'].items():
-            if self.framework.is_port_list(ann):
-                iface = ann.__args__[0]
-                if descriptor['kind'] == MANAGER:
-                    port_list: list = []
-                    descriptor['port_lists'][pname] = (iface, port_list)
-                    kwargs[pname] = port_list
-                else:
-                    kwargs[pname] = self.container.get_port(iface)
+    def _args(self, dependencies: dict) -> dict:
+        lista = []
+        for ann in dependencies:
+            if ann.__module__.startswith("framework.port"):
+                lista.append(self.container.get_port(ann))
             else:
-                dep = self.container.get(ann)
-                if dep is None:
-                    raise RuntimeError(f"{descriptor['cls'].__name__}: dipendenza {ann} mancante")
-                kwargs[pname] = dep
-        return kwargs
+                if self.container.get(ann):
+                    lista.append(self.container.get(ann))
+        return lista
 
     def _build_managers(self):
-
+        dependencies = {}
+        managers = []
+        for key in self.managers:
+            name = self.managers[key].replace('src/','').replace('.py','').replace('/','.')
+            resource = self.framework.component(name)
+            manager = resource.module.Manager
+            dependencies |= self.framework.dependencies_from_class(manager)
+            managers.append(manager)
+            #print(dependencies)
+            #order = self.framework.resolve_order(dependencies)
+            #print(order)
+        #print(dependencies)
+        order = self.framework.resolve_order(managers,dependencies)
+        #print(order)
+        
         instances = []
 
-        for descriptor in self.framework.build_order(MANAGER):
-
-            cls = descriptor["cls"]
-
-            obj_in = cls(
-                **self._kwargs(descriptor),
-                **descriptor["config"]
-            )
+        for item in order:
+            if item not in managers:
+                continue
+            
+            if "framework.manager.loader.Loader" in item.__name__:
+                self.container.put(item,self,singleton=True)
+                continue
+            dependencie = dependencies.get(item)
+         
+            args = self._args(dependencie)
+            config = self.current_config.get('manager',{}).get(key,{})
+            #print("\n\n\n====================",item,args)
+            obj_in = item(*args,**config)
 
             obj = Handle(obj_in)
 
-            self.container.put(
-                cls,
-                obj,
-                singleton=True
-            )
+            self.container.put(item,obj,singleton=True)
 
             instances.append(obj)
 
-            print(
-                f"[✓] Manager {cls.__module__}.{cls.__name__}"
-            )
-
-
+            print(f"[✓] Manager {item.__module__}.{item.__name__}")
         return instances
 
-    def _build_adapters(self, descriptors=None) -> None:
-        """Se descriptors è None costruisce tutti gli adapter (bootstrap);
-        altrimenti costruisce solo quelli passati (reload mirato)."""
-        for descriptor in (descriptors if descriptors is not None else self.framework.adapters()):
-            cls = descriptor['cls']
-            obj_in = cls(**self._kwargs(descriptor), **descriptor['config'])
-            obj = Handle(obj_in)
-            self.container.put(cls, obj, singleton=False)
-            if descriptor['interface']:
-                self.container.add_port(descriptor['interface'], obj)
-            name = descriptor['config'].get('name') if isinstance(descriptor['config'], dict) else None
-            print(f"[✓] Adapter {cls.__name__}" + (f" name={name}" if name else ""))
+    
 
-    def _inject_ports(self) -> None:
-        for descriptor in self.framework.managers():
-            for pname, (iface, port_list) in descriptor['port_lists'].items():
-                port_list[:] = self.container.get_port(iface)
-                print(f"[~] {pname} <- {[x.__class__.__name__ for x in port_list]}")
+    def _build_adapters(self, resources=[]) -> None:
+        for resource in resources:
+            port = resource.name.split('.')[2]
+            interface = self._port_interface(port)
+            for adapter in self.current_config.get(port,{}):
+                configs = self.current_config.get(port,{}).get(adapter)
+                resource = self.framework.component(f"framework.adapter.{port}.{adapter}")
+                classe = resource.module.Adapter
+                for config in configs:
+                    dependencies = self.framework.dependencies_from_class(classe).get(classe)
+                    obj_in = classe(*self._args(dependencies), **config)
+                    obj = Handle(obj_in)
+                    self.container.add_port(interface, obj)
 
+                    print(f"[✓] Adapter {classe.__name__} name={config.get('name')}")
     
     async def reload(self, session, changed_path) -> bool:
         if changed_path.endswith('.py'):
@@ -819,7 +733,15 @@ class Loader:
                         index = i
                 port = a[index+1]
                 adapters = self.container.get_port(port)
-                await self.framework.reload_module(changed_path)
+                adapters.clear()
+                print(adapters)
+                resource = self.framework.resource_by_path(changed_path)
+                resource = await self.framework.reload(resource)
+                self._build_adapters([resource])
+                
+                adapters = self.container.get_port(port)
+                print(adapters)
+                return True
 
             elif '/framework/manager/' in changed_path:
                 print("manager",changed_path)
@@ -836,11 +758,33 @@ class Loader:
         return self.framework.file_dependencies(file_path, root)
 
     def get_managers(self) -> dict:
-        result = {"loader": self}
-        for descriptor in self.framework.managers():
-            obj = self.container.get(descriptor['cls'])
+        result = {
+            "loader": self.handle
+        }
+
+        for resource in self.framework.components_iter():
+
+            # solo manager
+            if not resource.name.startswith(
+                "framework.manager."
+            ):
+                continue
+
+            manager_cls = getattr(
+                resource.module,
+                "Manager",
+                None
+            )
+
+            if manager_cls is None:
+                continue
+
+            obj = self.container.get(manager_cls)
+
             if obj:
-                result[descriptor['cls'].__module__.split(".")[-1]] = obj
+                name = resource.name.split(".")[-1]
+                result[name] = obj
+
         return result
 
     async def bootstrap(self, config_toml_path: str) -> Application:
@@ -851,23 +795,23 @@ class Loader:
             extra_by_name={"scheme": {"schemes": schemes, "jinja_env": self.infra.jinja_env}},
         )
 
-        config = tomli.loads(open(config_toml_path, "rb").read().decode())
+        config = tomli.loads(open(config_toml_path['config'], "rb").read().decode())
+        self.kwargs = config_toml_path
         self.current_config = config
 
         print("\n[*] Discovery...")
-        for short, path in self.managers.items():
-            await self.framework.discover(f"framework.manager.{short}", path, MANAGER, config.get("manager", {}).get(short, {}))
+        for name, path in self.managers.items():
+            await self.framework.load(Resource(name=f"framework.manager.{name}", path=path), config.get("manager", {}).get(name, {}))
+        
         await self._discover_adapters(config)
-        self.framework.check()
-
         print("\n[*] Build...")
         instances = self._build_managers()
-        self._build_adapters()
-        self._inject_ports()
-
-        entry = self.container.get(next(self.framework.managers())['cls'])
-        await entry.start()
-        session = await entry.session_create()
+        self._build_adapters(self.framework.componetes_ports())
+        #print(self.container.get("framework.manager.messenger.Manager").providers)
+        
+        defender = self.container.get("framework.manager.defender.Manager")
+        await defender.start()
+        session = await defender.session_create()
         print(f"[*] Sessione creata: {session}")
 
         app = Application(self.container, self, instances, session)

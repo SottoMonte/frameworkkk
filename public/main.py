@@ -13,7 +13,7 @@ async def main(config):
     loader_instance = Loader()
     
     # Usa il parametro passato dal terminale
-    app = await loader_instance.bootstrap(config['config'])
+    app = await loader_instance.bootstrap(config)
     
     try:
         await app.start()
@@ -34,7 +34,8 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--debug", action="store_true", help="Abilita la modalità debug")
-    
+    parser.add_argument("--dev", action="store_true", help="Abilita la modalità dev")
+
     args = parser.parse_args()
     args_dict = vars(args)
     
