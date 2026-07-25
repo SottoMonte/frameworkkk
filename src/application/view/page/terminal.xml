@@ -1,6 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Window type="page" title="Omniport" background="#fdfbf7,#f5f2eb" font="sans">
     <Row>
-        <Text>222</Text>
+        <Text>ciao mondssso!1s11</Text>
+        <Input type="text"/>
     </Row>
 </Window>

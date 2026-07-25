@@ -460,7 +460,7 @@ class Application:
         except asyncio.CancelledError:
             print("[*] Worker di messaggistica terminato.")
 
-    async def start(self) -> None:
+    async def startup(self) -> None:
         print("[*] Avvio dei manager del framework...")
         if self._loader.kwargs.get('dev'):
             self._running_tasks.append(asyncio.create_task(self._message_consumer_worker()))
@@ -470,8 +470,8 @@ class Application:
             loop.add_signal_handler(sig, self._stop_event.set)
 
         for manager in self._managers:
-            if hasattr(manager, "start"):
-                res = await manager.start(self._session)
+            if hasattr(manager, "startup"):
+                res = await manager.startup(self._session)
                 if res:
                     if isinstance(res, list):
                         for coro in res: self._running_tasks.append(asyncio.create_task(coro))
@@ -481,11 +481,11 @@ class Application:
         print("[+] Framework completamente attivo. In ascolto...")
         await self._stop_event.wait()
 
-    async def stop(self) -> None:
+    async def shutdown(self) -> None:
         print("\n[*] Spegnimento controllato dei servizi...")
         for manager in reversed(self._managers):
-            if hasattr(manager, "stop"):
-                await manager.stop(self._session)
+            if hasattr(manager, "shutdown"):
+                await manager.shutdown(self._session)
         for task in self._running_tasks:
             if not task.done():
                 task.cancel()
@@ -724,6 +724,26 @@ class Loader:
             print(f"[✓] Manager {item.__module__}.{item.__name__}")
         return instances
 
+    def _build_manager(self, resource, save=True):
+        manager_cls = resource.module.Manager
+
+        deps = (
+            self.framework
+            .dependencies_from_class(manager_cls)
+            .get(manager_cls, [])
+        )
+
+        args = self._args(deps)
+
+        obj = Handle(
+            manager_cls(*args, **(resource.config or {}))
+        )
+
+        if save:
+            self.container.put(manager_cls, obj)
+
+        return obj
+
     def _build_managers(self, resources) -> list:
 
         dependencies = {}
@@ -957,7 +977,17 @@ class Loader:
                 return True
 
             elif '/framework/manager/' in changed_path:
-                print("manager",changed_path)
+                resource = self.framework.resource_by_path(changed_path)
+                await self.framework.reload(resource)
+
+                old = self.container.get(resource.name)
+
+                new = self._build_manager(resource, save=False)
+
+                old.swap(new.obj)
+
+                self.container.remove(resource.name)
+                self.container.put(resource.module.Manager, old)
             else:
                 print("module",changed_path)
 
@@ -1039,7 +1069,7 @@ class Loader:
         #print(self.container.get("framework.manager.messenger.Manager").providers)
         
         defender = self.container.get("framework.manager.defender.Manager")
-        await defender.start()
+        await defender.startup()
         session = await defender.session_create()
         print(f"[*] Sessione creata: {session}")
 

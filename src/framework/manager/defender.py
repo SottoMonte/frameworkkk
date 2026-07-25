@@ -22,10 +22,10 @@ class Manager:
         #self.models = constants.get('models')
         self.policies = {}
 
-    async def stop(self, session):
+    async def shutdown(self, session):
         await self.interpreter.stop()
     
-    async def start(self, session=None):
+    async def startup(self, session=None):
         if session is not None:
             return None
         self.managers = self.loader.get_managers()

@@ -16,11 +16,11 @@ async def main(config):
     app = await loader_instance.bootstrap(config)
     
     try:
-        await app.start()
+        await app.startup()
     except Exception as e:
         print(f"[!] Errore critico: {e}")
     finally:
-        await app.stop()
+        await app.shutdown()
 
 if __name__ == "__main__":
     # Configurazione dell'argparse

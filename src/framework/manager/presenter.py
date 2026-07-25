@@ -13,7 +13,7 @@ class Manager:
         self.loader = loader
         #self.executor = constants.get('executor')
 
-    async def start(self, session):
+    async def startup(self, session):
         loops = []
         for presentation in self.presentations:
             if hasattr(presentation, 'start'):
@@ -22,7 +22,7 @@ class Manager:
                     loops.append(res)
         return loops
 
-    async def stop(self , session):
+    async def shutdown(self , session):
         for presentation in self.presentations:
             if hasattr(presentation, 'stop'):
                 await presentation.stop(session)

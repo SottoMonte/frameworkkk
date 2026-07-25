@@ -6,13 +6,6 @@ import framework.service.flow as flow
 
 from framework.manager.defender import Manager as Defender
 
-
-'''async def shutdown(self):
-        ...
-
-    async def startup(self):
-        ...'''
-
 class Manager:
 
     def __init__(self, messages: list[message.Port], defender:Defender, **constants):
