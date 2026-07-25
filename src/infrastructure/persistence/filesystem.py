@@ -55,7 +55,7 @@ class Adapter(persistence.Port):
         self.messenger = messenger
         self.config = constants
         self.name = constants.get('name')
-        self.path = constants.get('path')
+        self.path = constants.get('path','')
         self.watch = constants.get('watch', False)
         self.observer = None
 
@@ -98,10 +98,29 @@ class Adapter(persistence.Port):
     @flow.result()
     async def request(self, **constants):
         filename = constants.get('filter', {}).get('eq', {}).get('filename')
-        if filename:
-            with open(filename, "a", encoding="utf-8") as file:
-                file.write(str(constants) + "\n")
-        return flow.success(None)
+        #raise Exception(filename)
+        method = constants.get('method')
+        path = self.path + filename
+        match method:
+            case 'POST':
+                with open(path, "w", encoding="utf-8") as file:
+                    file.write(data)
+            case 'DELETE':
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    return flow.success(filepath)
+
+                return flow.error("File non trovato")
+            case 'PUT':
+                with open(path, "a", encoding="utf-8") as file:
+                    file.write(data)
+            case 'GET':
+                with open(path, "r", encoding="utf-8") as file:
+                    data = file.read()
+
+                return flow.success(data)
+            case _:
+                return flow.error()
 
     # --- Operazioni CRUD standard di modello ---
     async def create(self, **constants): return await self.request(**{'method': 'POST'} | constants)

@@ -413,21 +413,9 @@ class DagRunner:
         # Enqueue root nodes (bootstrap del DAG)
         for n in self.graphs[fname].nodes:
             nd = self.nodes[fname][n]
-
-            # solo nodi root
             if self.graphs[fname].in_degree(n) == 0:
-
-                # ❌ nodo non avviabile → skip silenzioso o warning
-                if (
-                    not nd.get("entry", True)
-                    and not nd.get("trigger")
-                    and not nd.get("schedule")
-                ):
-                    # opzionale debug
-                    # print(f"[WARN] Node '{n}' is unreachable (entry=False, no trigger, no schedule)")
+                if not self._auto_starts(fname, n):
                     continue
-
-                # ✅ solo entry nodes partono automaticamente
                 if nd.get("entry", True):
                     self.queue.put_nowait((sid, fname, n))
 
@@ -436,7 +424,7 @@ class DagRunner:
         one_shot = [
             session["done"][_key(fname, n)].wait()
             for n in self.nodes[fname]
-            if not self.nodes[fname][n].get("schedule")
+            if not self.nodes[fname][n].get("schedule") and self._auto_starts(fname, n)
         ]
         
         if one_shot:
@@ -694,6 +682,14 @@ class DagRunner:
         result["duration"] += result["time"]
 
         return success(d)
+
+    def _auto_starts(self, fname: str, n: str) -> bool:
+        """Vero se il nodo può partire da solo in questa run (entry/trigger/schedule),
+        oppure se dipende da altri nodi (verrà propagato via dispatch)."""
+        nd = self.nodes[fname][n]
+        if self.graphs[fname].in_degree(n) > 0:
+            return True  # non è root: arriverà via dispatch se il parent parte
+        return bool(nd.get("entry", True)) or bool(nd.get("trigger")) or bool(nd.get("schedule"))
 
     @action()
     async def _dispatch(self, d):

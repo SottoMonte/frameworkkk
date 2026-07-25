@@ -230,7 +230,6 @@ def _collapsible(default_title: str):
     """Collapsible con titolo di default diverso (usato da <group type="collapsible"> e <accordion>)."""
     return widget(Collapsible, _build(children=True, extra={"title": lambda x: _attr(x, "title", default_title)}))
 
-
 class XmlScreen(Screen):
     """Una schermata che si auto-costruisce leggendo un file XML."""
 
@@ -345,6 +344,7 @@ class XmlModalScreen(ModalScreen):
             self.app.pop_screen()
 
 class AppDinamica(App):
+
     DEFAULT_CSS = """
     Grid {
         grid-size: 3;
@@ -355,17 +355,37 @@ class AppDinamica(App):
 
     BINDINGS = [
         ("d", "toggle_dark", "Cambia Tema"),
-        ("q", "quit", "Esci")
+        ("q", "quit", "Esci"),
+        ("ctrl+s", "save", "Salva"),
     ]
 
     def __init__(self, adapter, **kwargs):
         super().__init__(**kwargs)
         self.adapter = adapter
 
+    def check_action(self, action, parameters):
+        widget = self.focused
+
+        if action == "save":
+            return isinstance(widget, TextArea)
+
+        if action == "close_tab":
+            return isinstance(widget, Tab)
+
+        return True
+
+    async def action_save(self):
+        focused = self.focused
+
+        if isinstance(focused, TextArea):
+            print("Salvo editor:", focused.text)
+        else:
+            print("Nessun editor attivo")
+
     async def on_mount(self) -> None:
         await self.adapter.render_view(url="/")
 
-'''    async def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         
         w = self.adapter.node_get(event.button.id)
 
@@ -389,8 +409,9 @@ class AppDinamica(App):
         raise Exception(f"[on_input_submitted] Nessun attributo 'submit' per Input {event.input.id} (DSL: {a})")
     
     async def on_input_changed(self, event: Input.Changed) -> None:
-        a = self._dsl_attrs(event.input.id)
-        raise Exception(f"[on_input_changed] Nessun attributo 'change' per Input {event.input.id} (DSL: {a})")
+        pass
+        #a = self._dsl_attrs(event.input.id)
+        #raise Exception(f"[on_input_changed] Nessun attributo 'change' per Input {event.input.id} (DSL: {a})")
 
     async def on_select_changed(self, event: Select.Changed) -> None:
         pass
@@ -411,44 +432,14 @@ class AppDinamica(App):
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         print(f"ListView selezionata: {event.item}")
-'''
+
 
 # ==========================================================================
 # Casi speciali: non riducibili alla factory `widget()` per vincoli reali
 # dell'API Textual (non per pigrizia — vedi commenti).
 # ==========================================================================
 
-class DynamicTabbedContent(TabbedContent):
-    """
-    TabbedContent costruito dinamicamente dal DSL.
-
-    I figli vengono aggiunti durante compose(),
-    quindi Textual gestisce correttamente il lifecycle.
-    """
-
-    def __init__(self, children, **kwargs):
-        self._dsl_children = children
-
-        titles = [
-            getattr(child, "id", None) or f"tab-{i+1}"
-            for i, child in enumerate(children)
-        ]
-
-        super().__init__(*titles, **kwargs)
-
-    def compose(self):
-        yield from self._dsl_children
-
-def _make_tabbed_content(x):
-    return attrs(
-        DynamicTabbedContent(
-            _children(x),
-            id=_attr(x, "id")
-        ),
-        x.get("attrs", {})
-    )
-
-def _make_tabbed_content2(x: Dict[str, Any]):
+def _make_tabbed_content(x: Dict[str, Any]):
     """
     TabbedContent(*titles) accetta SOLO stringhe come titoli: passargli
     un TabPane fa sì che Textual provi a renderizzarlo come testo e crasha
@@ -473,6 +464,18 @@ def _make_card(x: Dict[str, Any]):
         card.border_title = title
     return card
 
+def _make_editor(x):
+    editor = TextArea.code_editor(
+        _text(x),
+        id=_attr(x, "id"),
+        language=_attr(x, "language", "python"),
+        theme="monokai",
+    )
+
+    print("LANG:", editor.language)
+    print("AVAILABLE:", editor.available_languages)
+
+    return attrs(editor, x.get("attrs", {}))
 
 class DomRegistry:
     """
@@ -549,7 +552,15 @@ class Adapter(presentation.Port):
 
         presentation.Tag.INPUT.value: {
             "select": widget(Select, lambda x: ((_options(x),), {"id": _attr(x, "id")})),
-            "text": widget(TextArea, lambda x: ((), {"id": _attr(x, "id"), "language": "python"})),
+            "text": widget(Input, lambda x: ((), {
+                "id": _attr(x, "id"), 
+                "value": _attr(x, "value", ""),
+            })),
+            "editor": widget(TextArea.code_editor, lambda x: ((_text(x),), {
+                "id": _attr(x, "id"),
+                "language": _attr(x, "language", "python"),
+                "theme": _attr(x, "theme", "monokai"),
+            })),
             "input": widget(Input, lambda x: ((), {
                 "placeholder": _attr(x, "placeholder", ""),
                 "value": _attr(x, "value", ""),

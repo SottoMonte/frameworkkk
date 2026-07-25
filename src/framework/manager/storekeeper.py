@@ -96,11 +96,11 @@ class Manager:
         return await self.orchestrator.first_completed(operations=operations,success=repository.results)
 
     # gather/read/get
-    async def gather(self, session, storekeeper,**constants):
-        state = await self.preparation(**constants|{'operation':'read'})
+    async def gather(self, session,**constants):
+        state = await self.preparation(session,constants|{'operation':'read'})
         repository,operations = flow.output(state)
-        return await self.executor.first_completed(operations=operations,success=repository.results)
-    
+        return await self.orchestrator.first_completed(operations=operations,success=repository.results)
+
     # store/create/put
     @flow.result(inputs='storekeeper')
     async def store(self, session, **constants):

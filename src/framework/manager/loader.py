@@ -998,7 +998,7 @@ class Loader:
         return await self.infra.resource(path)
 
     def file_dependencies(self, file_path: str, root: str = "src") -> list:
-        return self.framework.file_dependencies(file_path, root)
+        return self.framework.reflection.file_dependencies(file_path, root)
 
     def get_managers(self) -> dict:
         result = {

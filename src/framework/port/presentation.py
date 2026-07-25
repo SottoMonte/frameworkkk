@@ -100,6 +100,8 @@ class Attribute(Enum):
     NAME = "name"
     VALUE = "value"
     COLOR = "color"
+    THEME = "theme"
+    LANGUAGE = "language"
     PLACEHOLDER = "placeholder"
     REQUIRED = "required"
     DISABLED = "disabled"
@@ -199,7 +201,7 @@ _MULTIMEDIA = {**_MEDIA, **{a.value: a.value for a in [Attribute.CONTROLS, Attri
 _LAYOUT_STATIC = {**_IDENTITY, **{a.value: a.value for a in [Attribute.WIDTH,Attribute.MAX_WIDTH, Attribute.MIN_WIDTH, Attribute.HEIGHT, Attribute.MAX_HEIGHT, Attribute.MIN_HEIGHT, Attribute.PADDING, Attribute.MARGIN, Attribute.OVERFLOW]}}
 _LAYOUT = {**_LAYOUT_STATIC, **{a.value: a.value for a in [Attribute.EXPAND, Attribute.SPACING]}}
 _LOCATION = {**_IDENTITY, **{a.value: a.value for a in [Attribute.JUSTIFY, Attribute.ALIGN, Attribute.POSITION, Attribute.TOP, Attribute.BOTTOM, Attribute.LEFT, Attribute.RIGHT]}}
-_STYLE = {**_IDENTITY, **{a.value: a.value for a in [Attribute.BACKGROUND, Attribute.MATTER, Attribute.COLOR, Attribute.BORDER, Attribute.RADIUS, Attribute.SHADOW, Attribute.THICKNESS, Attribute.STYLE]}}
+_STYLE = {**_IDENTITY, **{a.value: a.value for a in [Attribute.THEME, Attribute.BACKGROUND, Attribute.MATTER, Attribute.COLOR, Attribute.BORDER, Attribute.RADIUS, Attribute.SHADOW, Attribute.THICKNESS, Attribute.STYLE]}}
 _TYPOGRAPHY = {**_LAYOUT, **{a.value: a.value for a in [Attribute.SIZE, Attribute.WEIGHT, Attribute.UPPERCASE, Attribute.LOWERCASE, Attribute.TRUNCATE, Attribute.FONT, Attribute.ALIGN]}}
 _EVENTS = {
     Attribute.CLICK.value: f"data-{Attribute.CLICK.value}",
@@ -215,7 +217,7 @@ _ATTRIBUTES_SCHEMA = {
     Tag.WINDOW.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE | {Attribute.TITLE.value:"title", Attribute.POINTER.value:"pointer"},
     Tag.NAVIGATION.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE,
     Tag.TEXT.value: _TYPOGRAPHY | _STYLE, 
-    Tag.INPUT.value: _EVENTS | _FIELD | _LAYOUT | _STYLE, 
+    Tag.INPUT.value: _EVENTS | _FIELD | _LAYOUT | _STYLE | {Attribute.LANGUAGE.value:"language"}, 
     Tag.ACTION.value: _EVENTS | {Attribute.ROUTE.value:"action", Attribute.ACT.value:"method"} | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer"}, 
     Tag.CONTAINER.value: _LAYOUT_STATIC | _LOCATION | _STYLE, 
     Tag.ROW.value: _LAYOUT | _LOCATION | _STYLE, 

@@ -7,7 +7,7 @@ factory:repository := {
         ]
     };
     
-    model: storekeeper;
+    model: file;
     
     values: {
         //"tree": { "MODEL": build_tree_dict };
