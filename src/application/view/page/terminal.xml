@@ -6,7 +6,7 @@
         </Column>
     </Window>
     <Row>
-        <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select">
+        <Input id="select" height="20px" change="terminal:gg" placeholder="Scrivi qualcosa..." type="select">
             {% for item in terminal.files %}
                 <Text value="{{ item }}">{{ item.relative_path }}</Text>
             {% endfor %}
@@ -18,7 +18,7 @@
             <Input type="editor" language="python" id="editor-application" >
                 <Text>{{ terminal.editor.application }}</Text>
             </Input>
-            <Navigation type="tabs">
+            <Navigation type="tabs" height="13%">
                 {% for item in terminal.dependencies %}
                 {% if item.startswith('src/application/') %}
                 <Text value="{{ item }}">{{ item }}</Text>
@@ -27,10 +27,10 @@
             </Navigation>
         </Column>
         <Column id="framework" width="100%">
-            <Input type="editor" id="editor-framework" height="90%" >
+            <Input type="editor" id="editor-framework" >
                 <Text>{{ terminal.editor.framework }}</Text>
             </Input>
-            <Navigation type="tabs">
+            <Navigation type="tabs" height="13%">
                 {% for item in terminal.dependencies %}
                 {% if item.startswith('src/framework/') %}
                 <Text value="{{ item }}">{{ item }}</Text>

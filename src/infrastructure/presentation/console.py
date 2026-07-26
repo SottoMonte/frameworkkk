@@ -101,12 +101,15 @@ def _bool_attr(x: Dict[str, Any], key: str, default: bool = False) -> bool:
     return str(v).lower() in ("1", "true", "yes")
 
 
-def _options(x: Dict[str, Any]) -> List[Tuple[str, int]]:
-    """Coppie (etichetta, indice) per Select/SelectionList a partire dai figli."""
-    return [
-        (f if isinstance(f, str) else _widget_text(f), idx)
-        for idx, f in enumerate(x.get("inner", []))
-    ]
+def _options(x: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """Coppie (etichetta, valore_stringa) per Select/SelectionList a partire dai figli."""
+    options = []
+    for f in x.get("inner", []):
+        text_val = f if isinstance(f, str) else _widget_text(f)
+        # Usiamo il testo stesso (o un attributo 'value' se presente nel tag figlio) come valore
+        val = getattr(f, "value", None) or text_val
+        options.append((text_val, str(val)))
+    return options
 
 
 def _parse_data(raw) -> List[float]:
@@ -409,12 +412,18 @@ class AppDinamica(App):
         raise Exception(f"[on_input_submitted] Nessun attributo 'submit' per Input {event.input.id} (DSL: {a})")
     
     async def on_input_changed(self, event: Input.Changed) -> None:
-        pass
+        a = self._dsl_attrs(event.input.id)
+        exit(a)
         #a = self._dsl_attrs(event.input.id)
         #raise Exception(f"[on_input_changed] Nessun attributo 'change' per Input {event.input.id} (DSL: {a})")
 
     async def on_select_changed(self, event: Select.Changed) -> None:
-        pass
+        w = self.adapter.node_get(event.select.id)
+
+        if w is not None:
+            attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
+            await self.adapter.messenger.post(self.adapter.session, domain=attrs_tag['change'], message=str(event.value))
+        
         #a = self._dsl_attrs(event.select.id)
         #raise Exception(f"[on_select_changed] Nessun attributo 'change' per Select {event.select.id} (DSL: {a})")
 
@@ -716,27 +725,99 @@ class Adapter(presentation.Port):
             for method, data in methods_dict.items():
                 self.views[path] = data.get('view')
 
-    async def rebuild(self, node_id: str, session_id: str = None, context: Dict[str, Any] = None):
+    async def rebuild(self, node_id: str, session_id: str = None, context: Dict[str, Any] = None, dsl_alias: str = None):
         """Ricostruisce il widget live a partire dal frammento XML aggiornato nel DOM."""
         self._ensure_active_app()
+
+        # IMPORTANTE: va preso PRIMA di chiamare render_template(), perché
+        # render_template -> mount_tag -> node_create sovrascrive subito
+        # self.widgets[node_id] con la nuova istanza (ancora non montata).
+        # Se lo prendi dopo, dom_get() ti restituisce rendered_node stesso.
+        old_widget = self.dom_get(node_id)
+        if old_widget is None:
+            print("Widget non montato:", node_id)
+            return None
+
         xml_fragment = self.DOM.get(node_id)
         if xml_fragment is None:
             print(f"[rebuild] Nessun nodo con id '{node_id}' in DOM")
             return None
 
         try:
-            rendered_node = await self.render_template(self.session if hasattr(self, 'session') else None, text=xml_fragment)
+            rendered_node = await self.render_template(
+                self.session, controllers=['terminal'], text=xml_fragment
+            )
         except Exception as e:
             print(f"[rebuild] Impossibile ricostruire il nodo '{node_id}': {e}")
             return None
 
+        parent = old_widget.parent
+        if parent is None:
+            print(f"[rebuild] '{node_id}' non ha un parent montato, impossibile sostituire")
+            return None
+
+        await parent.mount(rendered_node, before=old_widget)
+        await old_widget.remove()
+
+        self.widgets.register(node_id, rendered_node)  # ridondante (node_create l'ha già fatto), ma innocuo
+
+        return rendered_node
+
+    async def rebuild2(self, node_id: str, session_id: str = None, context: Dict[str, Any] = None):
+        """Ricostruisce il widget live a partire dal frammento XML aggiornato nel DOM."""
+        
+        self._ensure_active_app()
+        xml_fragment = self.DOM.get(node_id)
+        if xml_fragment is None:
+            print(f"[rebuild] Nessun nodo con id '{node_id}' in DOM")
+            return None
+
+        
+
+        try:
+            #self.session if hasattr(self, 'session') else None
+            rendered_node = await self.render_template(self.session, controllers=['terminal'], text=xml_fragment)
+        except Exception as e:
+            print(f"[rebuild] Impossibile ricostruire il nodo '{node_id}': {e}")
+            exit(e)
+
         old_widget = self.dom_get(node_id)
+
+        if old_widget is None:
+            print("Widget non montato:", node_id)
+            return None
+
+        parent = old_widget.parent
+        if parent is None:
+            print(f"[rebuild] '{node_id}' non ha un parent montato, impossibile sostituire")
+            return None
+
+        # Monta il nuovo widget nella stessa posizione del vecchio...
+        await parent.mount(rendered_node, before=old_widget)
+        # ...poi rimuove il vecchio
+        await old_widget.remove()
+
+        self.widgets.register(node_id, rendered_node)
+
+        return rendered_node
+        
+        '''old_widget = self.dom_get(node_id)
+        exit(str([old_widget,old_widget.parent,old_widget.is_mounted]))
         #if old_widget is not None and getattr(old_widget, "parent", None) is not None:
         parent = old_widget.parent
-        await old_widget.remove()
+        exit(str(parent))
+        #await old_widget.remove()
+        #exit("parent3")
         await parent.mount(rendered_node)
         self.widgets.register(node_id, rendered_node)
-        return rendered_node
+        #exit(rendered_node)
+        return rendered_node'''
+
+    def dom_get(self, widget_id):
+        try:
+            return self.app.query_one(f"#{widget_id}")
+        except Exception:
+            return None
 
     def node_create(self, tag, attrs={}, inner=[]):
         """

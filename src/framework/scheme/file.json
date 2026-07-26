@@ -1,0 +1,95 @@
+{
+  "path": {
+    "type": "string",
+    "required": true,
+    "empty": false,
+    "comment": "Percorso completo del file, comprensivo di nome ed estensione."
+  },
+  "name": {
+    "type": "string",
+    "required": true,
+    "empty": false,
+    "comment": "Nome del file senza estensione."
+  },
+  "extension": {
+    "type": "string",
+    "required": true,
+    "empty": false,
+    "regex": "^[a-zA-Z0-9]+$",
+    "comment": "Estensione del file, senza il punto (es. txt, json, pdf)."
+  },
+  "mime_type": {
+    "type": "string",
+    "required": false,
+    "default": "application/octet-stream",
+    "comment": "Tipo MIME del file (es. text/plain, application/json, image/png)."
+  },
+  "size": {
+    "type": "int",
+    "required": false,
+    "default": 0,
+    "min": 0,
+    "comment": "Dimensione del file in byte."
+  },
+  "encoding": {
+    "type": "string",
+    "required": false,
+    "default": "utf-8",
+    "allowed": [
+      "utf-8",
+      "ascii",
+      "latin-1",
+      "utf-16"
+    ],
+    "comment": "Codifica dei caratteri utilizzata per i file di testo."
+  },
+  "content": {
+    "type": "string",
+    "required": false,
+    "default": "",
+    "nullable": true,
+    "comment": "Contenuto del file. Utilizzato principalmente per file testuali."
+  },
+  "metadata": {
+    "type": "dict",
+    "required": false,
+    "default": {},
+    "nullable": true,
+    "comment": "Metadati personalizzati associati al file come coppie chiave-valore."
+  },
+  "permissions": {
+    "type": "string",
+    "required": false,
+    "default": "",
+    "nullable": true,
+    "comment": "Permessi del file nel formato previsto dal sistema operativo (es. rw-r--r--)."
+  },
+  "owner": {
+    "type": "string",
+    "required": false,
+    "default": "",
+    "nullable": true,
+    "comment": "Utente proprietario del file."
+  },
+  "created_at": {
+    "type": "datetime",
+    "required": false,
+    "default": null,
+    "nullable": true,
+    "comment": "Data e ora di creazione del file in formato ISO 8601."
+  },
+  "modified_at": {
+    "type": "datetime",
+    "required": false,
+    "default": null,
+    "nullable": true,
+    "comment": "Data e ora dell'ultima modifica del file in formato ISO 8601."
+  },
+  "accessed_at": {
+    "type": "datetime",
+    "required": false,
+    "default": null,
+    "nullable": true,
+    "comment": "Data e ora dell'ultimo accesso al file in formato ISO 8601."
+  }
+}

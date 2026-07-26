@@ -77,6 +77,7 @@ class Attribute(Enum):
     KEYDOWN = "keydown"
     KEYUP = "keyup"
     KEYPRESS = "keypress"
+    CHANGE = "change"
     
     ID = "id"
     ROUTE = "route"
@@ -211,6 +212,7 @@ _EVENTS = {
     Attribute.KEYDOWN.value: f"data-{Attribute.KEYDOWN.value}",
     Attribute.KEYUP.value: f"data-{Attribute.KEYUP.value}",
     Attribute.KEYPRESS.value: f"data-{Attribute.KEYPRESS.value}",
+    Attribute.CHANGE.value: f"data-{Attribute.CHANGE.value}",
 }
 
 _ATTRIBUTES_SCHEMA = {
