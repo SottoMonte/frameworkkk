@@ -1,7 +1,7 @@
 /* Definizione del Modello Repository (Dichiarativo) */
 factory:repository := {
     location: {
-        "SOURCE": [
+        "WORKFOLDER": [
             "/tmp/{{filter.eq.filename}}",
             "/tmp",
         ]

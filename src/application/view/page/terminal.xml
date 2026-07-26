@@ -7,7 +7,7 @@
     </Window>
     <Row>
         <Input id="select" height="20px" submit="terminal:submit" placeholder="Scrivi qualcosa..." type="select">
-            {% for item in terminal.dire %}
+            {% for item in terminal.files %}
                 <Text value="{{ item }}">{{ item.relative_path }}</Text>
             {% endfor %}
         </Input>
@@ -19,7 +19,7 @@
                 <Text>{{ terminal.editor.application }}</Text>
             </Input>
             <Navigation type="tabs">
-                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
+                {% for item in terminal.dependencies %}
                 {% if item.startswith('src/application/') %}
                 <Text value="{{ item }}">{{ item }}</Text>
                 {% endif %}
@@ -31,7 +31,7 @@
                 <Text>{{ terminal.editor.framework }}</Text>
             </Input>
             <Navigation type="tabs">
-                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
+                {% for item in terminal.dependencies %}
                 {% if item.startswith('src/framework/') %}
                 <Text value="{{ item }}">{{ item }}</Text>
                 {% endif %}
@@ -43,7 +43,7 @@
                 <Text>{{ terminal.editor.infrastructure }}</Text>
             </Input>
             <Navigation type="tabs">
-                {% for item in manager.loader.file_dependencies('src/infrastructure/presentation/console.py') %}
+                {% for item in terminal.dependencies %}
                 {% if item.startswith('src/infrastructure/') %}
                 <Text value="{{ item }}">{{ item }}</Text>
                 {% endif %}

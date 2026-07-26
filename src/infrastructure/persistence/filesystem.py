@@ -55,7 +55,7 @@ class Adapter(persistence.Port):
         self.messenger = messenger
         self.config = constants
         self.name = constants.get('name')
-        self.path = constants.get('path','')
+        self.path = constants.get('path', os.getcwd()+"/")
         self.watch = constants.get('watch', False)
         self.observer = None
 
@@ -97,10 +97,12 @@ class Adapter(persistence.Port):
 
     @flow.result()
     async def request(self, **constants):
-        filename = constants.get('filter', {}).get('eq', {}).get('filename')
+        filename = constants.get('filter', {}).get('eq', {}).get('filename','')
         #raise Exception(filename)
         method = constants.get('method')
+        
         path = self.path + filename
+
         match method:
             case 'POST':
                 with open(path, "w", encoding="utf-8") as file:
@@ -119,6 +121,8 @@ class Adapter(persistence.Port):
                     data = file.read()
 
                 return flow.success(data)
+            case 'VIEW':
+                return await self.query(**constants)
             case _:
                 return flow.error()
 
@@ -127,18 +131,21 @@ class Adapter(persistence.Port):
     async def delete(self, **constants): return await self.request(**{'method': 'DELETE'} | constants)
     async def update(self, **constants): return await self.request(**{'method': 'PUT'} | constants)
     async def read(self, **constants): return await self.request(**{'method': 'GET'} | constants)
-
+    #@flow.result()
+    async def view(self, **constants): return await self.request(**{'method': 'VIEW'} | constants)
     # --- Operazioni Infrastrutturali (View & Query) ---
 
+
     @flow.result()
-    async def view(self, **constants):
+    async def query(self, **constants):
         """
-        Invocato da Manager.overview().
-        Raccoglie ricorsivamente tutto il contenuto del file system e delega a query il filtraggio.
+        Invocato da Manager.overview() o da view.
+        Raccoglie ricorsivamente tutto il contenuto del file system (query) 
+        e delega il filtraggio al metodo filter.
         """
         if not self.path or not os.path.exists(self.path):
-            return flow.failure(f"La path '{self.path}' non esiste o non è valida.")
-
+            return flow.error(f"La path '{self.path}' non esiste o non è valida.")
+        
         all_items = []
         try:
             for root, dirs, files in os.walk(self.path):
@@ -164,34 +171,39 @@ class Adapter(persistence.Port):
                         "absolute_path": os.path.join(root, f)
                     })
             
-            # 🌟 Passiamo la lista completa e i costanti originari (con i filtri) al metodo query
-            return await self.query(dataset=all_items, **constants)
+            # 🌟 Delega il dataset appena estratto al metodo filter
+            return await self.filter(dataset=all_items, **constants)
             
         except Exception as e:
-            return flow.failure(f"Errore durante l'ispezione della path: {str(e)}")
+            return flow.error(f"Errore durante l'ispezione della path: {str(e)}")
 
-    @flow.result()
-    async def query(self, **constants):
+    async def filter(self, dataset, **constants):
         """
-        Esegue la logica di filtraggio sul dataset passato da view.
+        Esegue esclusivamente la logica di filtraggio dinamico sul dataset.
         """
-        dataset = constants.get('dataset')
         filters = constants.get('filter', {})
-
-        # Fallback se query viene invocato direttamente senza il dataset di view
-        if dataset is None:
-            return await self.request(**{'method': 'GET'} | constants)
-
         filtered_items = dataset
 
-        # Filtro sul tipo: es. filter={"type": {"eq": "file"}} o {"type": {"eq": "directory"}}
-        type_filter = filters.get('type', {}).get('eq')
-        if type_filter:
-            filtered_items = [item for item in filtered_items if item['type'] == type_filter]
+        operators = {
+            'eq': lambda val, target: val == target,
+            'ne': lambda val, target: val != target,
+            'contains': lambda val, target: target.lower() in str(val).lower(),
+            # Normalizziamo rimuovendo eventuali slash iniziali superflui per fare il confronto in sicurezza
+            'startswith': lambda val, target: str(val).lstrip('/').lower().startswith(str(target).lstrip('/').lower()),
+            'endswith': lambda val, target: str(val).lower().endswith(str(target).lower()),
+        }
 
-        # Puoi estendere qui altri filtri (es. estensione file, substring nel nome ecc.)
-        name_filter = filters.get('name', {}).get('eq')
-        if name_filter:
-            filtered_items = [item for item in filtered_items if item['name'] == name_filter]
+        for op, conditions in filters.items():
+            if op not in operators or not isinstance(conditions, dict):
+                continue
+                
+            op_func = operators[op]
+            
+            # Cicliamo sui campi interni (es. 'relative_path', 'type')
+            for field, target_value in conditions.items():
+                filtered_items = [
+                    item for item in filtered_items 
+                    if field in item and op_func(item[field], target_value)
+                ]
 
         return flow.success(filtered_items)

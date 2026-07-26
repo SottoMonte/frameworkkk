@@ -31,6 +31,9 @@ name = "tui"
 name = "log"
 
 [[persistence.filesystem]]
+name = "workfolder"
+
+[[persistence.filesystem]]
 name = "source"
 path = "src/"
 watch = true

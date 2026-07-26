@@ -1,10 +1,16 @@
 {
+    selected: "src/infrastructure/presentation/console.py";
+    dependencies: loader.file_dependencies(selected);
     
+    files: storekeeper.overview(sid, repository: "file",filter: {"startswith":{"relative_path": "/src"};"eq": {"type": "file"}});
+
     editor: {
-        application:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": "application/controller/terminal.dsl"}});
-        framework:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": "application/controller/terminal.dsl"}});
-        infrastructure:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": "application/controller/terminal.dsl"}});
+        application:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": get(dependencies,"0")}});
+        framework:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": get(dependencies,"1")}});
+        infrastructure:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": get(dependencies,"2")}});
     };
+
+
     //close(deps:false) -> exit();
     submit(deps:false) -> messenger.post(sid, domain: "console:info", message: submit);
     //stampa() -> [storekeeper.overview(sid, repository: "file",filter: {"type": {"eq": "file"}}),exit(1)];
