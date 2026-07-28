@@ -661,6 +661,7 @@ class Adapter(presentation.Port):
             presenter: Manager per presentazione
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
+        #super().__init__(loader, defender, presenter, messenger, **constants)
         if not hasattr(self, 'init'):
             self._render_lock = asyncio.Lock()
             self.config = constants

@@ -278,11 +278,7 @@ _ATTRIBUTES_SCHEMA |= {
 }
 
 
-
-from typing import Protocol, Any, runtime_checkable
-
-@runtime_checkable
-class Port(Protocol):
+class Port(ABC):
 
     def initialize(self):
         self.components = {}
